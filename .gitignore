@@ -1,0 +1,13 @@
+# Build output (rebuilt by cargo; several gigabytes)
+target/
+
+# Pictures and files made while checking the app
+shots/
+
+# Editor settings
+.idea/
+.vscode/
+
+# Test files written by "--gp-tests" and "--convert"
+samples/Test *.gp
+samples/MorningWalk (new save).gp
