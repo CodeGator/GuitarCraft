@@ -4,13 +4,9 @@
 
 **GuitarCraft** is a desktop app for writing, editing and playing guitar music, in tablature and standard notation, written in Rust.
 
-It is a **clean-room clone of Guitar Pro 8**, and it was **vibe coded using Craft Anything**. A person who doesn't write code described what they wanted, shared screenshots of the original app, and pointed at its public user guide; Craft Anything's AI builder wrote every line, rebuilt the app after each request, and checked fresh screenshots of it against the original. "Clean room" means the original program was never opened, run, decompiled or read: everything here comes from screenshots, the public user guide, and the community-documented file formats.
+It is a **clean-room clone of Guitar Pro 8**, vibe coded with **Craft Anything**. "Clean room" means the original program was never opened, run, decompiled or read: GuitarCraft was built from screenshots, the public user guide, and the community-documented file formats.
 
 GuitarCraft opens and saves Guitar Pro files (`.gp` and `.gp5`) and also opens `.gpx`, `.gp3`, `.gp4`, MIDI and plain-text tab, so you can keep working on the songs you already have. A song saved by GuitarCraft opens in Guitar Pro 8, with its tracks, notes, tuning, volume, pan, mute, solo and hidden tracks.
-
-## Privacy
-
-GuitarCraft never goes online. There are no accounts, no telemetry, no update checks and no downloads; nothing leaves your computer. Your songs stay wherever you save them, and the only files the app writes on its own are its list of recent files and the templates you choose to save.
 
 ## Status
 
@@ -51,7 +47,7 @@ To open a song directly: `cargo run --release -- "path/to/song.gp"`
 
 ## How to get involved
 
-GuitarCraft was made by describing it rather than typing it, so it has been tested by using it, not by reading every line. That makes the most useful help:
+GuitarCraft is young, and the most useful help is:
 
 1. **Try it** with your own songs and tell us what happens, especially files that open wrongly or differ from the original.
 2. **Report bugs** in the Issues page, with the song file when you can share it.
@@ -99,4 +95,4 @@ GuitarCraft has no connection with Arobas Music, the maker of Guitar Pro. Guitar
 
 ## License
 
-No license has been chosen yet, so for now all rights are reserved by the author.
+GuitarCraft is free software, released under the [GNU General Public License, version 3 or later](LICENSE). You may use, share and change it; if you share a changed version, it must be under the same license, with its source code.
