@@ -4,7 +4,9 @@
 
 **GuitarCraft** is a desktop app for writing, editing and playing guitar music, in tablature and standard notation, written in Rust.
 
-It is a **clean-room clone of Guitar Pro 8**, vibe coded with **Craft Anything**. "Clean room" means the original program was never opened, run, decompiled or read: GuitarCraft was built from screenshots, the public user guide, and the community-documented file formats.
+It is a **clean-room clone of Guitar Pro 8**, generated with [Craft Anything](https://github.com/storytold/craft-anything). "Clean room" means the original program was never opened, run, decompiled or read: GuitarCraft was built from screenshots, the public user guide, and the community-documented file formats.
+
+The goal is a good music editor, not an exact copy of Guitar Pro 8. GuitarCraft follows the original where that helps, but some of its features, such as the recorded sound banks, the pedalboard and audio tracks, may never be cloned.
 
 GuitarCraft opens and saves Guitar Pro files (`.gp` and `.gp5`) and also opens `.gpx`, `.gp3`, `.gp4`, MIDI and plain-text tab, so you can keep working on the songs you already have. A song saved by GuitarCraft opens in Guitar Pro 8, with its tracks, notes, tuning, volume, pan, mute, solo and hidden tracks.
 
@@ -20,7 +22,9 @@ What works today:
 - **Playback:** a built-in synthesizer for every instrument (no sound files needed), a mixer with volume, pan, mute and solo, looping a selection, a metronome and count-in, slower or faster practice speed with a speed trainer, and a cursor that follows each note as you hear it.
 - **Tools:** a tuning window, chord and scale views, a fretboard and a keyboard view, an add-track window, a command palette, and MIDI, text tab and WAV export.
 
-Not there yet: slash and numbered (jianpu) notation, the original's recorded sound banks and effects, the pedalboard, audio tracks and line-in, printing and PDF export, and some of the less common symbols. Expect rough edges and differences from the original.
+Not there yet: slash and numbered (jianpu) notation, printing and PDF export, and some of the less common symbols. Expect rough edges and differences from the original.
+
+Not planned for now: the original's recorded sound banks and effects, the pedalboard, audio tracks and line-in. These are about sound production rather than writing music, so they may never be added.
 
 <p align="center"><img src="docs/readme/playing.png" alt="Playback: an orange cursor on the note being heard in every track, and the bar being played lightly shaded" width="800"></p>
 
@@ -52,6 +56,10 @@ GuitarCraft is young, and the most useful help is:
 1. **Try it** with your own songs and tell us what happens, especially files that open wrongly or differ from the original.
 2. **Report bugs** in the Issues page, with the song file when you can share it.
 3. **Improve it.** The code is all here; pull requests are welcome.
+
+## About the author
+
+I'm a .NET developer, and I'm using GuitarCraft as a way to learn Rust. The project was generated with [Craft Anything](https://github.com/storytold/craft-anything), and I'm working through the code to learn the language as it grows. Suggestions on writing more idiomatic Rust are as welcome as bug reports.
 
 # Nerd Section
 
