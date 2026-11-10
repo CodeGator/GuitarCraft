@@ -9,17 +9,38 @@ pub const OLD_EXTS: [&str; 3] = ["gcraft", "tabf", "json"];
 pub const GP_EXT: &str = "gp";
 pub const GP5_EXT: &str = "gp5";
 
-/// Saves a song as a Guitar Pro file: .gp5 for the older format, otherwise .gp.
-pub fn save_song(song: &Song, path: &std::path::Path) -> Result<(), String> {
-    let ext = path
-        .extension()
+/// The lower-case extension of a path, or "" if it has none.
+fn ext_of(path: &std::path::Path) -> String {
+    path.extension()
         .and_then(|e| e.to_str())
         .unwrap_or("")
-        .to_ascii_lowercase();
-    let data = if ext == GP5_EXT {
-        crate::gp5write::export_gp5(song)
-    } else {
-        crate::gpifwrite::export_gp(song)?
+        .to_ascii_lowercase()
+}
+
+/// Saves a song as a Guitar Pro file: .gp5 for the older format, .gp (or no
+/// extension) for the current one. Other extensions are refused, so a Guitar Pro
+/// file never ends up named like a MIDI or text file.
+pub fn save_song(song: &Song, path: &std::path::Path) -> Result<(), String> {
+    let data = match ext_of(path).as_str() {
+        GP5_EXT => crate::gp5write::export_gp5(song),
+        GP_EXT | "" => crate::gpifwrite::export_gp(song)?,
+        other => {
+            return Err(format!(
+                "Can't save as .{other}. Songs are saved as .{GP_EXT} or .{GP5_EXT}; \
+                 use Export for MIDI or text tab."
+            ))
+        }
+    };
+    std::fs::write(path, data).map_err(|e| e.to_string())
+}
+
+/// Writes a song in the format its extension names: Guitar Pro, MIDI (.mid,
+/// .midi) or text tab (.txt, .tab). Text tab holds one track, so it takes the first.
+pub fn export_song(song: &Song, path: &std::path::Path) -> Result<(), String> {
+    let data = match ext_of(path).as_str() {
+        "mid" | "midi" => export_midi(song),
+        "txt" | "tab" => export_ascii(song, 0).into_bytes(),
+        _ => return save_song(song, path),
     };
     std::fs::write(path, data).map_err(|e| e.to_string())
 }
@@ -281,4 +302,47 @@ pub fn wav_bytes(samples: &[f32], sr: u32) -> Vec<u8> {
         out.extend_from_slice(&((x.clamp(-1.0, 1.0) * 32767.0) as i16).to_le_bytes());
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A fresh, empty folder for one test's files.
+    fn temp_dir(name: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("guitarcraft-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn save_refuses_formats_it_cannot_write() {
+        let d = temp_dir("save-refuses");
+        for name in ["song.mid", "song.txt", "song.json"] {
+            let p = d.join(name);
+            assert!(
+                save_song(&Song::demo(), &p).is_err(),
+                "{name} should be refused"
+            );
+            assert!(!p.exists(), "{name} should not be written");
+        }
+        assert!(save_song(&Song::demo(), &d.join("song")).is_ok());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn export_writes_the_format_the_extension_names() {
+        let d = temp_dir("export");
+        let song = Song::demo();
+        for name in ["song.gp", "song.gp5", "song.mid", "song.txt"] {
+            let p = d.join(name);
+            export_song(&song, &p).unwrap();
+            let back = load_song(&p).unwrap_or_else(|e| panic!("{name}: {e}"));
+            assert!(!back.tracks.is_empty(), "{name} came back empty");
+        }
+        let midi = std::fs::read(d.join("song.mid")).unwrap();
+        assert!(midi.starts_with(b"MThd"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
 }

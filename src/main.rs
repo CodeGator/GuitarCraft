@@ -32,7 +32,7 @@ fn main() -> eframe::Result {
             } else {
                 fileio::load_song(std::path::Path::new(&from))
             };
-            match song.and_then(|s| fileio::save_song(&s, std::path::Path::new(&to))) {
+            match song.and_then(|s| fileio::export_song(&s, std::path::Path::new(&to))) {
                 Ok(()) => std::process::exit(0),
                 Err(e) => {
                     eprintln!("{e}");
