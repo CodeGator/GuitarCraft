@@ -673,7 +673,7 @@ pub fn import_midi(data: &[u8], title: &str) -> Result<Song, String> {
         } else if bass {
             Track {
                 instrument: Instrument::Bass,
-                tuning: vec![43, 38, 33, 28],
+                tuning: STANDARD_BASS.to_vec(),
                 ..Track::default()
             }
         } else {

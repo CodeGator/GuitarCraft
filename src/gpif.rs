@@ -1050,7 +1050,7 @@ mod tests {
         assert_eq!(s.tracks.len(), 2);
         assert_eq!(s.tracks[1].instrument, Instrument::Drums);
         assert!(!s.tracks[1].has_tab());
-        assert_eq!(s.tracks[0].tuning, vec![64, 59, 55, 50, 45, 40]);
+        assert_eq!(s.tracks[0].tuning, STANDARD_GUITAR.to_vec());
         assert_eq!(s.master[0].marker.as_deref(), Some("Intro"));
         assert_eq!(s.master[0].repeat_close, 2);
         let b = &s.tracks[0].bars[0].beats;

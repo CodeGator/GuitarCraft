@@ -180,40 +180,40 @@ pub fn band_song() -> Song {
 }
 
 pub fn template(k: usize) -> Song {
-    const STD: [u8; 6] = [64, 59, 55, 50, 45, 40];
+    const STD: &[u8] = &STANDARD_GUITAR;
     const DROP_D: [u8; 6] = [64, 59, 55, 50, 45, 38];
-    const BASS: [u8; 4] = [43, 38, 33, 28];
+    const BASS: &[u8] = &STANDARD_BASS;
     let mut s = Song::new_blank();
     s.title = "Untitled".into();
     let tracks = match k {
-        1 => vec![tr("Acoustic Bass", Instrument::Bass, &BASS, 1)],
-        2 => vec![tr("Classical Guitar", Instrument::NylonGuitar, &STD, 0)],
-        3 => vec![tr("Electric Bass", Instrument::Bass, &BASS, 1)],
-        4 => vec![tr("Electric Guitar", Instrument::CleanGuitar, &STD, 0)],
+        1 => vec![tr("Acoustic Bass", Instrument::Bass, BASS, 1)],
+        2 => vec![tr("Classical Guitar", Instrument::NylonGuitar, STD, 0)],
+        3 => vec![tr("Electric Bass", Instrument::Bass, BASS, 1)],
+        4 => vec![tr("Electric Guitar", Instrument::CleanGuitar, STD, 0)],
         5 => vec![tr(
             "Distortion Guitar",
             Instrument::DistortionGuitar,
-            &STD,
+            STD,
             0,
         )],
-        6 => vec![tr("Overdrive Guitar", Instrument::OverdriveGuitar, &STD, 0)],
+        6 => vec![tr("Overdrive Guitar", Instrument::OverdriveGuitar, STD, 0)],
         7 => vec![
-            tr("Steel Guitar", Instrument::SteelGuitar, &STD, 0),
-            tr("Electric Bass", Instrument::Bass, &BASS, 1),
+            tr("Steel Guitar", Instrument::SteelGuitar, STD, 0),
+            tr("Electric Bass", Instrument::Bass, BASS, 1),
         ],
-        8 => vec![tr("Jazz Guitar", Instrument::CleanGuitar, &STD, 5)],
+        8 => vec![tr("Jazz Guitar", Instrument::CleanGuitar, STD, 5)],
         9 => vec![
             tr("Rhythm Guitar", Instrument::DistortionGuitar, &DROP_D, 0),
             tr("Lead Guitar", Instrument::DistortionGuitar, &DROP_D, 3),
             tr("Bass", Instrument::Bass, &[43, 38, 33, 26], 1),
         ],
         10 => vec![
-            tr("Rhythm Guitar", Instrument::OverdriveGuitar, &STD, 0),
-            tr("Lead Guitar", Instrument::CleanGuitar, &STD, 3),
-            tr("Bass", Instrument::Bass, &BASS, 1),
+            tr("Rhythm Guitar", Instrument::OverdriveGuitar, STD, 0),
+            tr("Lead Guitar", Instrument::CleanGuitar, STD, 3),
+            tr("Bass", Instrument::Bass, BASS, 1),
         ],
-        11 => vec![tr("Nylon Guitar", Instrument::NylonGuitar, &STD, 0)],
-        12 => vec![tr("Steel Guitar", Instrument::SteelGuitar, &STD, 0)],
+        11 => vec![tr("Nylon Guitar", Instrument::NylonGuitar, STD, 0)],
+        12 => vec![tr("Steel Guitar", Instrument::SteelGuitar, STD, 0)],
         13 => vec![tr(
             "7-String Guitar",
             Instrument::DistortionGuitar,
@@ -229,11 +229,11 @@ pub fn template(k: usize) -> Song {
         17 => vec![
             inst("Lead Vocals", Instrument::LeadVocals, 5),
             inst("Piano", Instrument::Piano, 4),
-            tr("Guitar", Instrument::SteelGuitar, &STD, 0),
-            tr("Bass", Instrument::Bass, &BASS, 1),
+            tr("Guitar", Instrument::SteelGuitar, STD, 0),
+            tr("Bass", Instrument::Bass, BASS, 1),
             inst("Drums", Instrument::Drums, 6),
         ],
-        _ => vec![tr("Steel Guitar", Instrument::SteelGuitar, &STD, 0)],
+        _ => vec![tr("Steel Guitar", Instrument::SteelGuitar, STD, 0)],
     };
     s.tracks = tracks;
     s.normalize();

@@ -271,24 +271,11 @@ impl App {
     }
 
     pub(super) fn export_wav(&mut self) {
-        if self.screenshot.is_some() {
-            return;
-        }
-        let Some(p) = rfd::FileDialog::new()
-            .add_filter("WAV audio", &["wav"])
-            .set_file_name(format!(
-                "{}.wav",
-                super::widgets::sanitize(&self.song.title)
-            ))
-            .save_file()
-        else {
+        let Some(p) = self.export_path("WAV audio", "wav") else {
             return;
         };
         let samples = crate::audio::render_song(&self.song, 44100.0, self.speed / 100.0);
-        match std::fs::write(&p, crate::fileio::wav_bytes(&samples, 44100)) {
-            Ok(()) => self.status = format!("Exported {}.", p.display()),
-            Err(e) => self.status = format!("Couldn't export: {e}"),
-        }
+        self.write_export(&p, crate::fileio::wav_bytes(&samples, 44100));
     }
 
     /// Adds a text tab file as a new track.

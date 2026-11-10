@@ -271,7 +271,7 @@ impl App {
             addtrack_open: false,
             at_name: String::new(),
             at_inst: Instrument::SteelGuitar,
-            at_tuning: vec![64, 59, 55, 50, 45, 40],
+            at_tuning: STANDARD_GUITAR.to_vec(),
             at_grand: true,
             save_hint: None,
             song_more: false,
@@ -998,7 +998,7 @@ impl App {
             if bass {
                 t.name = "Electric Bass".into();
                 t.instrument = Instrument::Bass;
-                t.tuning = vec![43, 38, 33, 28];
+                t.tuning = STANDARD_BASS.to_vec();
             } else {
                 t.name = format!("Guitar {}", s.tracks.len() + 1);
             }
@@ -1157,29 +1157,35 @@ impl App {
         }
     }
 
-    fn export_midi(&mut self) {
-        if let Some(p) = rfd::FileDialog::new()
-            .add_filter("MIDI file", &["mid"])
-            .set_file_name(format!("{}.mid", sanitize(&self.song.title)))
+    /// Asks where to export, suggesting the song's title with this extension.
+    /// Never asks while taking a screenshot.
+    fn export_path(&self, kind: &str, ext: &str) -> Option<PathBuf> {
+        if self.screenshot.is_some() {
+            return None;
+        }
+        rfd::FileDialog::new()
+            .add_filter(kind, &[ext])
+            .set_file_name(format!("{}.{ext}", sanitize(&self.song.title)))
             .save_file()
-        {
-            match std::fs::write(&p, fileio::export_midi(&self.song)) {
-                Ok(()) => self.status = format!("Exported {}.", p.display()),
-                Err(e) => self.status = format!("Couldn't export: {e}"),
-            }
+    }
+
+    /// Writes an exported file and says how it went.
+    fn write_export(&mut self, p: &std::path::Path, data: impl AsRef<[u8]>) {
+        self.status = match std::fs::write(p, data) {
+            Ok(()) => format!("Exported {}.", p.display()),
+            Err(e) => format!("Couldn't export: {e}"),
+        };
+    }
+
+    fn export_midi(&mut self) {
+        if let Some(p) = self.export_path("MIDI file", "mid") {
+            self.write_export(&p, fileio::export_midi(&self.song));
         }
     }
 
     fn export_ascii(&mut self) {
-        if let Some(p) = rfd::FileDialog::new()
-            .add_filter("Text file", &["txt"])
-            .set_file_name(format!("{}.txt", sanitize(&self.song.title)))
-            .save_file()
-        {
-            match std::fs::write(&p, fileio::export_ascii(&self.song, self.track)) {
-                Ok(()) => self.status = format!("Exported {}.", p.display()),
-                Err(e) => self.status = format!("Couldn't export: {e}"),
-            }
+        if let Some(p) = self.export_path("Text file", "txt") {
+            self.write_export(&p, fileio::export_ascii(&self.song, self.track));
         }
     }
 

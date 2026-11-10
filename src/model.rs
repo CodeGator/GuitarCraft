@@ -833,18 +833,23 @@ pub fn drum_at_pos(pos: i32) -> u8 {
     }
 }
 
+/// Standard guitar tuning, highest string first: E4 B3 G3 D3 A2 E2 (MIDI note numbers).
+pub const STANDARD_GUITAR: [u8; 6] = [64, 59, 55, 50, 45, 40];
+/// Standard bass tuning, highest string first: G2 D2 A1 E1 (MIDI note numbers).
+pub const STANDARD_BASS: [u8; 4] = [43, 38, 33, 28];
+
 /// Common tunings: (name, notes from highest string to lowest).
 pub fn tuning_presets(strings: usize) -> Vec<(&'static str, Vec<u8>)> {
     match strings {
         4 => vec![
-            ("Bass standard (E A D G)", vec![43, 38, 33, 28]),
+            ("Bass standard (E A D G)", STANDARD_BASS.to_vec()),
             ("Bass drop D", vec![43, 38, 33, 26]),
             ("Ukulele (G C E A)", vec![69, 64, 60, 67]),
         ],
         5 => vec![("5-string bass (B E A D G)", vec![43, 38, 33, 28, 23])],
         7 => vec![("7-string standard", vec![64, 59, 55, 50, 45, 40, 35])],
         _ => vec![
-            ("Standard (E A D G B E)", vec![64, 59, 55, 50, 45, 40]),
+            ("Standard (E A D G B E)", STANDARD_GUITAR.to_vec()),
             ("Drop D", vec![64, 59, 55, 50, 45, 38]),
             ("Half step down", vec![63, 58, 54, 49, 44, 39]),
             ("Open G", vec![62, 59, 55, 50, 43, 38]),
@@ -938,7 +943,7 @@ impl Default for Track {
         Track {
             name: "Guitar".into(),
             instrument: Instrument::SteelGuitar,
-            tuning: vec![64, 59, 55, 50, 45, 40],
+            tuning: STANDARD_GUITAR.to_vec(),
             capo: 0,
             frets: 24,
             color: TRACK_COLORS[0],
@@ -1152,7 +1157,7 @@ impl Song {
         let n = self.master.len();
         for t in &mut self.tracks {
             if t.tuning.is_empty() {
-                t.tuning = vec![64, 59, 55, 50, 45, 40];
+                t.tuning = STANDARD_GUITAR.to_vec();
             }
             t.bars.resize_with(n, Bar::empty);
             for b in &mut t.bars {
@@ -1527,7 +1532,7 @@ impl Song {
         let mut b = Track {
             name: "Electric Bass".into(),
             instrument: Instrument::Bass,
-            tuning: vec![43, 38, 33, 28],
+            tuning: STANDARD_BASS.to_vec(),
             color: TRACK_COLORS[1],
             volume: 0.75,
             ..Track::default()

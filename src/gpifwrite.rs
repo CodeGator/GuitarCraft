@@ -1066,7 +1066,7 @@ mod tests {
         let song = crate::gpif::import_gp(&data).expect("opens the sample");
         assert_eq!(song.tracks.len(), 2);
         assert_eq!(song.tracks[0].instrument, Instrument::Bass);
-        assert_eq!(song.tracks[0].tuning, vec![43, 38, 33, 28]);
+        assert_eq!(song.tracks[0].tuning, STANDARD_BASS.to_vec());
         assert!((song.tracks[0].volume - 0.795).abs() < 0.001);
         assert_eq!(song.tracks[0].short_name, "el.bs.");
         assert!((song.tracks[0].palm_mute - 0.3).abs() < 0.001);
