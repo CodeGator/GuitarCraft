@@ -75,8 +75,10 @@ pub fn import_gpx(data: &[u8]) -> Result<Song, String> {
     parse_gpif(&xml)
 }
 
+type PbField<'a> = (u64, u8, u64, &'a [u8]);
+
 /// Fields of a protocol-buffer message: (field number, wire type, number value, bytes).
-fn pb_fields(b: &[u8]) -> Option<Vec<(u64, u8, u64, &[u8])>> {
+fn pb_fields(b: &[u8]) -> Option<Vec<PbField<'_>>> {
     fn varint(b: &[u8], i: &mut usize) -> Option<u64> {
         let mut r = 0u64;
         let mut s = 0;
@@ -835,10 +837,11 @@ fn read_beat(
             }
         }
         if let Some(t) = child(*r, "PrimaryTuplet") {
-            beat.tuplet = match t.attribute("num").and_then(|x| x.parse::<u8>().ok()) {
-                Some(n @ (3 | 5 | 6 | 7 | 9)) => n,
-                _ => 0,
-            };
+            beat.tuplet = t
+                .attribute("num")
+                .and_then(|x| x.parse::<u8>().ok())
+                .filter(|n| matches!(n, 3 | 5 | 6 | 7 | 9))
+                .unwrap_or(0);
         }
     }
     beat.dynamic = match text(child(bt, "Dynamic")).as_str() {

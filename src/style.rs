@@ -180,20 +180,11 @@ fn hi(name: &str, on: bool, text: &str, align: u8, font: FontSpec) -> HeaderItem
 /// A playing-technique label: its words and font.
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 #[serde(default)]
+#[derive(Default)]
 pub struct SymbolLabel {
     pub name: String,
     pub text: String,
     pub font: FontSpec,
-}
-
-impl Default for SymbolLabel {
-    fn default() -> Self {
-        SymbolLabel {
-            name: String::new(),
-            text: String::new(),
-            font: FontSpec::default(),
-        }
-    }
 }
 
 /// Symbol labels, in the order of `Stylesheet::symbols`.
@@ -204,11 +195,10 @@ pub const SYM_HAMMER: usize = 3;
 pub const SYM_PULL: usize = 4;
 pub const SYM_SLAP: usize = 5;
 pub const SYM_POP: usize = 6;
-#[allow(dead_code)]
 pub const SYM_SCRAPE: usize = 7;
-#[allow(dead_code)]
+#[allow(dead_code)] // Names a slot in the table; no drawing code reads it yet.
 pub const SYM_RASG: usize = 8;
-#[allow(dead_code)]
+#[allow(dead_code)] // Names a slot in the table; no drawing code reads it yet.
 pub const SYM_WHAMMY: usize = 9;
 
 /// Page formats: name and size in millimetres (portrait).

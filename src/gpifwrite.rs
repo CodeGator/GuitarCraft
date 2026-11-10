@@ -163,7 +163,7 @@ fn opts() -> GpOptions {
 }
 
 /// The score as Guitar Pro XML.
-#[allow(dead_code)]
+#[cfg(test)]
 pub fn gpif_xml(song: &Song) -> String {
     gpif_xml_with(song, GpOptions::safe(song))
 }
@@ -173,9 +173,9 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
     let mut x = String::with_capacity(256 * 1024);
     x.push_str("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<GPIF>\n<GPVersion>7</GPVersion>\n<GPRevision required=\"12021\" recommended=\"12023\">12025</GPRevision>\n<Encoding><EncodingDescription>GP7</EncodingDescription></Encoding>\n");
     // Song information.
-    let _ = write!(
+    let _ = writeln!(
         x,
-        "<Score><Title>{}</Title><SubTitle>{}</SubTitle><Artist>{}</Artist><Album>{}</Album><Words>{}</Words><Music>{}</Music><WordsAndMusic>{}</WordsAndMusic><Copyright>{}</Copyright><Tabber>{}</Tabber><Instructions>{}</Instructions><Notices>{}</Notices><FirstPageHeader>{}</FirstPageHeader><FirstPageFooter>{}</FirstPageFooter><PageHeader>{}</PageHeader><PageFooter>{}</PageFooter><ScoreSystemsDefaultLayout>4</ScoreSystemsDefaultLayout><ScoreSystemsLayout>4</ScoreSystemsLayout><ScoreZoomPolicy>Value</ScoreZoomPolicy><ScoreZoom>1</ScoreZoom><MultiVoice>0</MultiVoice></Score>\n",
+        "<Score><Title>{}</Title><SubTitle>{}</SubTitle><Artist>{}</Artist><Album>{}</Album><Words>{}</Words><Music>{}</Music><WordsAndMusic>{}</WordsAndMusic><Copyright>{}</Copyright><Tabber>{}</Tabber><Instructions>{}</Instructions><Notices>{}</Notices><FirstPageHeader>{}</FirstPageHeader><FirstPageFooter>{}</FirstPageFooter><PageHeader>{}</PageHeader><PageFooter>{}</PageFooter><ScoreSystemsDefaultLayout>4</ScoreSystemsDefaultLayout><ScoreSystemsLayout>4</ScoreSystemsLayout><ScoreZoomPolicy>Value</ScoreZoomPolicy><ScoreZoom>1</ScoreZoom><MultiVoice>0</MultiVoice></Score>",
         cdata(&song.title),
         cdata(&song.subtitle),
         cdata(&song.artist),
@@ -390,7 +390,7 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
             }
             x.push_str("</Properties></Staff>");
         }
-        let _ = write!(x, "</Staves><Automations><Automation><Type>Sound</Type><Linear>false</Linear><Bar>0</Bar><Position>0</Position><Visible>true</Visible><Value>{}</Value></Automation></Automations></Track>\n", cdata(&format!("Midi/{label};{label};Factory")));
+        let _ = writeln!(x, "</Staves><Automations><Automation><Type>Sound</Type><Linear>false</Linear><Bar>0</Bar><Position>0</Position><Visible>true</Visible><Value>{}</Value></Automation></Automations></Track>", cdata(&format!("Midi/{label};{label};Factory")));
     }
     x.push_str("</Tracks>\n");
 
@@ -483,18 +483,18 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
                     let vid = ids.nvoices;
                     ids.nvoices += 1;
                     let list: Vec<String> = beat_ids.iter().map(|b| b.to_string()).collect();
-                    let _ = write!(
+                    let _ = writeln!(
                         ids.voices,
-                        "<Voice id=\"{vid}\"><Beats>{}</Beats></Voice>\n",
+                        "<Voice id=\"{vid}\"><Beats>{}</Beats></Voice>",
                         list.join(" ")
                     );
                     vids.push(vid.to_string());
                 }
                 let id = ids.nbars;
                 ids.nbars += 1;
-                let _ = write!(
+                let _ = writeln!(
                     ids.bars,
-                    "<Bar id=\"{id}\"><Clef>{clef}</Clef><Voices>{}</Voices></Bar>\n",
+                    "<Bar id=\"{id}\"><Clef>{clef}</Clef><Voices>{}</Voices></Bar>",
                     vids.join(" ")
                 );
                 bar_ids.push(id.to_string());

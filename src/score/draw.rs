@@ -70,7 +70,7 @@ pub fn draw_lower_staff(p: &Painter, c: &BarCtx) {
                 continue;
             }
             let shift = if c.multi {
-                (if c.voice % 2 == 0 { -2.0 } else { 2.0 }) * g.ls
+                (if c.voice.is_multiple_of(2) { -2.0 } else { 2.0 }) * g.ls
             } else {
                 0.0
             };
@@ -356,7 +356,7 @@ pub fn draw_bar_content(p: &Painter, c: &BarCtx) {
                 continue;
             }
             let shift = if c.multi {
-                (if c.voice % 2 == 0 { -2.0 } else { 2.0 }) * g.ls
+                (if c.voice.is_multiple_of(2) { -2.0 } else { 2.0 }) * g.ls
             } else {
                 0.0
             };
@@ -630,7 +630,7 @@ pub fn draw_rest(p: &Painter, c: Pos2, d: Dur, ls: f32, music_font: bool) {
 
 /// Groups of beat indices joined by beams (one group per beat unit of the bar).
 pub fn beam_groups(bar: &Bar, mb: &MasterBar) -> Vec<Vec<usize>> {
-    let unit = if mb.den == 8 && mb.num % 3 == 0 {
+    let unit = if mb.den == 8 && mb.num.is_multiple_of(3) {
         QUARTER * 3 / 2
     } else {
         QUARTER
@@ -797,7 +797,7 @@ fn draw_std_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32, groups
     let group = groups.iter().find(|gg| gg.contains(&bj));
     // A beamed group shares one stem direction.
     let up = if c.multi {
-        c.voice % 2 == 0
+        c.voice.is_multiple_of(2)
     } else {
         match group {
             Some(gr) => {
@@ -929,7 +929,7 @@ fn draw_std_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32, groups
             );
             p.line_segment(
                 [
-                    gc + Vec2::new(-1.0 * z, -4.0 * z),
+                    gc + Vec2::new(-z, -4.0 * z),
                     gc + Vec2::new(6.0 * z, -10.0 * z),
                 ],
                 PStroke::new(0.9 * z, ink()),

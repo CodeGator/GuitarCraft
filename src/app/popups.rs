@@ -5,7 +5,6 @@
 use super::App;
 use egui::{Align2, Key, RichText, Vec2};
 
-#[allow(dead_code)]
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Popup {
     TimeSig,

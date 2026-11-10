@@ -322,7 +322,7 @@ impl Voice {
                 n * 0.6 * (-t * 70.0).exp() + tone(420.0, &mut ph) * 0.4 * (-t * 50.0).exp(),
                 0.12,
             ),
-            38 | 40 | 39 => (
+            38..=40 => (
                 n * 0.65 * (-t * 15.0).exp() + tone(190.0, &mut ph) * 0.55 * (-t * 22.0).exp(),
                 0.4,
             ),
@@ -827,7 +827,7 @@ fn build_voice_schedule(song: &Song, sr: f32, opt: &ScheduleOptions) -> Schedule
                     if tick % QUARTER == QUARTER / 2 {
                         on_tick += 160.0;
                         swing_len = -160.0;
-                    } else if tick % QUARTER == 0 {
+                    } else if tick.is_multiple_of(QUARTER) {
                         swing_len = 160.0;
                     }
                 }
@@ -1071,23 +1071,18 @@ fn click(at: u64, strong: bool, sr: f32) -> NoteEvent {
 
 fn next_note_on_string(song: &Song, ti: usize, bi: usize, bj: usize, s: u8) -> Option<Note> {
     let tr = &song.tracks[ti];
-    let mut b = bi;
-    let mut j = bj + 1;
-    for _ in 0..2 {
-        while j < tr.bars[b].beats.len() {
-            if let Some(n) = tr.bars[b].beats[j].note_on(s) {
+    // Look through the rest of this bar and the whole of the next one.
+    let mut start = bj + 1;
+    for bar in tr.bars.iter().skip(bi).take(2) {
+        for beat in bar.beats.iter().skip(start) {
+            if let Some(n) = beat.note_on(s) {
                 return Some(n.clone());
             }
-            if !tr.bars[b].beats[j].is_rest() {
+            if !beat.is_rest() {
                 return None;
             }
-            j += 1;
         }
-        if b + 1 >= tr.bars.len() {
-            return None;
-        }
-        b += 1;
-        j = 0;
+        start = 0;
     }
     None
 }

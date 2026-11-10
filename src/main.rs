@@ -91,7 +91,7 @@ fn main() -> eframe::Result {
             viewport = viewport.with_window_level(egui::WindowLevel::AlwaysOnBottom);
         }
     }
-    #[allow(unused_mut)]
+    #[cfg_attr(not(target_os = "macos"), allow(unused_mut))] // Only changed on macOS.
     let mut options = eframe::NativeOptions {
         viewport,
         ..Default::default()

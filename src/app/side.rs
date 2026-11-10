@@ -120,7 +120,7 @@ impl App {
         // Voices 1-4.
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 3.0;
-            for v in 0..VOICES {
+            for (v, &dot) in VOICE_COLORS.iter().enumerate() {
                 let used = self.song.tracks[self.track].bars[self.bar].voice_used(v);
                 let on = self.voice == v;
                 let (r, resp) = ui.allocate_exact_size(Vec2::new(24.0, 24.0), Sense::click());
@@ -144,11 +144,8 @@ impl App {
                     },
                 );
                 if used && !on {
-                    ui.painter().circle_filled(
-                        Pos2::new(r.right() - 4.0, r.top() + 4.0),
-                        2.5,
-                        VOICE_COLORS[v],
-                    );
+                    ui.painter()
+                        .circle_filled(Pos2::new(r.right() - 4.0, r.top() + 4.0), 2.5, dot);
                 }
                 if resp
                     .on_hover_text(format!("Edit voice {} (Ctrl+{})", v + 1, v + 1))
@@ -479,7 +476,7 @@ impl App {
         // Note effects.
         ui.add_enabled_ui(has, |ui| {
             ui.horizontal_wrapped(|ui| {
-                let items: [(&str, FontId, &str, bool, fn(&mut Note) -> &mut bool); 14] = [
+                let items: [(&str, FontId, &str, bool, NoteFlag); 14] = [
                     (
                         "( )",
                         FontId::proportional(13.0),
@@ -1113,8 +1110,10 @@ fn toggle_switch(ui: &mut Ui, on: &mut bool) -> bool {
     changed
 }
 
+type NoteFlag = fn(&mut Note) -> &mut bool;
+
 /// Colours of voices 1-4, used for the cursor and markers.
-pub const VOICE_COLORS: [Color32; 4] = [
+pub const VOICE_COLORS: [Color32; VOICES] = [
     Color32::from_rgb(240, 200, 80),
     Color32::from_rgb(110, 200, 120),
     Color32::from_rgb(230, 120, 180),

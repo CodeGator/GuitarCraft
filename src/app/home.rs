@@ -139,8 +139,8 @@ pub fn band_song() -> Song {
         &[(0, 0), (1, 1), (2, 2), (3, 2), (4, 0)],
         &[(0, 1), (1, 1), (2, 2), (3, 3), (4, 3), (5, 1)],
     ];
-    for bi in 0..4 {
-        let sh: Vec<Note> = shapes[bi].iter().map(|&(st, f)| Note::new(st, f)).collect();
+    for (bi, shape) in shapes.iter().enumerate() {
+        let sh: Vec<Note> = shape.iter().map(|&(st, f)| Note::new(st, f)).collect();
         s.tracks[2].bars[bi] = Bar::new(vec![
             beat(Dur::Quarter, sh.clone()),
             beat(Dur::Eighth, sh.clone()),
@@ -150,8 +150,7 @@ pub fn band_song() -> Song {
     }
     // Bass roots.
     let bass: [(u8, u8); 4] = [(1, 3), (3, 3), (3, 5), (3, 1)];
-    for bi in 0..4 {
-        let (st, f) = bass[bi];
+    for (bi, &(st, f)) in bass.iter().enumerate() {
         s.tracks[3].bars[bi] = Bar::new(vec![
             beat(Dur::Half, vec![Note::new(st, f)]),
             beat(Dur::Half, vec![Note::new(st, f)]),

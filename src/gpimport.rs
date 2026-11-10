@@ -360,7 +360,7 @@ pub fn import(data: &[u8]) -> Result<Song, String> {
 
     // Measures.
     let mut last_fret = vec![[0u8; 8]; ntracks];
-    for mi in 0..measures {
+    for mb in master.iter_mut() {
         for ti in 0..ntracks {
             let voices = if v >= V::Gp50 { 2 } else { 1 };
             let mut bar = Bar::new(vec![]);
@@ -370,8 +370,7 @@ pub fn import(data: &[u8]) -> Result<Song, String> {
                     return Err("This file has an unexpected layout.".into());
                 }
                 for _ in 0..nb {
-                    let beat =
-                        read_beat(&mut r, v, &tracks[ti], &mut last_fret[ti], &mut master[mi])?;
+                    let beat = read_beat(&mut r, v, &tracks[ti], &mut last_fret[ti], mb)?;
                     if voice == 0 {
                         bar.beats.push(beat);
                     } else {

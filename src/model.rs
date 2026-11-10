@@ -106,7 +106,6 @@ impl Dynamic {
             Dynamic::Fff => 125,
         }
     }
-    #[allow(dead_code)]
     pub fn from_velocity(v: u8) -> Dynamic {
         let mut best = Dynamic::Mf;
         let mut d = 255i32;
@@ -1115,9 +1114,11 @@ impl Default for Song {
 impl Song {
     pub fn new_blank() -> Song {
         let bars = 4;
-        let mut t = Track::default();
-        t.name = "Steel Guitar".into();
-        t.bars = (0..bars).map(|_| Bar::empty()).collect();
+        let t = Track {
+            name: "Steel Guitar".into(),
+            bars: (0..bars).map(|_| Bar::empty()).collect(),
+            ..Track::default()
+        };
         Song {
             title: "Untitled".into(),
             subtitle: String::new(),
@@ -1389,9 +1390,11 @@ impl Song {
         song.master[7].double_bar = true;
 
         // Lead guitar: arpeggios over G - D - Em - C, then a melody with techniques.
-        let mut g = Track::default();
-        g.name = "Steel Guitar".into();
-        g.color = TRACK_COLORS[0];
+        let mut g = Track {
+            name: "Steel Guitar".into(),
+            color: TRACK_COLORS[0],
+            ..Track::default()
+        };
         let n = |s: u8, f: u8| Note::new(s, f);
         let e8 = |notes: Vec<Note>| Beat {
             dur: Dur::Eighth,
@@ -1521,12 +1524,14 @@ impl Song {
         g.bars = bars;
 
         // Bass track.
-        let mut b = Track::default();
-        b.name = "Electric Bass".into();
-        b.instrument = Instrument::Bass;
-        b.tuning = vec![43, 38, 33, 28];
-        b.color = TRACK_COLORS[1];
-        b.volume = 0.75;
+        let mut b = Track {
+            name: "Electric Bass".into(),
+            instrument: Instrument::Bass,
+            tuning: vec![43, 38, 33, 28],
+            color: TRACK_COLORS[1],
+            volume: 0.75,
+            ..Track::default()
+        };
         let roots: [(u8, u8); 12] = [
             (3, 3),
             (2, 5),
@@ -1860,7 +1865,7 @@ pub fn split_ticks(mut t: u32) -> Vec<(Dur, bool)> {
             cand.push((d.ticks() * 3 / 2, d, true));
         }
     }
-    cand.sort_by(|a, b| b.0.cmp(&a.0));
+    cand.sort_by_key(|c| std::cmp::Reverse(c.0));
     let mut out = vec![];
     while t >= Dur::SixtyFourth.ticks() {
         match cand.iter().find(|c| c.0 <= t) {
@@ -1886,7 +1891,7 @@ pub fn beats_words(ticks: u32, den: u8) -> String {
         3 => "\u{BE}",
         _ => "",
     };
-    if rest != 0 && frac.is_empty() || (rest != 0 && (rest * 4) % unit != 0) {
+    if rest != 0 && frac.is_empty() || (rest != 0 && !(rest * 4).is_multiple_of(unit)) {
         let b = ticks as f32 / unit as f32;
         return format!("{b:.2} beats");
     }

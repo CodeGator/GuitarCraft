@@ -150,7 +150,7 @@ fn split_ticks(mut t: u32) -> Vec<(Dur, bool)> {
             cand.push((d.ticks() * 3 / 2, d, true));
         }
     }
-    cand.sort_by(|a, b| b.0.cmp(&a.0));
+    cand.sort_by_key(|c| std::cmp::Reverse(c.0));
     let mut out = vec![];
     while t >= 60 {
         match cand.iter().find(|c| c.0 <= t) {
@@ -265,8 +265,10 @@ pub fn import_ascii(text: &str) -> Result<Track, String> {
         return Err("No tablature was found in this text file.".into());
     }
     let nstr = blocks[0].len();
-    let mut track = Track::default();
-    track.tuning = tuning_presets(nstr)[0].1.clone();
+    let mut track = Track {
+        tuning: tuning_presets(nstr)[0].1.clone(),
+        ..Track::default()
+    };
     if nstr <= 5 && track.tuning.iter().all(|&t| t < 50) {
         track.instrument = Instrument::Bass;
         track.name = "Bass".into();
@@ -637,23 +639,24 @@ pub fn import_midi(data: &[u8], title: &str) -> Result<Song, String> {
             && !Instrument::from_midi_program(prog).has_strings_kind()
             && !(32..=39).contains(&prog);
         let bass = !drum && !other && ((32..=39).contains(&prog) || avg < 45);
-        let mut tr = Track::default();
-        tr.color = TRACK_COLORS[k % TRACK_COLORS.len()];
-        if drum {
-            tr = Track::of_instrument(Instrument::Drums, "Drums");
-            tr.color = TRACK_COLORS[k % TRACK_COLORS.len()];
+        let mut tr = if drum {
+            Track::of_instrument(Instrument::Drums, "Drums")
         } else if other {
-            tr = Track::of_instrument(
-                Instrument::from_midi_program(prog),
-                Instrument::from_midi_program(prog).name(),
-            );
-            tr.color = TRACK_COLORS[k % TRACK_COLORS.len()];
+            let inst = Instrument::from_midi_program(prog);
+            Track::of_instrument(inst, inst.name())
         } else if bass {
-            tr.instrument = Instrument::Bass;
-            tr.tuning = vec![43, 38, 33, 28];
+            Track {
+                instrument: Instrument::Bass,
+                tuning: vec![43, 38, 33, 28],
+                ..Track::default()
+            }
         } else {
-            tr.instrument = Instrument::from_midi_program(prog);
-        }
+            Track {
+                instrument: Instrument::from_midi_program(prog),
+                ..Track::default()
+            }
+        };
+        tr.color = TRACK_COLORS[k % TRACK_COLORS.len()];
         let label = if drum {
             "Drums"
         } else if other {

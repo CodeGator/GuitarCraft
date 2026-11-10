@@ -87,6 +87,7 @@ pub fn icon_of(t: &Track) -> u8 {
 }
 
 /// A guitar-like body: lower and upper bulge sizes, neck length, sound hole, cutaway.
+#[allow(clippy::too_many_arguments)]
 fn guitar(p: &Painter, r: Rect, c: Color32, low: f32, up: f32, neck: f32, hole: bool, cut: bool) {
     let w = r.width();
     let cx = r.center().x;

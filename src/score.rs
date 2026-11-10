@@ -559,9 +559,12 @@ fn sharp_to_flat(n: &str) -> String {
     .to_string()
 }
 
+type ChordKey = (Option<String>, Vec<(u8, u8)>);
+
 /// Chord diagrams for the top of the score: one of each different chord, in order.
 fn top_chords(song: &Song, tis: &[usize]) -> Vec<(usize, usize, usize)> {
-    let mut seen: Vec<(Option<String>, Vec<(u8, u8)>)> = vec![];
+    // Each chord is told apart by its name and its (string, fret) pairs.
+    let mut seen: Vec<ChordKey> = vec![];
     let mut out = vec![];
     for &ti in tis {
         let t = &song.tracks[ti];
@@ -1650,7 +1653,7 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
                 INK,
             );
         }
-        if false {}
+
         if let Some(t) = mb.tempo {
             if bi != 0 {
                 let tp = Pos2::new(bx + 70.0 * z, y0 + 14.0 * z);
