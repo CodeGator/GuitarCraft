@@ -724,7 +724,7 @@ pub fn import_midi(data: &[u8], title: &str) -> Result<Song, String> {
             for (i, &o) in onsets
                 .iter()
                 .enumerate()
-                .filter(|(_, &o)| o >= bs && o < be)
+                .filter(|&(_, &o)| o >= bs && o < be)
             {
                 if o > pos {
                     push_rest(&mut beats, o - pos);
