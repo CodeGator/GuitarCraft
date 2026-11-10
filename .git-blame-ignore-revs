@@ -1,0 +1,6 @@
+# Commits that only reformat code, skipped by `git blame`.
+# GitHub uses this file automatically. Locally, run once:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# Format the code with rustfmt
+a29ebf90ca8554ef83a8f5dddb5a9abe6ddac036
