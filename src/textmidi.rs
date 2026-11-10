@@ -589,8 +589,8 @@ pub fn import_midi(data: &[u8], title: &str) -> Result<Song, String> {
             first_name = name.clone();
         }
         for e in parts.iter_mut().filter(|((t2, _), _)| *t2 == ti) {
-            if e.1 .2.is_empty() {
-                e.1 .2 = name.clone();
+            if e.1.2.is_empty() {
+                e.1.2 = name.clone();
             }
         }
     }

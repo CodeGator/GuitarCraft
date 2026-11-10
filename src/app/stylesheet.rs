@@ -5,7 +5,7 @@
 //! with Apply or OK.
 
 use super::App;
-use crate::style::{FontSpec, HeaderItem, Stylesheet, FONTS, PAGE_FORMATS, STYLE_NAMES, TOKENS};
+use crate::style::{FONTS, FontSpec, HeaderItem, PAGE_FORMATS, STYLE_NAMES, Stylesheet, TOKENS};
 use egui::{
     Align, Align2, Color32, FontFamily, FontId, Layout, Pos2, Rect, RichText, Sense, Stroke, Ui,
     Vec2,
@@ -312,8 +312,8 @@ impl App {
         };
         let mut open = true;
         let mut action: Option<u8> = None; // 0 apply, 1 cancel, 2 ok
-                                           // Like the original: a tall window that can be moved and resized; the
-                                           // tabs and the button bar stay put and the settings scroll between them.
+        // Like the original: a tall window that can be moved and resized; the
+        // tabs and the button bar stay put and the settings scroll between them.
         let screen = ctx.content_rect();
         let h = (screen.height() - 40.0).clamp(360.0, 1000.0);
         egui::Window::new("Stylesheet")

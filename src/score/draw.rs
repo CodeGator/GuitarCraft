@@ -1,7 +1,7 @@
 //! Drawing the contents of one bar of one track: notes, rests, stems, beams, effects.
 
 use super::*;
-use egui::{epaint::QuadraticBezierShape, Shape};
+use egui::{Shape, epaint::QuadraticBezierShape};
 
 pub struct BarCtx<'a> {
     pub song: &'a Song,

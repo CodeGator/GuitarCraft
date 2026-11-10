@@ -3,7 +3,7 @@
 //! number that is saved with the track (as in .gp files).
 
 use crate::model::{Instrument, Track};
-use egui::{epaint::QuadraticBezierShape, Color32, Painter, Pos2, Rect, Shape, Stroke, Vec2};
+use egui::{Color32, Painter, Pos2, Rect, Shape, Stroke, Vec2, epaint::QuadraticBezierShape};
 
 /// Groups of icons: (group name, [(number, name)]).
 pub const GROUPS: [(&str, &[(u8, &str)]); 3] = [

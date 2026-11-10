@@ -1,7 +1,7 @@
 //! Commands used by the menus and shortcuts, plus the small dialogs and the keyboard view.
 
-use super::panels::BLUE;
 use super::App;
+use super::panels::BLUE;
 use crate::audio;
 use crate::fileio;
 use crate::model::*;
@@ -267,7 +267,11 @@ impl App {
             fileio::GP_EXT
         ));
         match fileio::save_song(&t, &p) {
-            Ok(()) => self.status = format!("Saved the template \u{201C}{name}\u{201D}. Find it in File \u{25B8} New from Template."),
+            Ok(()) => {
+                self.status = format!(
+                    "Saved the template \u{201C}{name}\u{201D}. Find it in File \u{25B8} New from Template."
+                )
+            }
             Err(e) => self.status = format!("Couldn't save the template: {e}"),
         }
     }

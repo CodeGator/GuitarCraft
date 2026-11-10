@@ -28,7 +28,7 @@ pub fn save_song(song: &Song, path: &std::path::Path) -> Result<(), String> {
             return Err(format!(
                 "Can't save as .{other}. Songs are saved as .{GP_EXT} or .{GP5_EXT}; \
                  use Export for MIDI or text tab."
-            ))
+            ));
         }
     };
     std::fs::write(path, data).map_err(|e| e.to_string())

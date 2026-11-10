@@ -325,7 +325,7 @@ pub fn export_gp5(song: &Song) -> Vec<u8> {
         w.i16(f2);
         w.u8((t.accentuation.clamp(0.0, 1.0) * 5.0).round() as u8);
         w.u8(0); // bank
-                 // Sound engine settings: humanize, unused values, instrument, equalizer, effect.
+        // Sound engine settings: humanize, unused values, instrument, equalizer, effect.
         w.u8(0);
         w.zeros(12);
         w.zeros(12);

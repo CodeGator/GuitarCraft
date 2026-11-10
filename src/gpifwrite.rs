@@ -210,7 +210,10 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
         }
     }
     for (bi, t, ramp) in points {
-        let _ = write!(x, "<Automation><Type>Tempo</Type><Linear>{ramp}</Linear><Bar>{bi}</Bar><Position>0</Position><Visible>true</Visible><Value>{t} 2</Value></Automation>");
+        let _ = write!(
+            x,
+            "<Automation><Type>Tempo</Type><Linear>{ramp}</Linear><Bar>{bi}</Bar><Position>0</Position><Visible>true</Visible><Value>{t} 2</Value></Automation>"
+        );
     }
     x.push_str("</Automations></MasterTrack>\n<Tracks>\n");
 
@@ -229,7 +232,11 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
             t.color[2],
             t.palm_mute,
             t.accentuation,
-            if t.auto_let_ring { "<LetRingThroughout />" } else { "" },
+            if t.auto_let_ring {
+                "<LetRingThroughout />"
+            } else {
+                ""
+            },
             if t.auto_brush { "<AutoBrush />" } else { "" },
             // Only the style names seen in Guitar Pro's own files; the others are written as Default.
             match t.playing_style {
@@ -239,7 +246,10 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
             crate::app::trackicons::icon_of(t)
         );
         // The instrument: its family and how notes are shown.
-        let _ = write!(x, "<InstrumentSet><Name>{label}</Name><Type>{ty}</Type><LineCount>5</LineCount><Elements>");
+        let _ = write!(
+            x,
+            "<InstrumentSet><Name>{label}</Name><Type>{ty}</Type><LineCount>5</LineCount><Elements>"
+        );
         if drum {
             for (name, ms) in DRUMS {
                 let _ = write!(
@@ -279,11 +289,7 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
             let mut next = || {
                 let c = chan % 15;
                 chan += 1;
-                if c >= 9 {
-                    c + 1
-                } else {
-                    c
-                }
+                if c >= 9 { c + 1 } else { c }
             };
             let (a, b) = (next(), next());
             (t.instrument.midi_program(), a, b)
@@ -342,10 +348,21 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
                     t.frets,
                     t.partial_capo,
                     // One digit per string, the lowest string first.
-                    (0..t.strings()).rev().map(|k| if t.partial_capo_strings & (1 << k) != 0 { '1' } else { '0' }).collect::<String>(),
+                    (0..t.strings())
+                        .rev()
+                        .map(|k| if t.partial_capo_strings & (1 << k) != 0 {
+                            '1'
+                        } else {
+                            '0'
+                        })
+                        .collect::<String>(),
                     pitches.join(" "),
                     if t.tuning_flat { "<Flat></Flat>" } else { "" },
-                    if t.instrument == Instrument::Bass { "Bass" } else { "Guitar" },
+                    if t.instrument == Instrument::Bass {
+                        "Bass"
+                    } else {
+                        "Guitar"
+                    },
                     cdata(&t.tuning_label),
                     t.tuning_label_visible
                 );
@@ -390,7 +407,11 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
             }
             x.push_str("</Properties></Staff>");
         }
-        let _ = writeln!(x, "</Staves><Automations><Automation><Type>Sound</Type><Linear>false</Linear><Bar>0</Bar><Position>0</Position><Visible>true</Visible><Value>{}</Value></Automation></Automations></Track>", cdata(&format!("Midi/{label};{label};Factory")));
+        let _ = writeln!(
+            x,
+            "</Staves><Automations><Automation><Type>Sound</Type><Linear>false</Linear><Bar>0</Bar><Position>0</Position><Visible>true</Visible><Value>{}</Value></Automation></Automations></Track>",
+            cdata(&format!("Midi/{label};{label};Factory"))
+        );
     }
     x.push_str("</Tracks>\n");
 
@@ -501,7 +522,15 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
             }
         }
         // The bar's settings shared by all tracks.
-        let _ = write!(master, "<MasterBar><Key><AccidentalCount>{}</AccidentalCount><Mode>{}</Mode><TransposeAs>{}</TransposeAs></Key><Time>{}/{}</Time>", mb.key, if mb.key_minor { "Minor" } else { "Major" }, if mb.key < 0 { "Flats" } else { "Sharps" }, mb.num, mb.den);
+        let _ = write!(
+            master,
+            "<MasterBar><Key><AccidentalCount>{}</AccidentalCount><Mode>{}</Mode><TransposeAs>{}</TransposeAs></Key><Time>{}/{}</Time>",
+            mb.key,
+            if mb.key_minor { "Minor" } else { "Major" },
+            if mb.key < 0 { "Flats" } else { "Sharps" },
+            mb.num,
+            mb.den
+        );
         if mb.double_bar {
             master.push_str("<DoubleBar/>");
         }
@@ -566,7 +595,12 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
         if !fermatas.is_empty() {
             master.push_str("<Fermatas>");
             for tk in fermatas {
-                let _ = write!(master, "<Fermata><Type>Medium</Type><Offset>{}/{}</Offset><Length>0.5</Length></Fermata>", tk, QUARTER * 4);
+                let _ = write!(
+                    master,
+                    "<Fermata><Type>Medium</Type><Offset>{}/{}</Offset><Length>0.5</Length></Fermata>",
+                    tk,
+                    QUARTER * 4
+                );
             }
             master.push_str("</Fermatas>");
         }
@@ -574,7 +608,11 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
     }
     master.push_str("</MasterBars>\n");
     x.push_str(&master);
-    let _ = write!(x, "<Bars>\n{}</Bars>\n<Voices>\n{}</Voices>\n<Beats>\n{}</Beats>\n<Notes>\n{}</Notes>\n<Rhythms>\n", ids.bars, ids.voices, ids.beats, ids.notes);
+    let _ = write!(
+        x,
+        "<Bars>\n{}</Bars>\n<Voices>\n{}</Voices>\n<Beats>\n{}</Beats>\n<Notes>\n{}</Notes>\n<Rhythms>\n",
+        ids.bars, ids.voices, ids.beats, ids.notes
+    );
     for (i, (d, dot, dd, tup)) in ids.rhythms.iter().enumerate() {
         let _ = write!(
             x,
@@ -785,15 +823,26 @@ fn write_note(ids: &mut Ids, t: &Track, beat: &Beat, n: &Note, key: i8) -> usize
     let (step, accd, oct) = pitch_parts(pitch);
     let (wstep, waccd, woct) = pitch_parts(written);
     let _ = key;
-    let _ = write!(x, "<Property name=\"ConcertPitch\"><Pitch><Step>{step}</Step><Accidental>{accd}</Accidental><Octave>{oct}</Octave></Pitch></Property>");
-    let _ = write!(x, "<Property name=\"TransposedPitch\"><Pitch><Step>{wstep}</Step><Accidental>{waccd}</Accidental><Octave>{woct}</Octave></Pitch></Property>");
+    let _ = write!(
+        x,
+        "<Property name=\"ConcertPitch\"><Pitch><Step>{step}</Step><Accidental>{accd}</Accidental><Octave>{oct}</Octave></Pitch></Property>"
+    );
+    let _ = write!(
+        x,
+        "<Property name=\"TransposedPitch\"><Pitch><Step>{wstep}</Step><Accidental>{waccd}</Accidental><Octave>{woct}</Octave></Pitch></Property>"
+    );
     let _ = write!(
         x,
         "<Property name=\"Midi\"><Number>{pitch}</Number></Property>"
     );
     if t.has_strings() {
         let nstr = t.strings();
-        let _ = write!(x, "<Property name=\"String\"><String>{}</String></Property><Property name=\"Fret\"><Fret>{}</Fret></Property>", nstr - 1 - (n.string as usize).min(nstr - 1), n.fret);
+        let _ = write!(
+            x,
+            "<Property name=\"String\"><String>{}</String></Property><Property name=\"Fret\"><Fret>{}</Fret></Property>",
+            nstr - 1 - (n.string as usize).min(nstr - 1),
+            n.fret
+        );
     }
     if n.dead {
         x.push_str("<Property name=\"Muted\"><Enable/></Property>");
@@ -805,7 +854,11 @@ fn write_note(ids: &mut Ids, t: &Track, beat: &Beat, n: &Note, key: i8) -> usize
         x.push_str("<Property name=\"HopoOrigin\"><Enable/></Property>");
     }
     if n.harmonic || n.pinch_harmonic {
-        let _ = write!(x, "<Property name=\"HarmonicType\"><HType>{}</HType></Property><Property name=\"HarmonicFret\"><HFret>12</HFret></Property>", if n.pinch_harmonic { "Pinch" } else { "Natural" });
+        let _ = write!(
+            x,
+            "<Property name=\"HarmonicType\"><HType>{}</HType></Property><Property name=\"HarmonicFret\"><HFret>12</HFret></Property>",
+            if n.pinch_harmonic { "Pinch" } else { "Natural" }
+        );
     }
     if n.slide || n.slide_in || n.slide_out {
         let flags = (if n.slide { 2 } else { 0 })
@@ -824,7 +877,10 @@ fn write_note(ids: &mut Ids, t: &Track, beat: &Beat, n: &Note, key: i8) -> usize
             3 => (v, v, 0.0),
             _ => (0.0, v, v),
         };
-        let _ = write!(x, "<Property name=\"Bended\"><Enable/></Property><Property name=\"BendOriginValue\"><Float>{origin}</Float></Property><Property name=\"BendMiddleValue\"><Float>{middle}</Float></Property><Property name=\"BendDestinationValue\"><Float>{dest}</Float></Property><Property name=\"BendOriginOffset\"><Float>0</Float></Property><Property name=\"BendMiddleOffset1\"><Float>12</Float></Property><Property name=\"BendMiddleOffset2\"><Float>12</Float></Property><Property name=\"BendDestinationOffset\"><Float>100</Float></Property>");
+        let _ = write!(
+            x,
+            "<Property name=\"Bended\"><Enable/></Property><Property name=\"BendOriginValue\"><Float>{origin}</Float></Property><Property name=\"BendMiddleValue\"><Float>{middle}</Float></Property><Property name=\"BendDestinationValue\"><Float>{dest}</Float></Property><Property name=\"BendOriginOffset\"><Float>0</Float></Property><Property name=\"BendMiddleOffset1\"><Float>12</Float></Property><Property name=\"BendMiddleOffset2\"><Float>12</Float></Property><Property name=\"BendDestinationOffset\"><Float>100</Float></Property>"
+        );
     }
     let _ = beat;
     x.push_str("</Properties></Note>\n");

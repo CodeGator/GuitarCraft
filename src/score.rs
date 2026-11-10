@@ -9,8 +9,8 @@ pub use draw::{
 use crate::model::*;
 use draw::*;
 use egui::{
-    epaint::TextShape, Align2, Color32, FontFamily, FontId, Painter, Pos2, Rect, Stroke as PStroke,
-    Vec2,
+    Align2, Color32, FontFamily, FontId, Painter, Pos2, Rect, Stroke as PStroke, Vec2,
+    epaint::TextShape,
 };
 
 /// Rhythm drawn with the tablature for a voice: 0 above it, 1 below it, 2 not at all.
@@ -26,7 +26,7 @@ use std::collections::BTreeMap;
 pub const PAGE_W: f32 = 820.0;
 pub const PAGE_H: f32 = 1160.0;
 pub const PAGE_GAP: f32 = 24.0;
-use crate::style::{FontSpec, HeaderItem, Stylesheet, Tokens, MM};
+use crate::style::{FontSpec, HeaderItem, MM, Stylesheet, Tokens};
 
 pub const INK: Color32 = Color32::from_rgb(20, 20, 24);
 pub const PLAY: Color32 = Color32::from_rgb(240, 130, 20);

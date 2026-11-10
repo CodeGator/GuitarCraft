@@ -238,19 +238,58 @@ pub fn commands() -> Vec<(&'static str, Cmd)> {
 }
 
 const GUIDE: [(&str, &str); 13] = [
-    ("The main screen", "The toolbar is at the top: start screen, the three panel buttons (palette, tracks, settings), zoom, undo/redo, the transport buttons and the display that shows the track, bar, time signature, time and tempo. The editing palette is on the left, the score in the middle, the Song/Track/Bar/Beat settings on the right and the tracks list with the mixer and bar overview at the bottom."),
-    ("Moving around", "Click anywhere in the score to place the cursor, or use the arrow keys: left and right move between beats, up and down between strings. Ctrl + arrows jump a bar or a track, Tab moves to the next track's staff. Click a square in the bar overview, a bar number or a section name to jump there. Drag across the score to select beats."),
-    ("Writing notes", "Put the cursor on a string and type the fret number (type two digits quickly for frets above 9). + makes the note shorter and \u{2212} longer; R makes a rest; . dots it. Moving right past the last beat adds a new beat with the same length, and a new bar when the bar is full. The fretboard and keyboard views (View menu) also add notes when clicked."),
-    ("Effects and symbols", "Use the palette, the Note and Effects menus or the shortcuts (H hammer-on, S slide, B bend, V vibrato, P palm mute, I let ring, X dead note, O ghost note, Y harmonic, N trill, F fermata). Bars that are too short or too long are shaded red; Tools \u{25B8} Check Bar Duration (F4) finds them."),
-    ("Bars, repeats and directions", "Bar \u{25B8} Insert/Delete bar changes every track at once. Repeat open/close are [ and ]; alternate endings choose which pass plays a bar. Bar \u{25B8} Directions (D) adds Segno, Coda and Fine signs and D.C./D.S. jumps; playback follows them. Ctrl+Enter forces a new line after the bar."),
-    ("Sections", "Section \u{25B8} Edit (Shift+Ins) names the bar's section; names written in [brackets] get a frame. Ctrl+Alt+Left/Right moves between sections, and double-clicking a section under the bar overview selects it."),
-    ("Tracks and the mixer", "Add tracks from the Track menu (Ctrl+Shift+Ins) or the + in the tracks list. Each row has show/hide (eye), mute, solo, volume and pan. Right-click a track for more. The Track tab sets the name, tuning, capo, sound and interpretation; changing the tuning can keep the notes' pitch."),
-    ("Lyrics and chords", "Track \u{25B8} Show Lyrics Editor: type the words, separate syllables with spaces or hyphens, join words with +, and put comments in [brackets]. Note \u{25B8} Chord (A) names a chord, can detect it from the notes, and can show a diagram above the staff."),
-    ("Playing back", "Space plays from the cursor and pauses, Ctrl+Space plays from the start, Esc stops. Click the score while playing to jump there. Loop (F9) repeats the selection; the speed button sets a slower or faster speed, and the speed trainer raises it on each loop. The metronome and count-in are in the toolbar and the Sound menu."),
-    ("Voices", "Each track has four voices, for parts with their own rhythm on one staff. Pick the voice to edit with the 1\u{2013}4 buttons at the top of the palette or Ctrl+1\u{2013}4. Alt+1\u{2013}4 moves the note under the cursor, or every note you've selected, into another voice at the same place in the bar. Tools \u{25B8} Move/Swap Voices (Ctrl+Shift+M) moves, copies or swaps voices for the selection, the bar or the whole track."),
-    ("Copy and paste", "Ctrl+C / Ctrl+X / Ctrl+V copy, cut and paste beats of the current track; pasting goes in at the cursor. Ctrl+Shift+C / Ctrl+Shift+X copy or cut whole bars of every track, and the next paste inserts those bars."),
-    ("Files", "Open songs saved by GuitarCraft and Guitar Pro files (.gp, .gpx, .gp5, .gp4, .gp3), MIDI files and text tabs. Export MIDI, a text tab of the current track, or an audio file (WAV) played with the built-in sound. File \u{25B8} Save As Template keeps the tracks for new songs."),
-    ("Views", "View \u{25B8} Page - Vertical, Page - Horizontal, Page - Grid, Screen - Vertical and Screen - Horizontal change how the music is laid out. Ctrl + mouse wheel or Ctrl +/\u{2212} zoom. F2, F8, F5/F6 and F11 show or hide the palette, tracks list, settings and full screen. F3 switches between all tracks and one track."),
+    (
+        "The main screen",
+        "The toolbar is at the top: start screen, the three panel buttons (palette, tracks, settings), zoom, undo/redo, the transport buttons and the display that shows the track, bar, time signature, time and tempo. The editing palette is on the left, the score in the middle, the Song/Track/Bar/Beat settings on the right and the tracks list with the mixer and bar overview at the bottom.",
+    ),
+    (
+        "Moving around",
+        "Click anywhere in the score to place the cursor, or use the arrow keys: left and right move between beats, up and down between strings. Ctrl + arrows jump a bar or a track, Tab moves to the next track's staff. Click a square in the bar overview, a bar number or a section name to jump there. Drag across the score to select beats.",
+    ),
+    (
+        "Writing notes",
+        "Put the cursor on a string and type the fret number (type two digits quickly for frets above 9). + makes the note shorter and \u{2212} longer; R makes a rest; . dots it. Moving right past the last beat adds a new beat with the same length, and a new bar when the bar is full. The fretboard and keyboard views (View menu) also add notes when clicked.",
+    ),
+    (
+        "Effects and symbols",
+        "Use the palette, the Note and Effects menus or the shortcuts (H hammer-on, S slide, B bend, V vibrato, P palm mute, I let ring, X dead note, O ghost note, Y harmonic, N trill, F fermata). Bars that are too short or too long are shaded red; Tools \u{25B8} Check Bar Duration (F4) finds them.",
+    ),
+    (
+        "Bars, repeats and directions",
+        "Bar \u{25B8} Insert/Delete bar changes every track at once. Repeat open/close are [ and ]; alternate endings choose which pass plays a bar. Bar \u{25B8} Directions (D) adds Segno, Coda and Fine signs and D.C./D.S. jumps; playback follows them. Ctrl+Enter forces a new line after the bar.",
+    ),
+    (
+        "Sections",
+        "Section \u{25B8} Edit (Shift+Ins) names the bar's section; names written in [brackets] get a frame. Ctrl+Alt+Left/Right moves between sections, and double-clicking a section under the bar overview selects it.",
+    ),
+    (
+        "Tracks and the mixer",
+        "Add tracks from the Track menu (Ctrl+Shift+Ins) or the + in the tracks list. Each row has show/hide (eye), mute, solo, volume and pan. Right-click a track for more. The Track tab sets the name, tuning, capo, sound and interpretation; changing the tuning can keep the notes' pitch.",
+    ),
+    (
+        "Lyrics and chords",
+        "Track \u{25B8} Show Lyrics Editor: type the words, separate syllables with spaces or hyphens, join words with +, and put comments in [brackets]. Note \u{25B8} Chord (A) names a chord, can detect it from the notes, and can show a diagram above the staff.",
+    ),
+    (
+        "Playing back",
+        "Space plays from the cursor and pauses, Ctrl+Space plays from the start, Esc stops. Click the score while playing to jump there. Loop (F9) repeats the selection; the speed button sets a slower or faster speed, and the speed trainer raises it on each loop. The metronome and count-in are in the toolbar and the Sound menu.",
+    ),
+    (
+        "Voices",
+        "Each track has four voices, for parts with their own rhythm on one staff. Pick the voice to edit with the 1\u{2013}4 buttons at the top of the palette or Ctrl+1\u{2013}4. Alt+1\u{2013}4 moves the note under the cursor, or every note you've selected, into another voice at the same place in the bar. Tools \u{25B8} Move/Swap Voices (Ctrl+Shift+M) moves, copies or swaps voices for the selection, the bar or the whole track.",
+    ),
+    (
+        "Copy and paste",
+        "Ctrl+C / Ctrl+X / Ctrl+V copy, cut and paste beats of the current track; pasting goes in at the cursor. Ctrl+Shift+C / Ctrl+Shift+X copy or cut whole bars of every track, and the next paste inserts those bars.",
+    ),
+    (
+        "Files",
+        "Open songs saved by GuitarCraft and Guitar Pro files (.gp, .gpx, .gp5, .gp4, .gp3), MIDI files and text tabs. Export MIDI, a text tab of the current track, or an audio file (WAV) played with the built-in sound. File \u{25B8} Save As Template keeps the tracks for new songs.",
+    ),
+    (
+        "Views",
+        "View \u{25B8} Page - Vertical, Page - Horizontal, Page - Grid, Screen - Vertical and Screen - Horizontal change how the music is laid out. Ctrl + mouse wheel or Ctrl +/\u{2212} zoom. F2, F8, F5/F6 and F11 show or hide the palette, tracks list, settings and full screen. F3 switches between all tracks and one track.",
+    ),
 ];
 
 impl App {

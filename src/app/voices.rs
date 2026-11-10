@@ -81,8 +81,15 @@ impl App {
         self.status = match (moved, blocked) {
             (0, 0) => "Nothing to do.".into(),
             (m, 0) => format!("{verb} {m} note(s) to voice {}.", target + 1),
-            (0, b) => format!("Voice {} already has notes there ({b} note(s) not moved).", target + 1),
-            (m, b) => format!("{verb} {m} note(s) to voice {}; {b} didn't fit because voice {} already plays there.", target + 1, target + 1),
+            (0, b) => format!(
+                "Voice {} already has notes there ({b} note(s) not moved).",
+                target + 1
+            ),
+            (m, b) => format!(
+                "{verb} {m} note(s) to voice {}; {b} didn't fit because voice {} already plays there.",
+                target + 1,
+                target + 1
+            ),
         };
     }
 
