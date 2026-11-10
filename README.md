@@ -14,15 +14,6 @@ GuitarCraft opens and saves Guitar Pro files (`.gp` and `.gp5`) and also opens `
 
 **Version 0.1.0, an early version for trying out (November 2026).** It is usable for writing and playing songs, but it is young: please save your work often, and keep a copy of any song you care about before editing it.
 
-What works today:
-
-- **Scores:** standard notation and tablature, together or apart; page and screen layouts; zoom; one track or many at once, with tracks you can hide; grand staff for keyboards and a percussion staff for drums.
-- **Tracks:** guitars, basses, ukulele and banjo with any tuning and capo (including a partial capo); keyboards, vocals, orchestral instruments and drums, which never show tablature; an icon, colour, playing style and interpretation settings for each.
-- **Editing:** entering notes on the tab or the staff, four voices per bar, selections, copy and paste, undo, transposing, and the editing palette: durations, dots, tuplets, rests, dynamics, crescendos, bends, slides, hammer-ons, let ring, palm mute, harmonics, vibrato, trills, grace notes, accents, strokes and more; repeats, alternate endings, Segno/Coda directions, sections, key and time signatures, tempo changes and lyrics. Bars with too many or too few beats turn red and say how much to add or remove.
-- **Playback:** a built-in synthesizer for every instrument (no sound files needed), a mixer with volume, pan, mute and solo, looping a selection, a metronome and count-in, slower or faster practice speed with a speed trainer, and a cursor that follows each note as you hear it.
-- **Stylesheet (File > Stylesheet, F7):** page size, orientation and margins; music size and note spacing; tunings and chord diagrams on top of the score; staff lines, brackets, track names, clefs and time signatures on each line; header and footer lines filled in from the song's details; fonts for every kind of text; notation choices such as rhythm in the tablature; ready-made Rock, Classic and Jazz styles; saving and loading your own styles. Each song keeps its own stylesheet.
-- **Tools:** a tuning window, chord and scale views, a fretboard and a keyboard view, an add-track window, a command palette, and MIDI, text tab and WAV export.
-
 Not there yet: slash and numbered (jianpu) notation, printing and PDF export, and some of the less common symbols. Expect rough edges and differences from the original.
 
 Not planned for now: the original's recorded sound banks and effects, the pedalboard, audio tracks and line-in. These are about sound production rather than writing music, so they may never be added.
@@ -62,8 +53,6 @@ GuitarCraft is young, and the most useful help is:
 
 I'm a .NET developer, and I'm using GuitarCraft as a way to learn Rust. The project was generated with [Craft Anything](https://github.com/storytold/craft-anything), and I'm working through the code to learn the language as it grows. Suggestions on writing more idiomatic Rust are as welcome as bug reports.
 
-# Nerd Section
-
 ## Supported systems
 
 | System | State |
@@ -87,17 +76,6 @@ A few command-line options help with checking and converting:
 | `--convert <from> <to>` | Opens a song (or `demo`) and saves it in the format of `<to>`, e.g. `.gp` or `.gp5` |
 | `--screenshot <file.png>` | Draws the app, saves a picture and exits |
 | `--gp-tests <folder>` | Writes the demo song as several `.gp` test files |
-
-## How it is put together
-
-- `src/style.rs`: the stylesheet (its settings, the Rock, Classic and Jazz styles, and the fonts it can use)
-- `src/model.rs`: songs, tracks, bars, voices, beats and notes, plus instrument types, clefs and tunings
-- `src/score.rs`, `src/score/draw.rs`: laying out pages and lines and drawing notation, tablature and symbols
-- `src/audio.rs`: the synthesizer (plucked strings, keys, voices, winds, drums) and playback through `cpal`
-- `src/gpif.rs`, `src/gpifwrite.rs`, `src/gpsv.rs`: reading `.gp` and `.gpx` files and writing `.gp` files
-- `src/gpimport.rs`, `src/gp5write.rs`: reading `.gp3`, `.gp4` and `.gp5` files and writing `.gp5` files
-- `src/textmidi.rs`, `src/fileio.rs`: MIDI and text tab import and export, WAV export, opening and saving
-- `src/app.rs`, `src/app/`: the window, menus, toolbar, palettes, inspector, tracks panel and dialogs, built with `egui`/`eframe`
 
 ## About the clean room
 
