@@ -27,6 +27,24 @@ use egui::Key;
 use std::path::PathBuf;
 use widgets::sanitize;
 
+/// Choices from the command line. Most are for taking screenshots of a given view.
+#[derive(Debug, Default)]
+pub struct LaunchOptions {
+    /// Save a picture of the window here, then quit.
+    pub screenshot: Option<PathBuf>,
+    /// A song file to open.
+    pub open: Option<PathBuf>,
+    /// Bar to put the cursor on, counting from 1.
+    pub bar: Option<usize>,
+    /// Track to select, counting from 1.
+    pub track: Option<usize>,
+    pub zoom: Option<f32>,
+    /// Start on the home screen.
+    pub home: bool,
+    /// Extra views to show, such as "keyboard" or "fretboard".
+    pub show: Vec<String>,
+}
+
 #[derive(Clone, Copy, PartialEq)]
 enum Pending {
     New,
@@ -178,11 +196,16 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(
-        cc: &eframe::CreationContext<'_>,
-        screenshot: Option<PathBuf>,
-        open: Option<PathBuf>,
-    ) -> App {
+    pub fn new(cc: &eframe::CreationContext<'_>, launch: LaunchOptions) -> App {
+        let LaunchOptions {
+            screenshot,
+            open,
+            bar,
+            track,
+            zoom,
+            home,
+            show,
+        } = launch;
         let music_font = crate::setup_fonts(&cc.egui_ctx);
         crate::setup_style(&cc.egui_ctx);
         let mut app = App {
@@ -319,169 +342,158 @@ impl App {
         if let Some(p) = open {
             app.open_path(p);
         }
-        if let Some(b) = std::env::var("GUITARCRAFT_BAR")
-            .ok()
-            .and_then(|t| t.parse::<usize>().ok())
-        {
+        if let Some(b) = bar {
             app.bar = b.saturating_sub(1);
             app.clamp_cursor();
             app.scroll_to_cursor = true;
         }
         // Extra views for checking pictures: --show keyboard,fretboard,track,screen
-        if let Ok(v) = std::env::var("GUITARCRAFT_SHOW") {
-            for part in v.split(',') {
-                match part.trim() {
-                    "keyboard" => app.show_keyboard = true,
-                    "fretboard" => app.show_fretboard = true,
-                    "track" => app.inspector = InspectorTab::Track,
-                    "bar" => app.open_popup(popups::Popup::TimeSig),
-                    "key" => app.open_popup(popups::Popup::KeySig),
-                    "single" => app.single_track = true,
-                    "more" => app.song_more = true,
-                    "playing" => {
-                        // A picture of playback part way through bar 1 (no sound).
-                        app.playing = true;
-                        app.play_beat = Some((0, 3));
-                        app.play_tick = Some((0, 1.6 * crate::model::QUARTER as f32));
-                    }
-                    "short" => {
-                        // Bar 1 one beat short and bar 2 half a beat long, for checking.
-                        let t = &mut app.song.tracks[0];
-                        t.bars[0].beats.pop();
-                        t.bars[0].beats.pop();
-                        let extra = t.bars[1].beats[0].clone();
-                        t.bars[1].beats.push(extra);
-                    }
-                    "icons" => {
-                        app.inspector = InspectorTab::Track;
-                        app.icon_menu_open = true;
-                    }
-                    "tuning" => {
-                        app.inspector = InspectorTab::Track;
-                        app.open_tuning();
-                    }
-                    "partial" => {
-                        app.inspector = InspectorTab::Track;
-                        app.open_tuning();
-                        if let Some(d) = app.tuning_dlg.as_mut() {
-                            d.capo = 2;
-                            d.partial = 4;
-                            d.partial_strings = 0b001110;
-                        }
-                    }
-                    "addtrack2" => {
-                        app.addtrack_open = true;
-                        app.at_inst = Instrument::Piano;
-                        app.at_name = "Grand Piano".into();
-                    }
-                    "band" => {
-                        // A band with vocals, piano, guitar, bass and drums, for checking.
-                        app.song = home::band_song();
-                        app.track = 0;
-                        app.bar = 0;
-                        app.beat = 0;
-                        app.total_secs = app.song_seconds();
-                    }
-                    "ring" => {
-                        // Select bars 3-4 and turn let ring on, for checking.
-                        app.bar = 2;
-                        app.beat = 0;
-                        app.sel_anchor = Some((2, 0));
-                        app.bar = 3;
-                        app.beat = app.song.tracks[0].bars[3].beats.len() - 1;
-                        app.toggle_note_flag("Let ring", |n| &mut n.let_ring);
-                    }
-                    "beat" => app.open_popup(popups::Popup::Text),
-                    "section" => app.open_popup(popups::Popup::Section),
-                    "bend" => app.open_popup(popups::Popup::Bend),
-                    "screen" => app.view_mode = 3,
-                    "grid" => app.view_mode = 2,
-                    "guide" => app.guide_open = true,
-                    "palette-cmd" => app.cmd_open = true,
-                    "directions" => app.dir_open = true,
-                    "chord" => app.chord_open = true,
-                    "scales" => app.scale_open = true,
-                    "lyrics" => app.lyrics_open = true,
-                    "addtrack" => app.addtrack_open = true,
-                    "std" => {
-                        // Cursor on the lowest note of the beat, in the notation.
-                        if let Some(n) = app
-                            .cur_beat()
-                            .notes
-                            .iter()
-                            .max_by_key(|n| n.string)
-                            .cloned()
-                        {
-                            app.string = n.string as usize;
-                        }
-                        app.enter_std();
-                    }
-                    "tab1" => app.string = 1,
-                    "voicetool" => app.voices_open = true,
-                    "tempo" => {
-                        app.song.master[4].tempo = Some(112);
-                        app.song.master[8].tempo_ramp = false;
-                        app.song.master[4].tempo_ramp = true;
-                        app.song.master[8].tempo = Some(84);
-                        app.open_automations(4);
-                    }
-                    "move2" => {
-                        // Move the cursor's note (bar 1, low string) to voice 2, for checking.
-                        app.string = 5;
-                        app.move_to_voice(1);
-                    }
-                    "voice2" => {
-                        // A second voice in bar 1 (bass in half notes) for checking pictures.
-                        let b = &mut app.song.tracks[0].bars[0];
-                        b.pad_voices();
-                        b.voices[0] = vec![
-                            Beat {
-                                notes: vec![Note::new(5, 3)],
-                                ..Beat::rest(Dur::Half)
-                            },
-                            Beat {
-                                notes: vec![Note::new(4, 2)],
-                                ..Beat::rest(Dur::Half)
-                            },
-                        ];
-                        app.voice = 1;
-                        app.string = 5;
-                    }
-                    "help" => app.show_help = true,
-                    // The Stylesheet window on one of its tabs, for checking pictures.
-                    "stylesheet" | "stylesheet1" | "stylesheet2" | "stylesheet3"
-                    | "stylesheet4" | "stylesheet5" => {
-                        app.open_stylesheet();
-                        if let Some(d) = app.style_dlg.as_mut() {
-                            d.tab = part
-                                .trim()
-                                .trim_start_matches("stylesheet")
-                                .parse::<usize>()
-                                .unwrap_or(1)
-                                .clamp(1, 5)
-                                - 1;
-                        }
-                    }
-                    "style-rock" => app.song.style = crate::style::Stylesheet::rock(),
-                    "style-classic" => app.song.style = crate::style::Stylesheet::classic(),
-                    "style-jazz" => app.song.style = crate::style::Stylesheet::jazz(),
-                    _ => {}
+        for part in &show {
+            match part.as_str() {
+                "keyboard" => app.show_keyboard = true,
+                "fretboard" => app.show_fretboard = true,
+                "track" => app.inspector = InspectorTab::Track,
+                "bar" => app.open_popup(popups::Popup::TimeSig),
+                "key" => app.open_popup(popups::Popup::KeySig),
+                "single" => app.single_track = true,
+                "more" => app.song_more = true,
+                "playing" => {
+                    // A picture of playback part way through bar 1 (no sound).
+                    app.playing = true;
+                    app.play_beat = Some((0, 3));
+                    app.play_tick = Some((0, 1.6 * crate::model::QUARTER as f32));
                 }
+                "short" => {
+                    // Bar 1 one beat short and bar 2 half a beat long, for checking.
+                    let t = &mut app.song.tracks[0];
+                    t.bars[0].beats.pop();
+                    t.bars[0].beats.pop();
+                    let extra = t.bars[1].beats[0].clone();
+                    t.bars[1].beats.push(extra);
+                }
+                "icons" => {
+                    app.inspector = InspectorTab::Track;
+                    app.icon_menu_open = true;
+                }
+                "tuning" => {
+                    app.inspector = InspectorTab::Track;
+                    app.open_tuning();
+                }
+                "partial" => {
+                    app.inspector = InspectorTab::Track;
+                    app.open_tuning();
+                    if let Some(d) = app.tuning_dlg.as_mut() {
+                        d.capo = 2;
+                        d.partial = 4;
+                        d.partial_strings = 0b001110;
+                    }
+                }
+                "addtrack2" => {
+                    app.addtrack_open = true;
+                    app.at_inst = Instrument::Piano;
+                    app.at_name = "Grand Piano".into();
+                }
+                "band" => {
+                    // A band with vocals, piano, guitar, bass and drums, for checking.
+                    app.song = home::band_song();
+                    app.track = 0;
+                    app.bar = 0;
+                    app.beat = 0;
+                    app.total_secs = app.song_seconds();
+                }
+                "ring" => {
+                    // Select bars 3-4 and turn let ring on, for checking.
+                    app.bar = 2;
+                    app.beat = 0;
+                    app.sel_anchor = Some((2, 0));
+                    app.bar = 3;
+                    app.beat = app.song.tracks[0].bars[3].beats.len() - 1;
+                    app.toggle_note_flag("Let ring", |n| &mut n.let_ring);
+                }
+                "beat" => app.open_popup(popups::Popup::Text),
+                "section" => app.open_popup(popups::Popup::Section),
+                "bend" => app.open_popup(popups::Popup::Bend),
+                "screen" => app.view_mode = 3,
+                "grid" => app.view_mode = 2,
+                "guide" => app.guide_open = true,
+                "palette-cmd" => app.cmd_open = true,
+                "directions" => app.dir_open = true,
+                "chord" => app.chord_open = true,
+                "scales" => app.scale_open = true,
+                "lyrics" => app.lyrics_open = true,
+                "addtrack" => app.addtrack_open = true,
+                "std" => {
+                    // Cursor on the lowest note of the beat, in the notation.
+                    if let Some(n) = app
+                        .cur_beat()
+                        .notes
+                        .iter()
+                        .max_by_key(|n| n.string)
+                        .cloned()
+                    {
+                        app.string = n.string as usize;
+                    }
+                    app.enter_std();
+                }
+                "tab1" => app.string = 1,
+                "voicetool" => app.voices_open = true,
+                "tempo" => {
+                    app.song.master[4].tempo = Some(112);
+                    app.song.master[8].tempo_ramp = false;
+                    app.song.master[4].tempo_ramp = true;
+                    app.song.master[8].tempo = Some(84);
+                    app.open_automations(4);
+                }
+                "move2" => {
+                    // Move the cursor's note (bar 1, low string) to voice 2, for checking.
+                    app.string = 5;
+                    app.move_to_voice(1);
+                }
+                "voice2" => {
+                    // A second voice in bar 1 (bass in half notes) for checking pictures.
+                    let b = &mut app.song.tracks[0].bars[0];
+                    b.pad_voices();
+                    b.voices[0] = vec![
+                        Beat {
+                            notes: vec![Note::new(5, 3)],
+                            ..Beat::rest(Dur::Half)
+                        },
+                        Beat {
+                            notes: vec![Note::new(4, 2)],
+                            ..Beat::rest(Dur::Half)
+                        },
+                    ];
+                    app.voice = 1;
+                    app.string = 5;
+                }
+                "help" => app.show_help = true,
+                // The Stylesheet window on one of its tabs, for checking pictures.
+                "stylesheet" | "stylesheet1" | "stylesheet2" | "stylesheet3" | "stylesheet4"
+                | "stylesheet5" => {
+                    app.open_stylesheet();
+                    if let Some(d) = app.style_dlg.as_mut() {
+                        d.tab = part
+                            .trim()
+                            .trim_start_matches("stylesheet")
+                            .parse::<usize>()
+                            .unwrap_or(1)
+                            .clamp(1, 5)
+                            - 1;
+                    }
+                }
+                "style-rock" => app.song.style = crate::style::Stylesheet::rock(),
+                "style-classic" => app.song.style = crate::style::Stylesheet::classic(),
+                "style-jazz" => app.song.style = crate::style::Stylesheet::jazz(),
+                _ => {}
             }
         }
-        if std::env::var("GUITARCRAFT_HOME").is_ok() {
+        if home {
             app.show_home = true;
         }
-        if let Some(z) = std::env::var("GUITARCRAFT_ZOOM")
-            .ok()
-            .and_then(|z| z.parse::<f32>().ok())
-        {
+        if let Some(z) = zoom {
             app.zoom = z.clamp(0.3, 3.0);
         }
-        if let Some(t) = std::env::var("GUITARCRAFT_TRACK")
-            .ok()
-            .and_then(|t| t.parse::<usize>().ok())
-        {
+        if let Some(t) = track {
             app.track = t.saturating_sub(1);
             app.clamp_cursor();
         }

@@ -19,8 +19,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 fn main() -> eframe::Result {
-    let mut screenshot: Option<PathBuf> = None;
-    let mut open: Option<PathBuf> = None;
+    let mut launch = app::LaunchOptions::default();
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         if a == "--convert" {
@@ -55,35 +54,30 @@ fn main() -> eframe::Result {
             }
             std::process::exit(0);
         }
-        if a == "--screenshot" {
-            screenshot = args.next().map(PathBuf::from);
-        } else if a == "--zoom" {
-            if let Some(z) = args.next().and_then(|z| z.parse::<f32>().ok()) {
-                std::env::set_var("GUITARCRAFT_ZOOM", z.to_string());
+        match a.as_str() {
+            "--screenshot" => launch.screenshot = args.next().map(PathBuf::from),
+            "--zoom" => launch.zoom = args.next().and_then(|z| z.parse().ok()),
+            "--bar" => launch.bar = args.next().and_then(|b| b.parse().ok()),
+            "--track" => launch.track = args.next().and_then(|t| t.parse().ok()),
+            "--home" => launch.home = true,
+            // A comma-separated list, such as "keyboard,fretboard".
+            "--show" => {
+                if let Some(list) = args.next() {
+                    launch
+                        .show
+                        .extend(list.split(',').map(|s| s.trim().to_string()));
+                }
             }
-        } else if a == "--bar" {
-            if let Some(t) = args.next() {
-                std::env::set_var("GUITARCRAFT_BAR", t);
-            }
-        } else if a == "--show" {
-            if let Some(t) = args.next() {
-                std::env::set_var("GUITARCRAFT_SHOW", t);
-            }
-        } else if a == "--home" {
-            std::env::set_var("GUITARCRAFT_HOME", "1");
-        } else if a == "--track" {
-            if let Some(t) = args.next() {
-                std::env::set_var("GUITARCRAFT_TRACK", t);
-            }
-        } else if !a.starts_with("--") {
-            open = Some(PathBuf::from(a));
+            _ if !a.starts_with("--") => launch.open = Some(PathBuf::from(a)),
+            _ => {}
         }
     }
+    let screenshot = launch.screenshot.is_some();
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("GuitarCraft")
         .with_inner_size([1440.0, 900.0])
         .with_min_inner_size([900.0, 600.0]);
-    if screenshot.is_some() {
+    if screenshot {
         // Taking a picture for a check: open without taking focus, behind other windows on Windows.
         viewport = viewport.with_active(false);
         #[cfg(target_os = "windows")]
@@ -97,7 +91,7 @@ fn main() -> eframe::Result {
         ..Default::default()
     };
     #[cfg(target_os = "macos")]
-    if screenshot.is_some() {
+    if screenshot {
         use winit::platform::macos::EventLoopBuilderExtMacOS;
         options.event_loop_builder = Some(Box::new(|b| {
             b.with_activate_ignoring_other_apps(false);
@@ -106,7 +100,7 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "GuitarCraft",
         options,
-        Box::new(move |cc| Ok(Box::new(app::App::new(cc, screenshot, open)))),
+        Box::new(move |cc| Ok(Box::new(app::App::new(cc, launch)))),
     )
 }
 
