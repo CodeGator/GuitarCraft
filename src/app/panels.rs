@@ -346,16 +346,16 @@ impl App {
             ],
             egui::Stroke::new(1.0, Color32::from_gray(60)),
         );
-        if !self.playing {
-            if let Some(name) = self.cursor_note_name() {
-                p.text(
-                    nr.center(),
-                    Align2::CENTER_CENTER,
-                    name,
-                    FontId::proportional(19.0),
-                    Color32::from_gray(170),
-                );
-            }
+        if !self.playing
+            && let Some(name) = self.cursor_note_name()
+        {
+            p.text(
+                nr.center(),
+                Align2::CENTER_CENTER,
+                name,
+                FontId::proportional(19.0),
+                Color32::from_gray(170),
+            );
         }
     }
 
@@ -513,10 +513,10 @@ impl eframe::App for App {
         self.handle_screenshot(&ctx);
         // Only text fields keep the keyboard: a clicked button (like Loop) mustn't
         // be pressed again by Space, which plays and pauses.
-        if !ctx.egui_wants_keyboard_input() {
-            if let Some(id) = ctx.memory(|m| m.focused()) {
-                ctx.memory_mut(|m| m.surrender_focus(id));
-            }
+        if !ctx.egui_wants_keyboard_input()
+            && let Some(id) = ctx.memory(|m| m.focused())
+        {
+            ctx.memory_mut(|m| m.surrender_focus(id));
         }
         self.fix_cursor_mode();
         if ctx.input(|i| i.viewport().close_requested()) && self.dirty && self.screenshot.is_none()

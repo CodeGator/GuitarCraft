@@ -401,11 +401,11 @@ pub fn import(data: &[u8]) -> Result<Song, String> {
     }
     song.master = master;
     let _ = drums;
-    if let Some((k, from, text)) = lyrics {
-        if let Some(t) = tracks.get_mut(k) {
-            t.lyrics = text;
-            t.lyrics_bar = from;
-        }
+    if let Some((k, from, text)) = lyrics
+        && let Some(t) = tracks.get_mut(k)
+    {
+        t.lyrics = text;
+        t.lyrics_bar = from;
     }
     song.tracks = tracks;
     if song.tracks.is_empty() {

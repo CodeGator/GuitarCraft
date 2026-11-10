@@ -287,16 +287,16 @@ impl App {
                     Sense::click_and_drag(),
                 )
                 .on_hover_text(format!("Volume {}%", (*vol * 100.0).round()));
-            if vresp.dragged() || vresp.clicked() {
-                if let Some(pp) = vresp.interact_pointer_pos() {
-                    *vol = ((pp.x - vr.left()) / vr.width())
-                        .clamp(0.0, if is_master { 1.5 } else { 1.0 })
-                        * if is_master { 1.5 } else { 1.0 };
-                    if is_master {
-                        *vol = ((pp.x - vr.left()) / vr.width()).clamp(0.0, 1.0) * 1.5;
-                    }
-                    changed = true;
+            if (vresp.dragged() || vresp.clicked())
+                && let Some(pp) = vresp.interact_pointer_pos()
+            {
+                *vol = ((pp.x - vr.left()) / vr.width())
+                    .clamp(0.0, if is_master { 1.5 } else { 1.0 })
+                    * if is_master { 1.5 } else { 1.0 };
+                if is_master {
+                    *vol = ((pp.x - vr.left()) / vr.width()).clamp(0.0, 1.0) * 1.5;
                 }
+                changed = true;
             }
             let frac = if is_master { *vol / 1.5 } else { *vol };
             p.rect_filled(vr, 2.0, Color32::from_rgb(24, 26, 30));
@@ -336,10 +336,10 @@ impl App {
         }
         if (master - self.master_volume).abs() > 1e-6 {
             self.master_volume = master;
-            if let Some(a) = &self.audio {
-                if let Ok(mut st) = a.state.lock() {
-                    st.master = master;
-                }
+            if let Some(a) = &self.audio
+                && let Ok(mut st) = a.state.lock()
+            {
+                st.master = master;
             }
         }
         // Bar grid with section names underneath (scrolls sideways).
@@ -434,46 +434,45 @@ impl App {
                     }
                 }
                 // Section names: click jumps there, double-click selects the section.
-                if resp.double_clicked() || resp.clicked() {
-                    if let Some(pp) = resp.interact_pointer_pos() {
-                        if pp.y >= my && pp.y <= my + 22.0 {
-                            let b =
-                                (((pp.x - r.left()) / CELL) as usize).min(bars.saturating_sub(1));
-                            let marks: Vec<usize> = self
-                                .song
-                                .master
-                                .iter()
-                                .enumerate()
-                                .filter(|(_, m)| m.marker.is_some())
-                                .map(|(i, _)| i)
-                                .collect();
-                            if let Some(&start) = marks.iter().rev().find(|&&m| m <= b) {
-                                let end = marks
-                                    .iter()
-                                    .find(|&&m| m > start)
-                                    .map(|&m| m - 1)
-                                    .unwrap_or(bars - 1);
-                                if resp.double_clicked() {
-                                    section_sel = Some((start, end));
-                                } else {
-                                    select = Some((self.track, Some(start)));
-                                }
-                            }
+                if (resp.double_clicked() || resp.clicked())
+                    && let Some(pp) = resp.interact_pointer_pos()
+                    && pp.y >= my
+                    && pp.y <= my + 22.0
+                {
+                    let b = (((pp.x - r.left()) / CELL) as usize).min(bars.saturating_sub(1));
+                    let marks: Vec<usize> = self
+                        .song
+                        .master
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, m)| m.marker.is_some())
+                        .map(|(i, _)| i)
+                        .collect();
+                    if let Some(&start) = marks.iter().rev().find(|&&m| m <= b) {
+                        let end = marks
+                            .iter()
+                            .find(|&&m| m > start)
+                            .map(|&m| m - 1)
+                            .unwrap_or(bars - 1);
+                        if resp.double_clicked() {
+                            section_sel = Some((start, end));
+                        } else {
+                            select = Some((self.track, Some(start)));
                         }
                     }
                 }
-                if resp.clicked() {
-                    if let Some(pp) = resp.interact_pointer_pos() {
-                        let b = ((pp.x - r.left()) / CELL) as usize;
-                        let row = ((pp.y - r.top() - HEAD_H) / ROW_H).floor();
-                        if pp.y >= my {
-                            return;
-                        }
-                        if row >= 0.0 && (row as usize) < n && b < bars {
-                            select = Some((row as usize, Some(b)));
-                        } else if b < bars {
-                            select = Some((self.track, Some(b)));
-                        }
+                if resp.clicked()
+                    && let Some(pp) = resp.interact_pointer_pos()
+                {
+                    let b = ((pp.x - r.left()) / CELL) as usize;
+                    let row = ((pp.y - r.top() - HEAD_H) / ROW_H).floor();
+                    if pp.y >= my {
+                        return;
+                    }
+                    if row >= 0.0 && (row as usize) < n && b < bars {
+                        select = Some((row as usize, Some(b)));
+                    } else if b < bars {
+                        select = Some((self.track, Some(b)));
                     }
                 }
             });
@@ -652,106 +651,98 @@ impl App {
                 };
                 // Drag across the score to select beats of one track.
                 if resp.drag_started() {
-                    if let Some(pp) = resp.interact_pointer_pos() {
-                        if let Some((page, rel)) = locate(pp) {
-                            if let Some((ti, b, j, _)) =
-                                score::hit_test(&lay, &self.song, self.voice, page, rel)
-                            {
-                                self.track = ti;
-                                self.bar = b;
-                                self.beat = j;
-                                self.clamp_cursor();
+                    if let Some(pp) = resp.interact_pointer_pos()
+                        && let Some((page, rel)) = locate(pp)
+                        && let Some((ti, b, j, _)) =
+                            score::hit_test(&lay, &self.song, self.voice, page, rel)
+                    {
+                        self.track = ti;
+                        self.bar = b;
+                        self.beat = j;
+                        self.clamp_cursor();
+                        self.sel_anchor = Some((self.bar, self.beat));
+                    }
+                } else if resp.dragged()
+                    && let Some(pp) = resp.interact_pointer_pos()
+                    && let Some((page, rel)) = locate(pp)
+                    && let Some((ti, b, j, _)) =
+                        score::hit_test(&lay, &self.song, self.voice, page, rel)
+                    && ti == self.track
+                {
+                    self.bar = b;
+                    self.beat = j;
+                    self.clamp_cursor();
+                }
+                if resp.clicked()
+                    && let Some(pp) = resp.interact_pointer_pos()
+                    && let Some((page, rel)) = locate(pp)
+                {
+                    if let Some((ti, b, j, s)) =
+                        score::hit_test(&lay, &self.song, self.voice, page, rel)
+                    {
+                        let shift = ui.input(|i| i.modifiers.shift);
+                        if shift && ti == self.track {
+                            if self.sel_anchor.is_none() {
                                 self.sel_anchor = Some((self.bar, self.beat));
                             }
+                        } else {
+                            self.sel_anchor = None;
                         }
-                    }
-                } else if resp.dragged() {
-                    if let Some(pp) = resp.interact_pointer_pos() {
-                        if let Some((page, rel)) = locate(pp) {
-                            if let Some((ti, b, j, _)) =
-                                score::hit_test(&lay, &self.song, self.voice, page, rel)
-                            {
-                                if ti == self.track {
-                                    self.bar = b;
-                                    self.beat = j;
-                                    self.clamp_cursor();
+                        let was_playing = self.playing;
+                        if was_playing {
+                            // A click while playing sets a new starting point.
+                            self.stop();
+                        }
+                        self.track = ti;
+                        self.bar = b;
+                        self.beat = j;
+                        match s {
+                            Some(score::Hit::Tab(st)) => {
+                                self.string = st;
+                                self.std_cursor = None;
+                            }
+                            Some(score::Hit::Std(pos)) => self.std_cursor = Some(pos),
+                            _ => {}
+                        }
+                        self.clamp_cursor();
+                        self.last_digit = None;
+                        if was_playing {
+                            self.play();
+                        }
+                        match s {
+                            Some(score::Hit::Tempo) => self.open_automations(b),
+                            Some(score::Hit::Head(part)) => {
+                                // Clef: no clef choice yet, so nothing opens.
+                                if part == 1 {
+                                    self.open_popup(super::popups::Popup::KeySig);
+                                } else if part == 2 {
+                                    self.open_popup(super::popups::Popup::TimeSig);
                                 }
                             }
-                        }
-                    }
-                }
-                if resp.clicked() {
-                    if let Some(pp) = resp.interact_pointer_pos() {
-                        if let Some((page, rel)) = locate(pp) {
-                            if let Some((ti, b, j, s)) =
-                                score::hit_test(&lay, &self.song, self.voice, page, rel)
-                            {
-                                let shift = ui.input(|i| i.modifiers.shift);
-                                if shift && ti == self.track {
-                                    if self.sel_anchor.is_none() {
-                                        self.sel_anchor = Some((self.bar, self.beat));
-                                    }
-                                } else {
-                                    self.sel_anchor = None;
-                                }
-                                let was_playing = self.playing;
-                                if was_playing {
-                                    // A click while playing sets a new starting point.
-                                    self.stop();
-                                }
-                                self.track = ti;
-                                self.bar = b;
-                                self.beat = j;
-                                match s {
-                                    Some(score::Hit::Tab(st)) => {
-                                        self.string = st;
-                                        self.std_cursor = None;
-                                    }
-                                    Some(score::Hit::Std(pos)) => self.std_cursor = Some(pos),
-                                    _ => {}
-                                }
-                                self.clamp_cursor();
-                                self.last_digit = None;
-                                if was_playing {
-                                    self.play();
-                                }
-                                match s {
-                                    Some(score::Hit::Tempo) => self.open_automations(b),
-                                    Some(score::Hit::Head(part)) => {
-                                        // Clef: no clef choice yet, so nothing opens.
-                                        if part == 1 {
-                                            self.open_popup(super::popups::Popup::KeySig);
-                                        } else if part == 2 {
-                                            self.open_popup(super::popups::Popup::TimeSig);
-                                        }
-                                    }
-                                    Some(score::Hit::Above(zone)) => {
-                                        let beat = self.cur_beat().clone();
-                                        if zone == 0 && self.song.master[self.bar].marker.is_some()
-                                        {
-                                            self.open_popup(super::popups::Popup::Section);
-                                        } else if beat.chord.is_some() {
-                                            self.open_chord_tool();
-                                        } else if beat.text.is_some() {
-                                            self.open_popup(super::popups::Popup::Text);
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            } else if let Some(zone) = score::header_zone(&lay, page, rel) {
-                                // Clicking the title, tunings or tempo opens their settings.
-                                self.show_inspector = true;
-                                if zone == 2 {
-                                    // The tempo marking at the top of the score.
-                                    self.open_automations(0);
-                                } else {
-                                    self.inspector = if zone == 1 {
-                                        InspectorTab::Track
-                                    } else {
-                                        InspectorTab::Song
-                                    };
+                            Some(score::Hit::Above(zone)) => {
+                                let beat = self.cur_beat().clone();
+                                if zone == 0 && self.song.master[self.bar].marker.is_some() {
+                                    self.open_popup(super::popups::Popup::Section);
+                                } else if beat.chord.is_some() {
+                                    self.open_chord_tool();
+                                } else if beat.text.is_some() {
+                                    self.open_popup(super::popups::Popup::Text);
                                 }
                             }
+                            _ => {}
+                        }
+                    } else if let Some(zone) = score::header_zone(&lay, page, rel) {
+                        // Clicking the title, tunings or tempo opens their settings.
+                        self.show_inspector = true;
+                        if zone == 2 {
+                            // The tempo marking at the top of the score.
+                            self.open_automations(0);
+                        } else {
+                            self.inspector = if zone == 1 {
+                                InspectorTab::Track
+                            } else {
+                                InspectorTab::Song
+                            };
                         }
                     }
                 }

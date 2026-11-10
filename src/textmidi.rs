@@ -278,25 +278,24 @@ pub fn import_ascii(text: &str) -> Result<Track, String> {
     // Labels like "e|" or "D|" can change the tuning.
     for (s, l) in blocks[0].iter().enumerate() {
         let t = l.trim();
-        if let Some(i) = t.find(['|', '-']) {
-            if let Some(pc) = label_pitch(&t[..i]) {
-                if let Some(def) = track.tuning.get(s).copied() {
-                    let def = def as i32;
-                    let cands = [def - 12, def, def + 12];
-                    let mut best = def;
-                    let mut bd = 99;
-                    for c in cands {
-                        let base = c - (c.rem_euclid(12)) + pc;
-                        for x in [base - 12, base, base + 12] {
-                            if (x - def).abs() < bd {
-                                bd = (x - def).abs();
-                                best = x;
-                            }
-                        }
+        if let Some(i) = t.find(['|', '-'])
+            && let Some(pc) = label_pitch(&t[..i])
+            && let Some(def) = track.tuning.get(s).copied()
+        {
+            let def = def as i32;
+            let cands = [def - 12, def, def + 12];
+            let mut best = def;
+            let mut bd = 99;
+            for c in cands {
+                let base = c - (c.rem_euclid(12)) + pc;
+                for x in [base - 12, base, base + 12] {
+                    if (x - def).abs() < bd {
+                        bd = (x - def).abs();
+                        best = x;
                     }
-                    track.tuning[s] = best.clamp(20, 90) as u8;
                 }
             }
+            track.tuning[s] = best.clamp(20, 90) as u8;
         }
     }
     let mut bars: Vec<Bar> = vec![];
@@ -641,18 +640,19 @@ pub fn import_midi(data: &[u8], title: &str) -> Result<Song, String> {
         acc += m.ticks();
     }
     for &(tt, bpm) in tempos.iter().skip(1) {
-        if let Some(bi) = bar_starts.iter().rposition(|&s| s <= tt) {
-            if bi > 0 {
-                master[bi].tempo = Some(bpm.clamp(20, 400));
-            }
+        if let Some(bi) = bar_starts.iter().rposition(|&s| s <= tt)
+            && bi > 0
+        {
+            master[bi].tempo = Some(bpm.clamp(20, 400));
         }
     }
     // Section markers go on the bar they fall in; the first one there wins.
     for (tt, text) in markers {
-        if let Some(bi) = bar_starts.iter().rposition(|&s| s <= tt) {
-            if !text.is_empty() && master[bi].marker.is_none() {
-                master[bi].marker = Some(text);
-            }
+        if let Some(bi) = bar_starts.iter().rposition(|&s| s <= tt)
+            && !text.is_empty()
+            && master[bi].marker.is_none()
+        {
+            master[bi].marker = Some(text);
         }
     }
     song.master = master;

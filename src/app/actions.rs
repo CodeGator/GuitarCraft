@@ -624,16 +624,16 @@ impl App {
             }
         }
         let resp = ui.interact(area, ui.id().with("kbd"), Sense::click());
-        if resp.clicked() {
-            if let Some(pp) = resp.interact_pointer_pos() {
-                let hit = blacks
-                    .iter()
-                    .find(|(_, r)| r.contains(pp))
-                    .or_else(|| keys.iter().find(|(_, r)| r.contains(pp)))
-                    .map(|(m, _)| *m);
-                if let Some(m) = hit {
-                    self.place_pitch(m);
-                }
+        if resp.clicked()
+            && let Some(pp) = resp.interact_pointer_pos()
+        {
+            let hit = blacks
+                .iter()
+                .find(|(_, r)| r.contains(pp))
+                .or_else(|| keys.iter().find(|(_, r)| r.contains(pp)))
+                .map(|(m, _)| *m);
+            if let Some(m) = hit {
+                self.place_pitch(m);
             }
         }
     }

@@ -711,10 +711,9 @@ fn write_beat_ex(
             .chord
             .as_ref()
             .and_then(|c| chords.iter().position(|n| *n == c))
+            && opts().chords
         {
-            if opts().chords {
-                let _ = write!(x, "<Chord>{c}</Chord>");
-            }
+            let _ = write!(x, "<Chord>{c}</Chord>");
         }
         if let Some(text) = &beat.text {
             let _ = write!(x, "<FreeText>{}</FreeText>", cdata(text));

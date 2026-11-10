@@ -1313,13 +1313,12 @@ impl Song {
                 } else {
                     DIR_DOUBLE_CODA
                 };
-                if !has_al_coda || al_coda == want {
-                    if let Some(t) = find_target(want) {
-                        if t > i {
-                            i = t;
-                            continue;
-                        }
-                    }
+                if (!has_al_coda || al_coda == want)
+                    && let Some(t) = find_target(want)
+                    && t > i
+                {
+                    i = t;
+                    continue;
                 }
             }
             // D.C. / D.S. jumps, each taken once.

@@ -180,10 +180,8 @@ pub fn setup_fonts(ctx: &egui::Context) -> bool {
     }
     m.extend(prop);
     fonts.families.insert(FontFamily::Name("music".into()), m);
-    if music {
-        if let Some(mono) = fonts.families.get_mut(&FontFamily::Monospace) {
-            mono.push("music".into());
-        }
+    if music && let Some(mono) = fonts.families.get_mut(&FontFamily::Monospace) {
+        mono.push("music".into());
     }
     ctx.set_fonts(fonts);
     music

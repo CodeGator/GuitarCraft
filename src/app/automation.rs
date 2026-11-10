@@ -260,54 +260,55 @@ impl App {
                 })
                 .map(|p| p.0)
         };
-        if resp.drag_started() {
-            if let Some(pos) = resp.interact_pointer_pos() {
-                match near(pos) {
-                    Some(b) => {
-                        self.auto_sel = b;
-                        self.auto_drag = true;
-                    }
-                    None => self.auto_drag = false,
+        if resp.drag_started()
+            && let Some(pos) = resp.interact_pointer_pos()
+        {
+            match near(pos) {
+                Some(b) => {
+                    self.auto_sel = b;
+                    self.auto_drag = true;
                 }
+                None => self.auto_drag = false,
             }
         }
-        if resp.dragged() && self.auto_drag {
-            if let Some(pos) = resp.interact_pointer_pos() {
-                let cur = self.auto_sel;
-                let ramp = pts
-                    .iter()
-                    .find(|p| p.0 == cur)
-                    .map(|p| p.2)
-                    .unwrap_or(false);
-                let val = val_of(pos.y);
-                let mut to = bar_of(pos.x);
-                if cur == 0 || (to != cur && (to == 0 || pts.iter().any(|p| p.0 == to))) {
-                    to = cur;
-                }
-                self.auto_begin();
-                if to != cur {
-                    self.remove_point(cur);
-                    self.auto_sel = to;
-                }
-                self.set_point(to, val, ramp);
+        if resp.dragged()
+            && self.auto_drag
+            && let Some(pos) = resp.interact_pointer_pos()
+        {
+            let cur = self.auto_sel;
+            let ramp = pts
+                .iter()
+                .find(|p| p.0 == cur)
+                .map(|p| p.2)
+                .unwrap_or(false);
+            let val = val_of(pos.y);
+            let mut to = bar_of(pos.x);
+            if cur == 0 || (to != cur && (to == 0 || pts.iter().any(|p| p.0 == to))) {
+                to = cur;
             }
+            self.auto_begin();
+            if to != cur {
+                self.remove_point(cur);
+                self.auto_sel = to;
+            }
+            self.set_point(to, val, ramp);
         }
         if resp.drag_stopped() {
             self.auto_drag = false;
         }
-        if resp.clicked() {
-            if let Some(pos) = resp.interact_pointer_pos() {
-                match near(pos) {
-                    Some(b) => self.auto_sel = b,
-                    None => {
-                        let b = bar_of(pos.x);
-                        self.auto_begin();
-                        if pts.iter().any(|p| p.0 == b) {
-                            self.auto_sel = b;
-                        } else {
-                            self.set_point(b, val_of(pos.y), false);
-                            self.auto_sel = b;
-                        }
+        if resp.clicked()
+            && let Some(pos) = resp.interact_pointer_pos()
+        {
+            match near(pos) {
+                Some(b) => self.auto_sel = b,
+                None => {
+                    let b = bar_of(pos.x);
+                    self.auto_begin();
+                    if pts.iter().any(|p| p.0 == b) {
+                        self.auto_sel = b;
+                    } else {
+                        self.set_point(b, val_of(pos.y), false);
+                        self.auto_sel = b;
                     }
                 }
             }

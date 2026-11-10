@@ -580,10 +580,10 @@ impl App {
         {
             self.show_help = true;
         }
-        if let Some(i) = open_idx {
-            if let Some((_, it)) = items.get(i) {
-                self.open_item(it);
-            }
+        if let Some(i) = open_idx
+            && let Some((_, it)) = items.get(i)
+        {
+            self.open_item(it);
         }
         if open_new {
             self.request(Pending::New);

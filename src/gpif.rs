@@ -26,20 +26,21 @@ pub fn import_gp(data: &[u8]) -> Result<Song, String> {
     if let Ok(mut f) = zip.by_name("Content/ScoreViews/0.gpsv") {
         let _ = f.read_to_end(&mut view);
     }
-    if let Some(shown) = full_score_tracks(&view) {
-        if !shown.is_empty() && shown.iter().all(|&k| k < song.tracks.len()) {
-            for (k, t) in song.tracks.iter_mut().enumerate() {
-                t.visible = shown.contains(&k);
-            }
+    if let Some(shown) = full_score_tracks(&view)
+        && !shown.is_empty()
+        && shown.iter().all(|&k| k < song.tracks.len())
+    {
+        for (k, t) in song.tracks.iter_mut().enumerate() {
+            t.visible = shown.contains(&k);
         }
     }
     // The stylesheet this app saved with the song, if any.
     if let Ok(mut f) = zip.by_name(crate::gpifwrite::STYLE_FILE) {
         let mut json = String::new();
-        if f.read_to_string(&mut json).is_ok() {
-            if let Ok(st) = serde_json::from_str::<crate::style::Stylesheet>(&json) {
-                song.style = st.fixed();
-            }
+        if f.read_to_string(&mut json).is_ok()
+            && let Ok(st) = serde_json::from_str::<crate::style::Stylesheet>(&json)
+        {
+            song.style = st.fixed();
         }
     }
     // Which staves each track shows (notation, tablature).
@@ -50,11 +51,12 @@ pub fn import_gp(data: &[u8]) -> Result<Song, String> {
     if part.len() >= 9 {
         let n = i32::from_be_bytes([part[5], part[6], part[7], part[8]]).max(0) as usize;
         for (k, t) in song.tracks.iter_mut().enumerate().take(n) {
-            if let Some(&f) = part.get(9 + k) {
-                if t.has_strings() && f & 3 != 0 {
-                    t.show_std = f & 1 != 0;
-                    t.show_tab = f & 2 != 0;
-                }
+            if let Some(&f) = part.get(9 + k)
+                && t.has_strings()
+                && f & 3 != 0
+            {
+                t.show_std = f & 1 != 0;
+                t.show_tab = f & 2 != 0;
             }
         }
     }
@@ -495,11 +497,11 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
                 "Mute" => tr.mute = true,
                 _ => {}
             }
-            if let Some(ly) = child(t, "Lyrics") {
-                if let Some(line) = ly.children().find(|c| c.has_tag_name("Line")) {
-                    tr.lyrics = text(child(line, "Text"));
-                    tr.lyrics_bar = text(child(line, "Offset")).parse::<usize>().unwrap_or(0);
-                }
+            if let Some(ly) = child(t, "Lyrics")
+                && let Some(line) = ly.children().find(|c| c.has_tag_name("Line"))
+            {
+                tr.lyrics = text(child(line, "Text"));
+                tr.lyrics_bar = text(child(line, "Offset")).parse::<usize>().unwrap_or(0);
             }
             let col: Vec<u8> = text(child(t, "Color"))
                 .split_whitespace()
@@ -520,12 +522,10 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
                 .iter()
                 .copied()
                 .find(|&i| crate::gpifwrite::inst_type(i).0.to_lowercase() == inst_type)
+                && crate::gpifwrite::inst_type(tr.instrument).0 != crate::gpifwrite::inst_type(i).0
+                && i.has_strings_kind() == !tuning.is_empty()
             {
-                if crate::gpifwrite::inst_type(tr.instrument).0 != crate::gpifwrite::inst_type(i).0
-                    && i.has_strings_kind() == !tuning.is_empty()
-                {
-                    tr.instrument = i;
-                }
+                tr.instrument = i;
             }
             if drum {
                 tr.instrument = Instrument::Drums;
@@ -724,52 +724,44 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
                         }
                     }
                 }
-                if tracks[ti].grand() {
-                    if let Some(bn) = bar_ids
+                if tracks[ti].grand()
+                    && let Some(bn) = bar_ids
                         .get(info.staff_offset + 1)
                         .and_then(|id| bars_idx.get(id))
-                    {
-                        let vid = text(child(*bn, "Voices"))
+                {
+                    let vid = text(child(*bn, "Voices"))
+                        .split_whitespace()
+                        .next()
+                        .map(|x| x.to_string());
+                    if let Some(vn) = vid.and_then(|v| voices_idx.get(&v).copied()) {
+                        let beats: Vec<Beat> = text(child(vn, "Beats"))
                             .split_whitespace()
-                            .next()
-                            .map(|x| x.to_string());
-                        if let Some(vn) = vid.and_then(|v| voices_idx.get(&v).copied()) {
-                            let beats: Vec<Beat> = text(child(vn, "Beats"))
-                                .split_whitespace()
-                                .filter_map(|bid| beats_idx.get(bid))
-                                .filter(|bt| child(**bt, "GraceNotes").is_none())
-                                .map(|bt| {
-                                    read_beat(
-                                        *bt,
-                                        &rhythms_idx,
-                                        &notes_idx,
-                                        nstr,
-                                        &info.chords,
-                                        virt,
-                                    )
-                                })
-                                .collect();
-                            let same = beats.len() == bar.beats.len()
-                                && beats
-                                    .iter()
-                                    .zip(bar.beats.iter())
-                                    .all(|(a, b)| a.ticks() == b.ticks());
-                            if same {
-                                for (low, up) in beats.into_iter().zip(bar.beats.iter_mut()) {
-                                    for mut n in low.notes {
-                                        if up.notes.len() < nstr {
-                                            n.string = up.notes.len() as u8;
-                                            up.notes.push(n);
-                                        }
+                            .filter_map(|bid| beats_idx.get(bid))
+                            .filter(|bt| child(**bt, "GraceNotes").is_none())
+                            .map(|bt| {
+                                read_beat(*bt, &rhythms_idx, &notes_idx, nstr, &info.chords, virt)
+                            })
+                            .collect();
+                        let same = beats.len() == bar.beats.len()
+                            && beats
+                                .iter()
+                                .zip(bar.beats.iter())
+                                .all(|(a, b)| a.ticks() == b.ticks());
+                        if same {
+                            for (low, up) in beats.into_iter().zip(bar.beats.iter_mut()) {
+                                for mut n in low.notes {
+                                    if up.notes.len() < nstr {
+                                        n.string = up.notes.len() as u8;
+                                        up.notes.push(n);
                                     }
                                 }
-                            } else if beats.iter().any(|b| !b.is_rest()) {
-                                bar.pad_voices();
-                                if let Some(slot) = (0..bar.voices.len())
-                                    .find(|&k| bar.voices[k].iter().all(|b| b.is_rest()))
-                                {
-                                    bar.voices[slot] = beats;
-                                }
+                            }
+                        } else if beats.iter().any(|b| !b.is_rest()) {
+                            bar.pad_voices();
+                            if let Some(slot) = (0..bar.voices.len())
+                                .find(|&k| bar.voices[k].iter().all(|b| b.is_rest()))
+                            {
+                                bar.voices[slot] = beats;
                             }
                         }
                     }
@@ -870,10 +862,10 @@ fn read_beat(
         beat.text = Some(ft);
     }
     let ch = text(child(bt, "Chord"));
-    if let Some(name) = chords.get(&ch) {
-        if !name.trim().is_empty() {
-            beat.chord = Some(name.clone());
-        }
+    if let Some(name) = chords.get(&ch)
+        && !name.trim().is_empty()
+    {
+        beat.chord = Some(name.clone());
     }
     let bp = props(bt);
     if let Some(b) = bp.get("Brush") {

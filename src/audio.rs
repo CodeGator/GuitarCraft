@@ -775,20 +775,20 @@ fn build_voice_schedule(song: &Song, sr: f32, opt: &ScheduleOptions) -> Schedule
     };
     let mut t: u64 = 0;
     // Count-in bar.
-    if opt.count_in {
-        if let Some(&b0) = order.first() {
-            let mb = &song.master[b0];
-            let spt = sr as f64 * 60.0 / (song.tempo_at(b0) as f64 * speed) / QUARTER as f64;
-            let beat_ticks = QUARTER * 4 / mb.den.max(1) as u32;
-            for i in 0..mb.num as u32 {
-                events.push(click(
-                    t + (i as f64 * beat_ticks as f64 * spt) as u64,
-                    i == 0,
-                    sr,
-                ));
-            }
-            t += (mb.ticks() as f64 * spt) as u64;
+    if opt.count_in
+        && let Some(&b0) = order.first()
+    {
+        let mb = &song.master[b0];
+        let spt = sr as f64 * 60.0 / (song.tempo_at(b0) as f64 * speed) / QUARTER as f64;
+        let beat_ticks = QUARTER * 4 / mb.den.max(1) as u32;
+        for i in 0..mb.num as u32 {
+            events.push(click(
+                t + (i as f64 * beat_ticks as f64 * spt) as u64,
+                i == 0,
+                sr,
+            ));
         }
+        t += (mb.ticks() as f64 * spt) as u64;
     }
     let start_offset = t;
     for &bi in &order {
@@ -881,10 +881,10 @@ fn build_voice_schedule(song: &Song, sr: f32, opt: &ScheduleOptions) -> Schedule
                     }
                     let next = next_note_on_string(song, ti, bi, bj, n.string);
                     let mut slide = 0.0;
-                    if n.slide {
-                        if let Some(nx) = &next {
-                            slide = track.pitch(nx) as f32 - track.pitch(n) as f32;
-                        }
+                    if n.slide
+                        && let Some(nx) = &next
+                    {
+                        slide = track.pitch(nx) as f32 - track.pitch(n) as f32;
                     }
                     if n.slide_out && slide == 0.0 {
                         slide = -5.0;

@@ -1255,48 +1255,49 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
         }
         // Playback: the bar being played is lightly marked, the notes sounding now
         // (in every track) are highlighted, and a line glides from note to note.
-        if let Some((pb, tick)) = dc.play_tick {
-            if pb == bl.bar && !bl.cols_t.is_empty() {
-                let top = y0 + 20.0 * z;
-                let bottom = y0 + lay.sys_h - 18.0 * z;
-                let bar_r = Rect::from_min_max(
-                    Pos2::new(o.x + bl.x, top),
-                    Pos2::new(o.x + bl.x + bl.w, bottom),
-                );
-                p.rect_filled(
-                    bar_r,
-                    0.0,
-                    Color32::from_rgba_unmultiplied(250, 150, 30, 14),
-                );
-                let k = bl
-                    .cols_t
-                    .partition_point(|&t| t as f32 <= tick)
-                    .saturating_sub(1);
-                let cw = bl.cols_w.get(k).copied().unwrap_or(20.0);
-                let cx = bl.cols_x.get(k).copied().unwrap_or(bl.cols_end);
-                let col =
-                    Rect::from_min_max(Pos2::new(o.x + cx, top), Pos2::new(o.x + cx + cw, bottom));
-                p.rect_filled(col, 2.0, Color32::from_rgba_unmultiplied(250, 150, 30, 46));
-                let t0 = bl.cols_t[k] as f32;
-                let t1 = bl
-                    .cols_t
+        if let Some((pb, tick)) = dc.play_tick
+            && pb == bl.bar
+            && !bl.cols_t.is_empty()
+        {
+            let top = y0 + 20.0 * z;
+            let bottom = y0 + lay.sys_h - 18.0 * z;
+            let bar_r = Rect::from_min_max(
+                Pos2::new(o.x + bl.x, top),
+                Pos2::new(o.x + bl.x + bl.w, bottom),
+            );
+            p.rect_filled(
+                bar_r,
+                0.0,
+                Color32::from_rgba_unmultiplied(250, 150, 30, 14),
+            );
+            let k = bl
+                .cols_t
+                .partition_point(|&t| t as f32 <= tick)
+                .saturating_sub(1);
+            let cw = bl.cols_w.get(k).copied().unwrap_or(20.0);
+            let cx = bl.cols_x.get(k).copied().unwrap_or(bl.cols_end);
+            let col =
+                Rect::from_min_max(Pos2::new(o.x + cx, top), Pos2::new(o.x + cx + cw, bottom));
+            p.rect_filled(col, 2.0, Color32::from_rgba_unmultiplied(250, 150, 30, 46));
+            let t0 = bl.cols_t[k] as f32;
+            let t1 = bl
+                .cols_t
+                .get(k + 1)
+                .map(|&t| t as f32)
+                .unwrap_or(song.master[bl.bar].ticks() as f32)
+                .max(t0 + 1.0);
+            let x0 = o.x + cx + cw * 0.35;
+            let x1 = o.x
+                + bl.cols_x
                     .get(k + 1)
-                    .map(|&t| t as f32)
-                    .unwrap_or(song.master[bl.bar].ticks() as f32)
-                    .max(t0 + 1.0);
-                let x0 = o.x + cx + cw * 0.35;
-                let x1 = o.x
-                    + bl.cols_x
-                        .get(k + 1)
-                        .map(|&x| x + bl.cols_w[k + 1] * 0.35)
-                        .unwrap_or(bl.x + bl.w);
-                let f = ((tick - t0) / (t1 - t0)).clamp(0.0, 1.0);
-                let x = x0 - 6.0 * z + (x1 - x0) * f;
-                p.line_segment(
-                    [Pos2::new(x, top), Pos2::new(x, bottom)],
-                    PStroke::new(2.0 * z, PLAY),
-                );
-            }
+                    .map(|&x| x + bl.cols_w[k + 1] * 0.35)
+                    .unwrap_or(bl.x + bl.w);
+            let f = ((tick - t0) / (t1 - t0)).clamp(0.0, 1.0);
+            let x = x0 - 6.0 * z + (x1 - x0) * f;
+            p.line_segment(
+                [Pos2::new(x, top), Pos2::new(x, bottom)],
+                PStroke::new(2.0 * z, PLAY),
+            );
         }
     }
 
@@ -1654,39 +1655,39 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
             );
         }
 
-        if let Some(t) = mb.tempo {
-            if bi != 0 {
-                let tp = Pos2::new(bx + 70.0 * z, y0 + 14.0 * z);
-                draw_small_note(p, tp, z);
-                let r = p.text(
-                    Pos2::new(tp.x + 9.0 * z, tp.y),
+        if let Some(t) = mb.tempo
+            && bi != 0
+        {
+            let tp = Pos2::new(bx + 70.0 * z, y0 + 14.0 * z);
+            draw_small_note(p, tp, z);
+            let r = p.text(
+                Pos2::new(tp.x + 9.0 * z, tp.y),
+                Align2::LEFT_CENTER,
+                tempo_label(st, t),
+                st.font_tempo.id(fz),
+                INK,
+            );
+            if mb.tempo_ramp {
+                let next = song
+                    .tempo_points()
+                    .into_iter()
+                    .find(|q| q.0 > bi)
+                    .map(|q| q.1)
+                    .unwrap_or(t);
+                let word = if next > t {
+                    "accel."
+                } else if next < t {
+                    "rit."
+                } else {
+                    ""
+                };
+                p.text(
+                    Pos2::new(r.right() + 6.0 * z, tp.y),
                     Align2::LEFT_CENTER,
-                    tempo_label(st, t),
-                    st.font_tempo.id(fz),
+                    word,
+                    serif_bi(12.0 * z),
                     INK,
                 );
-                if mb.tempo_ramp {
-                    let next = song
-                        .tempo_points()
-                        .into_iter()
-                        .find(|q| q.0 > bi)
-                        .map(|q| q.1)
-                        .unwrap_or(t);
-                    let word = if next > t {
-                        "accel."
-                    } else if next < t {
-                        "rit."
-                    } else {
-                        ""
-                    };
-                    p.text(
-                        Pos2::new(r.right() + 6.0 * z, tp.y),
-                        Align2::LEFT_CENTER,
-                        word,
-                        serif_bi(12.0 * z),
-                        INK,
-                    );
-                }
             }
         }
         for (k, blk) in lay.blocks.iter().enumerate() {
@@ -1716,22 +1717,20 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
                 );
             }
             // How far off the bar is: "+1 beat" to add, "-1/2 beat" to remove (for the first wrong voice).
-            if wrong {
-                if let Some(&(_, d)) = bar.length_errors(mb.ticks()).first() {
-                    let words = crate::model::beats_words(d.unsigned_abs() as u32, mb.den);
-                    let label = if d < 0 {
-                        format!("+{words} needed")
-                    } else {
-                        format!("\u{2212}{words} too many")
-                    };
-                    p.text(
-                        Pos2::new(ex - 4.0 * z, top - 4.0 * z),
-                        Align2::RIGHT_BOTTOM,
-                        label,
-                        bold(8.5 * z),
-                        Color32::from_rgb(210, 45, 45),
-                    );
-                }
+            if wrong && let Some(&(_, d)) = bar.length_errors(mb.ticks()).first() {
+                let words = crate::model::beats_words(d.unsigned_abs() as u32, mb.den);
+                let label = if d < 0 {
+                    format!("+{words} needed")
+                } else {
+                    format!("\u{2212}{words} too many")
+                };
+                p.text(
+                    Pos2::new(ex - 4.0 * z, top - 4.0 * z),
+                    Align2::RIGHT_BOTTOM,
+                    label,
+                    bold(8.5 * z),
+                    Color32::from_rgb(210, 45, 45),
+                );
             }
             // Bar lines.
             if mb.repeat_close > 0 {
@@ -1995,86 +1994,82 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
 
     // The cursor: a yellow box in the staff being edited (notation or tab) and a
     // grey box on the same note in the other staff.
-    if dc.show_cursor {
-        if let Some(bl) = sys.bars.iter().find(|b| b.bar == dc.cursor.0) {
-            let track = &song.tracks[dc.ti];
-            let (cxs, _) = bl.voice_xs(track.bars[dc.cursor.0].voice(dc.voice));
-            if let (Some(&bx), Some(beat)) = (
-                cxs.get(dc.cursor.1),
-                track.bars[dc.cursor.0].voice(dc.voice).get(dc.cursor.1),
-            ) {
-                let key = song.master[dc.cursor.0].key;
-                let x = o.x + bx;
-                let std_y = |pos: i32| y0 + cg.pos_y(pos);
-                let tab_c = |s: usize| Pos2::new(x, y0 + cg.string_y(s.min(cg.strings - 1)));
-                const FILL: [(u8, u8, u8); 4] = [
-                    (255, 214, 110),
-                    (130, 215, 140),
-                    (240, 150, 200),
-                    (180, 150, 240),
-                ];
-                const EDGE: [(u8, u8, u8); 4] = [
-                    (196, 140, 30),
-                    (50, 140, 70),
-                    (180, 60, 130),
-                    (110, 70, 190),
-                ];
-                let (fr, fg, fb) = FILL[dc.voice.min(3)];
-                let (er, eg, eb) = EDGE[dc.voice.min(3)];
-                let yellow = |r: Rect| {
-                    p.rect_filled(r, 3.0 * z, Color32::from_rgba_unmultiplied(fr, fg, fb, 150));
-                    p.rect_stroke(
-                        r,
-                        3.0 * z,
-                        PStroke::new(1.3, Color32::from_rgb(er, eg, eb)),
-                        egui::StrokeKind::Outside,
-                    );
-                };
-                let grey = |r: Rect| {
-                    p.rect_filled(
-                        r,
-                        3.0 * z,
-                        Color32::from_rgba_unmultiplied(150, 150, 150, 70),
-                    );
-                    p.rect_stroke(
-                        r,
-                        3.0 * z,
-                        PStroke::new(1.0, Color32::from_gray(120)),
-                        egui::StrokeKind::Outside,
-                    );
-                };
-                let tab_box =
-                    |s: usize| Rect::from_center_size(tab_c(s), Vec2::new(15.0 * z, cg.ts * 0.95));
-                let std_box = |pos: i32| {
-                    Rect::from_center_size(
-                        Pos2::new(x, std_y(pos)),
-                        Vec2::new(14.0 * z, cg.ls * 1.25),
-                    )
-                };
-                match dc.cursor_std {
-                    Some(pos) if cg.std => {
-                        yellow(std_box(pos));
-                        if cg.tab {
-                            if let Some(n) = beat
-                                .notes
-                                .iter()
-                                .find(|n| draw::note_staff_pos(track, beat, key, n) == pos)
-                            {
-                                grey(tab_box(n.string as usize));
-                            }
-                        }
+    if dc.show_cursor
+        && let Some(bl) = sys.bars.iter().find(|b| b.bar == dc.cursor.0)
+    {
+        let track = &song.tracks[dc.ti];
+        let (cxs, _) = bl.voice_xs(track.bars[dc.cursor.0].voice(dc.voice));
+        if let (Some(&bx), Some(beat)) = (
+            cxs.get(dc.cursor.1),
+            track.bars[dc.cursor.0].voice(dc.voice).get(dc.cursor.1),
+        ) {
+            let key = song.master[dc.cursor.0].key;
+            let x = o.x + bx;
+            let std_y = |pos: i32| y0 + cg.pos_y(pos);
+            let tab_c = |s: usize| Pos2::new(x, y0 + cg.string_y(s.min(cg.strings - 1)));
+            const FILL: [(u8, u8, u8); 4] = [
+                (255, 214, 110),
+                (130, 215, 140),
+                (240, 150, 200),
+                (180, 150, 240),
+            ];
+            const EDGE: [(u8, u8, u8); 4] = [
+                (196, 140, 30),
+                (50, 140, 70),
+                (180, 60, 130),
+                (110, 70, 190),
+            ];
+            let (fr, fg, fb) = FILL[dc.voice.min(3)];
+            let (er, eg, eb) = EDGE[dc.voice.min(3)];
+            let yellow = |r: Rect| {
+                p.rect_filled(r, 3.0 * z, Color32::from_rgba_unmultiplied(fr, fg, fb, 150));
+                p.rect_stroke(
+                    r,
+                    3.0 * z,
+                    PStroke::new(1.3, Color32::from_rgb(er, eg, eb)),
+                    egui::StrokeKind::Outside,
+                );
+            };
+            let grey = |r: Rect| {
+                p.rect_filled(
+                    r,
+                    3.0 * z,
+                    Color32::from_rgba_unmultiplied(150, 150, 150, 70),
+                );
+                p.rect_stroke(
+                    r,
+                    3.0 * z,
+                    PStroke::new(1.0, Color32::from_gray(120)),
+                    egui::StrokeKind::Outside,
+                );
+            };
+            let tab_box =
+                |s: usize| Rect::from_center_size(tab_c(s), Vec2::new(15.0 * z, cg.ts * 0.95));
+            let std_box = |pos: i32| {
+                Rect::from_center_size(Pos2::new(x, std_y(pos)), Vec2::new(14.0 * z, cg.ls * 1.25))
+            };
+            match dc.cursor_std {
+                Some(pos) if cg.std => {
+                    yellow(std_box(pos));
+                    if cg.tab
+                        && let Some(n) = beat
+                            .notes
+                            .iter()
+                            .find(|n| draw::note_staff_pos(track, beat, key, n) == pos)
+                    {
+                        grey(tab_box(n.string as usize));
                     }
-                    _ if cg.tab => {
-                        yellow(tab_box(dc.cursor.2));
-                        if cg.std {
-                            if let Some(n) = beat.note_on(dc.cursor.2 as u8) {
-                                grey(std_box(draw::note_staff_pos(track, beat, key, n)));
-                            }
-                        }
+                }
+                _ if cg.tab => {
+                    yellow(tab_box(dc.cursor.2));
+                    if cg.std
+                        && let Some(n) = beat.note_on(dc.cursor.2 as u8)
+                    {
+                        grey(std_box(draw::note_staff_pos(track, beat, key, n)));
                     }
-                    _ => {
-                        yellow(std_box(4));
-                    }
+                }
+                _ => {
+                    yellow(std_box(4));
                 }
             }
         }

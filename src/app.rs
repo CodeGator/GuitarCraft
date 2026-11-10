@@ -581,13 +581,13 @@ impl App {
             return;
         }
         self.ensure_audio();
-        if let Some(a) = &self.audio {
-            if a.error.is_none() {
-                let sr = a.sample_rate();
-                let ev = audio::note_preview(&self.song.tracks[self.track], self.track, n, sr);
-                if let Ok(mut st) = a.state.lock() {
-                    st.preview.push(ev);
-                }
+        if let Some(a) = &self.audio
+            && a.error.is_none()
+        {
+            let sr = a.sample_rate();
+            let ev = audio::note_preview(&self.song.tracks[self.track], self.track, n, sr);
+            if let Ok(mut st) = a.state.lock() {
+                st.preview.push(ev);
             }
         }
     }
@@ -712,10 +712,10 @@ impl App {
             }
         });
         let n = Note::new(string as u8, fret);
-        if self.std_cursor.is_some() {
-            if let Some(placed) = self.cur_beat().note_on(string as u8).cloned() {
-                self.std_cursor = Some(self.staff_pos_of(&placed));
-            }
+        if self.std_cursor.is_some()
+            && let Some(placed) = self.cur_beat().note_on(string as u8).cloned()
+        {
+            self.std_cursor = Some(self.staff_pos_of(&placed));
         }
         self.preview(&n);
         self.status = format!(
@@ -730,14 +730,15 @@ impl App {
         let pos = (self.bar, self.beat, self.string);
         let max = self.tr().frets;
         let mut fret = d;
-        if let Some((prev, t, b, j, s)) = self.last_digit {
-            if (b, j, s) == pos && now - t < 0.8 {
-                let combined = prev as u32 * 10 + d as u32;
-                if combined <= max as u32 {
-                    fret = combined as u8;
-                    // Replace the one-digit entry instead of adding an undo step.
-                    self.undo.pop();
-                }
+        if let Some((prev, t, b, j, s)) = self.last_digit
+            && (b, j, s) == pos
+            && now - t < 0.8
+        {
+            let combined = prev as u32 * 10 + d as u32;
+            if combined <= max as u32 {
+                fret = combined as u8;
+                // Replace the one-digit entry instead of adding an undo step.
+                self.undo.pop();
             }
         }
         self.set_fret(self.string, fret);
@@ -1347,10 +1348,10 @@ impl App {
     }
 
     fn pause(&mut self) {
-        if let Some(a) = &self.audio {
-            if let Ok(mut st) = a.state.lock() {
-                st.stop_all();
-            }
+        if let Some(a) = &self.audio
+            && let Ok(mut st) = a.state.lock()
+        {
+            st.stop_all();
         }
         if let (Some((b, j)), None) = (self.play_beat, self.selection()) {
             self.bar = b;
@@ -1364,10 +1365,10 @@ impl App {
     }
 
     fn stop(&mut self) {
-        if let Some(a) = &self.audio {
-            if let Ok(mut st) = a.state.lock() {
-                st.stop_all();
-            }
+        if let Some(a) = &self.audio
+            && let Ok(mut st) = a.state.lock()
+        {
+            st.stop_all();
         }
         if self.playing {
             self.bar = self.play_start_bar.min(self.song.bar_count() - 1);
@@ -1382,10 +1383,10 @@ impl App {
     fn poll_playback(&mut self) -> Vec<(usize, u8, u8)> {
         let mut sounding = vec![];
         if !self.playing {
-            if let Some(a) = &self.audio {
-                if let Ok(st) = a.state.lock() {
-                    sounding = st.sounding.clone();
-                }
+            if let Some(a) = &self.audio
+                && let Ok(st) = a.state.lock()
+            {
+                sounding = st.sounding.clone();
             }
             return sounding;
         }

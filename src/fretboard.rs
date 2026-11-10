@@ -110,26 +110,26 @@ pub fn fretboard(
         Pos2::new(x, sy(s as usize))
     };
     // Hover hint.
-    if let Some(hp) = resp.hover_pos() {
-        if let Some((s, f)) = locate(hp, n, frets, &sy, &scale, left) {
-            let c = pos_of(s, f);
-            p.circle_stroke(c, 8.0, Stroke::new(1.5, Color32::from_white_alpha(140)));
-            let pitch = track.tuning.get(s as usize).copied().unwrap_or(40) as u32
-                + f as u32
-                + track.capo_at(s as usize) as u32;
-            p.text(
-                Pos2::new(r.right() - 16.0, r.top() + 4.0),
-                Align2::RIGHT_TOP,
-                format!(
-                    "String {} · Fret {} · {}",
-                    s + 1,
-                    f,
-                    note_name_oct(pitch.min(127) as u8)
-                ),
-                FontId::proportional(11.0),
-                Color32::from_gray(200),
-            );
-        }
+    if let Some(hp) = resp.hover_pos()
+        && let Some((s, f)) = locate(hp, n, frets, &sy, &scale, left)
+    {
+        let c = pos_of(s, f);
+        p.circle_stroke(c, 8.0, Stroke::new(1.5, Color32::from_white_alpha(140)));
+        let pitch = track.tuning.get(s as usize).copied().unwrap_or(40) as u32
+            + f as u32
+            + track.capo_at(s as usize) as u32;
+        p.text(
+            Pos2::new(r.right() - 16.0, r.top() + 4.0),
+            Align2::RIGHT_TOP,
+            format!(
+                "String {} · Fret {} · {}",
+                s + 1,
+                f,
+                note_name_oct(pitch.min(127) as u8)
+            ),
+            FontId::proportional(11.0),
+            Color32::from_gray(200),
+        );
     }
     for &(s, f, col) in marks {
         if (s as usize) < n {
@@ -144,12 +144,11 @@ pub fn fretboard(
             );
         }
     }
-    if resp.clicked() {
-        if let Some(hp) = resp.interact_pointer_pos() {
-            if let Some((s, f)) = locate(hp, n, frets, &sy, &scale, left) {
-                return FretAction::Toggle(s, f);
-            }
-        }
+    if resp.clicked()
+        && let Some(hp) = resp.interact_pointer_pos()
+        && let Some((s, f)) = locate(hp, n, frets, &sy, &scale, left)
+    {
+        return FretAction::Toggle(s, f);
     }
     FretAction::None
 }
