@@ -7,12 +7,12 @@ mod fretboard;
 mod gp5write;
 mod gpif;
 mod gpifwrite;
-mod gpsv;
 mod gpimport;
+mod gpsv;
 mod model;
-mod textmidi;
 mod score;
 mod style;
+mod textmidi;
 
 use egui::{FontData, FontDefinitions, FontFamily};
 use std::path::PathBuf;
@@ -27,7 +27,11 @@ fn main() -> eframe::Result {
             // Save a song (or "demo") in another format and exit: --convert <from> <to>.
             let from = args.next().unwrap_or_default();
             let to = args.next().unwrap_or_default();
-            let song = if from == "demo" { Ok(model::Song::demo()) } else { fileio::load_song(std::path::Path::new(&from)) };
+            let song = if from == "demo" {
+                Ok(model::Song::demo())
+            } else {
+                fileio::load_song(std::path::Path::new(&from))
+            };
             match song.and_then(|s| fileio::save_song(&s, std::path::Path::new(&to))) {
                 Ok(()) => std::process::exit(0),
                 Err(e) => {
@@ -39,8 +43,14 @@ fn main() -> eframe::Result {
         if a == "--gp-tests" {
             let dir = std::path::PathBuf::from(args.next().unwrap_or_else(|| ".".into()));
             let song = model::Song::demo();
-            for (name, chords, views) in [("Test 1 - plain", false, false), ("Test 2 - chord names", true, false), ("Test 3 - layout views", false, true), ("Test 4 - both", true, true)] {
-                let data = gpifwrite::export_gp_with(&song, gpifwrite::GpOptions { chords, views }).unwrap_or_default();
+            for (name, chords, views) in [
+                ("Test 1 - plain", false, false),
+                ("Test 2 - chord names", true, false),
+                ("Test 3 - layout views", false, true),
+                ("Test 4 - both", true, true),
+            ] {
+                let data = gpifwrite::export_gp_with(&song, gpifwrite::GpOptions { chords, views })
+                    .unwrap_or_default();
                 let _ = std::fs::write(dir.join(format!("{name}.gp")), data);
             }
             std::process::exit(0);
@@ -82,7 +92,10 @@ fn main() -> eframe::Result {
         }
     }
     #[allow(unused_mut)]
-    let mut options = eframe::NativeOptions { viewport, ..Default::default() };
+    let mut options = eframe::NativeOptions {
+        viewport,
+        ..Default::default()
+    };
     #[cfg(target_os = "macos")]
     if screenshot.is_some() {
         use winit::platform::macos::EventLoopBuilderExtMacOS;
@@ -111,10 +124,16 @@ fn font_file(name: &str) -> Option<Vec<u8>> {
 /// symbols (clefs, rests) was found.
 pub fn setup_fonts(ctx: &egui::Context) -> bool {
     let mut fonts = FontDefinitions::default();
-    let base_prop = fonts.families.get(&FontFamily::Proportional).cloned().unwrap_or_default();
+    let base_prop = fonts
+        .families
+        .get(&FontFamily::Proportional)
+        .cloned()
+        .unwrap_or_default();
     let add = |fonts: &mut FontDefinitions, key: &str, file: &str| -> bool {
         if let Some(d) = font_file(file) {
-            fonts.font_data.insert(key.to_owned(), Arc::new(FontData::from_owned(d)));
+            fonts
+                .font_data
+                .insert(key.to_owned(), Arc::new(FontData::from_owned(d)));
             true
         } else {
             false
@@ -135,7 +154,9 @@ pub fn setup_fonts(ctx: &egui::Context) -> bool {
     if music {
         prop.push("music".into());
     }
-    fonts.families.insert(FontFamily::Proportional, prop.clone());
+    fonts
+        .families
+        .insert(FontFamily::Proportional, prop.clone());
     let mut b = prop.clone();
     if bold {
         b.insert(0, "ui-bold".into());
@@ -146,7 +167,11 @@ pub fn setup_fonts(ctx: &egui::Context) -> bool {
         i.insert(0, "ui-italic".into());
     }
     fonts.families.insert(FontFamily::Name("italic".into()), i);
-    for (fam, ok, key) in [("serif", serif, "serif"), ("serif-bold", serif_b, "serif-bold"), ("serif-bi", serif_bi, "serif-bi")] {
+    for (fam, ok, key) in [
+        ("serif", serif, "serif"),
+        ("serif-bold", serif_b, "serif-bold"),
+        ("serif-bi", serif_bi, "serif-bi"),
+    ] {
         let mut v = prop.clone();
         if ok {
             v.insert(0, key.to_string());

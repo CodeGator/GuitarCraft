@@ -18,7 +18,11 @@ impl App {
     /// The note of the current beat sitting on the notation cursor's line or space.
     pub(super) fn note_at_std(&self) -> Option<Note> {
         let pos = self.std_cursor?;
-        self.cur_beat().notes.iter().find(|n| self.staff_pos_of(n) == pos).cloned()
+        self.cur_beat()
+            .notes
+            .iter()
+            .find(|n| self.staff_pos_of(n) == pos)
+            .cloned()
     }
 
     /// Keeps the cursor in a staff that is shown, and the string in step with the note under it.
@@ -36,7 +40,12 @@ impl App {
 
     /// Moves the cursor into the notation staff, onto the note of the current string if there is one.
     pub(super) fn enter_std(&mut self) {
-        let pos = self.cur_beat().note_on(self.string as u8).cloned().map(|n| self.staff_pos_of(&n)).unwrap_or(4);
+        let pos = self
+            .cur_beat()
+            .note_on(self.string as u8)
+            .cloned()
+            .map(|n| self.staff_pos_of(&n))
+            .unwrap_or(4);
         self.std_cursor = Some(pos);
     }
 
@@ -80,15 +89,28 @@ impl App {
         let pitch = existing
             .as_ref()
             .map(|n| track.pitch(n) as i32)
-            .unwrap_or_else(|| score::staff_pos_pitch(&track, self.key_here(), self.cur_beat().ottava, pos));
+            .unwrap_or_else(|| {
+                score::staff_pos_pitch(&track, self.key_here(), self.cur_beat().ottava, pos)
+            });
         let fret_on = |s: usize| pitch - track.tuning[s] as i32 - track.capo_at(s) as i32;
         let fits = |s: usize| (0..=track.frets as i32).contains(&fret_on(s));
-        let free = |s: usize| self.cur_beat().note_on(s as u8).map(|n| Some(n.string) == existing.as_ref().map(|e| e.string)).unwrap_or(true);
+        let free = |s: usize| {
+            self.cur_beat()
+                .note_on(s as u8)
+                .map(|n| Some(n.string) == existing.as_ref().map(|e| e.string))
+                .unwrap_or(true)
+        };
         let string = if d == 0 {
-            match (0..track.strings()).filter(|&s| fits(s) && free(s)).min_by_key(|&s| fret_on(s)) {
+            match (0..track.strings())
+                .filter(|&s| fits(s) && free(s))
+                .min_by_key(|&s| fret_on(s))
+            {
                 Some(s) => s,
                 None => {
-                    self.status = format!("{} can't be played on this instrument.", note_name_oct(pitch.clamp(0, 127) as u8));
+                    self.status = format!(
+                        "{} can't be played on this instrument.",
+                        note_name_oct(pitch.clamp(0, 127) as u8)
+                    );
                     return;
                 }
             }
@@ -99,7 +121,11 @@ impl App {
                 return;
             }
             if !fits(s) {
-                self.status = format!("{} can't be played on string {}.", note_name_oct(pitch.clamp(0, 127) as u8), s + 1);
+                self.status = format!(
+                    "{} can't be played on string {}.",
+                    note_name_oct(pitch.clamp(0, 127) as u8),
+                    s + 1
+                );
                 return;
             }
             s
@@ -108,7 +134,11 @@ impl App {
         let moved = match &existing {
             Some(e) if e.string as usize != string => {
                 let es = e.string;
-                self.edit(move |so, t, b, j, _| so.tracks[t].bars[b].beats[j].notes.retain(|n| n.string != es));
+                self.edit(move |so, t, b, j, _| {
+                    so.tracks[t].bars[b].beats[j]
+                        .notes
+                        .retain(|n| n.string != es)
+                });
                 true
             }
             _ => false,
@@ -129,8 +159,17 @@ impl App {
         }
         if let Some(n) = self.note_at_std() {
             let s = n.string;
-            self.edit(move |so, t, b, j, _| so.tracks[t].bars[b].beats[j].notes.retain(|x| x.string != s));
-        } else if self.cur_beat().is_rest() && self.song.tracks[self.track].bars[self.bar].voice(self.voice).len() > 1 {
+            self.edit(move |so, t, b, j, _| {
+                so.tracks[t].bars[b].beats[j]
+                    .notes
+                    .retain(|x| x.string != s)
+            });
+        } else if self.cur_beat().is_rest()
+            && self.song.tracks[self.track].bars[self.bar]
+                .voice(self.voice)
+                .len()
+                > 1
+        {
             self.edit(|so, t, b, j, _| {
                 so.tracks[t].bars[b].beats.remove(j);
             });
@@ -147,7 +186,9 @@ impl App {
                 Some(n) => score::written_name(track, beat, key, &n),
                 None => score::staff_pos_name(track, key, pos),
             }),
-            None => beat.note_on(self.string as u8).map(|n| score::written_name(track, beat, key, n)),
+            None => beat
+                .note_on(self.string as u8)
+                .map(|n| score::written_name(track, beat, key, n)),
         }
     }
 }

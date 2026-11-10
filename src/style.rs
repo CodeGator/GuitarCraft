@@ -18,28 +18,76 @@ pub const BASE_PROPORTION: f32 = 1.9;
 /// Fonts offered in the font lists: the name shown and the files for regular,
 /// bold, italic and bold italic. Missing files fall back to the interface font.
 pub const FONTS: [(&str, [&str; 4]); 9] = [
-    ("Times New Roman", ["times.ttf", "timesbd.ttf", "timesi.ttf", "timesbi.ttf"]),
-    ("Arial", ["arial.ttf", "arialbd.ttf", "ariali.ttf", "arialbi.ttf"]),
-    ("Segoe UI", ["segoeui.ttf", "segoeuib.ttf", "segoeuii.ttf", "segoeuiz.ttf"]),
-    ("Georgia", ["georgia.ttf", "georgiab.ttf", "georgiai.ttf", "georgiaz.ttf"]),
-    ("Verdana", ["verdana.ttf", "verdanab.ttf", "verdanai.ttf", "verdanaz.ttf"]),
-    ("Courier New", ["cour.ttf", "courbd.ttf", "couri.ttf", "courbi.ttf"]),
-    ("Comic Sans MS", ["comic.ttf", "comicbd.ttf", "comici.ttf", "comicz.ttf"]),
-    ("Segoe Print", ["segoepr.ttf", "segoeprb.ttf", "segoepr.ttf", "segoeprb.ttf"]),
-    ("Ink Free", ["Inkfree.ttf", "Inkfree.ttf", "Inkfree.ttf", "Inkfree.ttf"]),
+    (
+        "Times New Roman",
+        ["times.ttf", "timesbd.ttf", "timesi.ttf", "timesbi.ttf"],
+    ),
+    (
+        "Arial",
+        ["arial.ttf", "arialbd.ttf", "ariali.ttf", "arialbi.ttf"],
+    ),
+    (
+        "Segoe UI",
+        [
+            "segoeui.ttf",
+            "segoeuib.ttf",
+            "segoeuii.ttf",
+            "segoeuiz.ttf",
+        ],
+    ),
+    (
+        "Georgia",
+        [
+            "georgia.ttf",
+            "georgiab.ttf",
+            "georgiai.ttf",
+            "georgiaz.ttf",
+        ],
+    ),
+    (
+        "Verdana",
+        [
+            "verdana.ttf",
+            "verdanab.ttf",
+            "verdanai.ttf",
+            "verdanaz.ttf",
+        ],
+    ),
+    (
+        "Courier New",
+        ["cour.ttf", "courbd.ttf", "couri.ttf", "courbi.ttf"],
+    ),
+    (
+        "Comic Sans MS",
+        ["comic.ttf", "comicbd.ttf", "comici.ttf", "comicz.ttf"],
+    ),
+    (
+        "Segoe Print",
+        ["segoepr.ttf", "segoeprb.ttf", "segoepr.ttf", "segoeprb.ttf"],
+    ),
+    (
+        "Ink Free",
+        ["Inkfree.ttf", "Inkfree.ttf", "Inkfree.ttf", "Inkfree.ttf"],
+    ),
 ];
 
 pub const STYLE_NAMES: [&str; 4] = ["Regular", "Bold", "Italic", "Bold Italic"];
 
 /// Adds every font of the list to egui, each style as its own family
 /// ("Name|0" .. "Name|3"), falling back to `fallback` for missing glyphs.
-pub fn register_fonts(fonts: &mut FontDefinitions, fallback: &[String], read: impl Fn(&str) -> Option<Vec<u8>>) {
+pub fn register_fonts(
+    fonts: &mut FontDefinitions,
+    fallback: &[String],
+    read: impl Fn(&str) -> Option<Vec<u8>>,
+) {
     for (name, files) in FONTS {
         for (k, file) in files.iter().enumerate() {
             let key = format!("{name}|{k}");
             let mut fam = vec![];
             if let Some(d) = read(file) {
-                fonts.font_data.insert(key.clone(), Arc::new(FontData::from_owned(d)));
+                fonts
+                    .font_data
+                    .insert(key.clone(), Arc::new(FontData::from_owned(d)));
                 fam.push(key.clone());
             }
             fam.extend(fallback.iter().cloned());
@@ -66,7 +114,12 @@ impl Default for FontSpec {
 
 impl FontSpec {
     pub fn new(family: &str, size: f32, bold: bool, italic: bool) -> FontSpec {
-        FontSpec { family: family.into(), size, bold, italic }
+        FontSpec {
+            family: family.into(),
+            size,
+            bold,
+            italic,
+        }
     }
     pub fn style_index(&self) -> usize {
         self.bold as usize + 2 * self.italic as usize
@@ -77,8 +130,15 @@ impl FontSpec {
     }
     /// The egui font at a zoom (page units to screen pixels).
     pub fn id(&self, zoom: f32) -> FontId {
-        let fam = if FONTS.iter().any(|f| f.0 == self.family) { self.family.as_str() } else { "Times New Roman" };
-        FontId::new((self.size * PT * zoom).max(1.0), FontFamily::Name(format!("{fam}|{}", self.style_index()).into()))
+        let fam = if FONTS.iter().any(|f| f.0 == self.family) {
+            self.family.as_str()
+        } else {
+            "Times New Roman"
+        };
+        FontId::new(
+            (self.size * PT * zoom).max(1.0),
+            FontFamily::Name(format!("{fam}|{}", self.style_index()).into()),
+        )
     }
 }
 
@@ -97,12 +157,24 @@ pub struct HeaderItem {
 
 impl Default for HeaderItem {
     fn default() -> Self {
-        HeaderItem { name: String::new(), on: false, text: String::new(), align: 1, font: FontSpec::default() }
+        HeaderItem {
+            name: String::new(),
+            on: false,
+            text: String::new(),
+            align: 1,
+            font: FontSpec::default(),
+        }
     }
 }
 
 fn hi(name: &str, on: bool, text: &str, align: u8, font: FontSpec) -> HeaderItem {
-    HeaderItem { name: name.into(), on, text: text.into(), align, font }
+    HeaderItem {
+        name: name.into(),
+        on,
+        text: text.into(),
+        align,
+        font,
+    }
 }
 
 /// A playing-technique label: its words and font.
@@ -116,7 +188,11 @@ pub struct SymbolLabel {
 
 impl Default for SymbolLabel {
     fn default() -> Self {
-        SymbolLabel { name: String::new(), text: String::new(), font: FontSpec::default() }
+        SymbolLabel {
+            name: String::new(),
+            text: String::new(),
+            font: FontSpec::default(),
+        }
     }
 }
 
@@ -312,7 +388,13 @@ fn first_header() -> Vec<HeaderItem> {
         hi("Album", true, "%ALBUM%", 1, times(11.0)),
         hi("Words", true, "Words by %WORDS%", 0, times(8.8)),
         hi("Music", true, "Music by %MUSIC%", 1, times(8.8)),
-        hi("Words & Music", true, "Words & Music by %MUSIC%", 1, times(8.8)),
+        hi(
+            "Words & Music",
+            true,
+            "Words & Music by %MUSIC%",
+            1,
+            times(8.8),
+        ),
         hi("Transcriber", false, "Tabbed by %TABBER%", 2, times(8.8)),
     ]
 }
@@ -320,7 +402,13 @@ fn first_header() -> Vec<HeaderItem> {
 fn footer(copyright_on: bool) -> Vec<HeaderItem> {
     vec![
         hi("Copyright", copyright_on, "%COPYRIGHT%", 1, times(8.0)),
-        hi("Copyright (second line)", copyright_on, "All Rights Reserved - International Copyright Secured", 1, times(7.0)),
+        hi(
+            "Copyright (second line)",
+            copyright_on,
+            "All Rights Reserved - International Copyright Secured",
+            1,
+            times(7.0),
+        ),
         hi("Page number", true, "%PAGE%/%PAGES%", 2, times(7.3)),
     ]
 }
@@ -338,14 +426,26 @@ fn other_header() -> Vec<HeaderItem> {
 }
 
 fn symbols(italic_family: &str) -> Vec<SymbolLabel> {
-    let s = |name: &str, text: &str, f: FontSpec| SymbolLabel { name: name.into(), text: text.into(), font: f };
+    let s = |name: &str, text: &str, f: FontSpec| SymbolLabel {
+        name: name.into(),
+        text: text.into(),
+        font: f,
+    };
     let it = |size: f32| FontSpec::new(italic_family, size, false, true);
     vec![
         s("Let Ring", "let ring", it(7.3)),
         s("Palm Mute", "P.M.", it(6.9)),
         s("Slide", "sl.", it(6.5)),
-        s("Hammer-On", "H", FontSpec::new(italic_family, 6.5, false, false)),
-        s("Pull-Off", "P", FontSpec::new(italic_family, 6.5, false, false)),
+        s(
+            "Hammer-On",
+            "H",
+            FontSpec::new(italic_family, 6.5, false, false),
+        ),
+        s(
+            "Pull-Off",
+            "P",
+            FontSpec::new(italic_family, 6.5, false, false),
+        ),
         s("Slap", "S", FontSpec::new(italic_family, 7.6, true, false)),
         s("Pop", "P", FontSpec::new(italic_family, 7.6, true, false)),
         s("Pick Scrape", "P.S.", it(6.9)),
@@ -467,7 +567,13 @@ impl Stylesheet {
     pub fn rock() -> Stylesheet {
         let mut s = Stylesheet::standard();
         let arial = |size: f32, bold: bool| FontSpec::new("Arial", size, bold, false);
-        for it in s.first_header.iter_mut().chain(s.first_footer.iter_mut()).chain(s.other_header.iter_mut()).chain(s.other_footer.iter_mut()) {
+        for it in s
+            .first_header
+            .iter_mut()
+            .chain(s.first_footer.iter_mut())
+            .chain(s.other_header.iter_mut())
+            .chain(s.other_footer.iter_mut())
+        {
             it.font.family = "Arial".into();
         }
         s.first_header[0].font = arial(24.0, true);
@@ -532,7 +638,13 @@ impl Stylesheet {
     pub fn jazz() -> Stylesheet {
         let mut s = Stylesheet::standard();
         let hand = |size: f32, bold: bool| FontSpec::new("Ink Free", size, bold, false);
-        for it in s.first_header.iter_mut().chain(s.first_footer.iter_mut()).chain(s.other_header.iter_mut()).chain(s.other_footer.iter_mut()) {
+        for it in s
+            .first_header
+            .iter_mut()
+            .chain(s.first_footer.iter_mut())
+            .chain(s.other_header.iter_mut())
+            .chain(s.other_footer.iter_mut())
+        {
             it.font.family = "Ink Free".into();
             it.font.italic = false;
         }
@@ -618,7 +730,18 @@ pub struct Tokens<'a> {
     pub pages: usize,
 }
 
-pub const TOKENS: [&str; 10] = ["%TITLE%", "%SUBTITLE%", "%ARTIST%", "%ALBUM%", "%WORDS%", "%MUSIC%", "%TABBER%", "%COPYRIGHT%", "%PAGE%", "%PAGES%"];
+pub const TOKENS: [&str; 10] = [
+    "%TITLE%",
+    "%SUBTITLE%",
+    "%ARTIST%",
+    "%ALBUM%",
+    "%WORDS%",
+    "%MUSIC%",
+    "%TABBER%",
+    "%COPYRIGHT%",
+    "%PAGE%",
+    "%PAGES%",
+];
 
 impl Tokens<'_> {
     fn value(&self, tok: &str) -> String {
@@ -658,7 +781,18 @@ mod tests {
     use super::*;
 
     fn toks<'a>(music: &'a str) -> Tokens<'a> {
-        Tokens { title: "Song", subtitle: "", artist: "Band", album: "", words: "", music, tabber: "", copyright: "", page: 2, pages: 5 }
+        Tokens {
+            title: "Song",
+            subtitle: "",
+            artist: "Band",
+            album: "",
+            words: "",
+            music,
+            tabber: "",
+            copyright: "",
+            page: 2,
+            pages: 5,
+        }
     }
 
     #[test]
@@ -690,14 +824,18 @@ mod tests {
         let back = crate::gpif::import_gp(&data).unwrap();
         assert_eq!(back.style, song.style);
         // A song with the standard style doesn't need the extra file.
-        let plain = crate::gpif::import_gp(&crate::gpifwrite::export_gp(&crate::model::Song::demo()).unwrap()).unwrap();
+        let plain = crate::gpif::import_gp(
+            &crate::gpifwrite::export_gp(&crate::model::Song::demo()).unwrap(),
+        )
+        .unwrap();
         assert_eq!(plain.style, Stylesheet::standard());
     }
 
     #[test]
     fn older_styles_gain_new_footer_lines() {
         let mut old = Stylesheet::standard();
-        old.first_footer.retain(|x| x.name != "Copyright (second line)");
+        old.first_footer
+            .retain(|x| x.name != "Copyright (second line)");
         old.first_footer[0].text = "(c) %COPYRIGHT%".into();
         let fixed = old.fixed();
         assert_eq!(fixed.first_footer.len(), 3);

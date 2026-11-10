@@ -10,7 +10,14 @@ use std::path::PathBuf;
 
 impl App {
     pub(super) fn dialog_open(&self) -> bool {
-        self.goto_open || self.transpose_open || self.cmd_open || self.addtrack_open || self.chord_open || self.popup.is_some() || self.voices_open || self.auto_open
+        self.goto_open
+            || self.transpose_open
+            || self.cmd_open
+            || self.addtrack_open
+            || self.chord_open
+            || self.popup.is_some()
+            || self.voices_open
+            || self.auto_open
     }
 
     pub(super) fn check_bar_duration(&mut self) {
@@ -36,7 +43,10 @@ impl App {
 
     pub(super) fn zoom_step(&mut self, dir: i32) {
         const STEPS: [f32; 9] = [0.5, 0.6, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 2.0];
-        let i = STEPS.iter().position(|&z| z >= self.zoom - 0.001).unwrap_or(4) as i32;
+        let i = STEPS
+            .iter()
+            .position(|&z| z >= self.zoom - 0.001)
+            .unwrap_or(4) as i32;
         let j = (i + dir).clamp(0, STEPS.len() as i32 - 1) as usize;
         self.zoom = STEPS[j];
     }
@@ -70,8 +80,19 @@ impl App {
     }
 
     pub(super) fn goto_section(&mut self, dir: i32) {
-        let marks: Vec<usize> = self.song.master.iter().enumerate().filter(|(_, m)| m.marker.is_some()).map(|(i, _)| i).collect();
-        let target = if dir > 0 { marks.iter().find(|&&b| b > self.bar) } else { marks.iter().rev().find(|&&b| b < self.bar) };
+        let marks: Vec<usize> = self
+            .song
+            .master
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| m.marker.is_some())
+            .map(|(i, _)| i)
+            .collect();
+        let target = if dir > 0 {
+            marks.iter().find(|&&b| b > self.bar)
+        } else {
+            marks.iter().rev().find(|&&b| b < self.bar)
+        };
         if let Some(&b) = target {
             self.goto_bar(b);
         }
@@ -83,7 +104,11 @@ impl App {
 
     pub(super) fn shift_octave(&mut self, dir: i32) {
         let maxf = self.tr().frets as i32;
-        let ok = self.cur_beat().notes.iter().all(|n| (0..=maxf).contains(&(n.fret as i32 + 12 * dir)));
+        let ok = self
+            .cur_beat()
+            .notes
+            .iter()
+            .all(|n| (0..=maxf).contains(&(n.fret as i32 + 12 * dir)));
         if !ok {
             self.status = "That would go past the end of the fretboard.".into();
             return;
@@ -97,7 +122,11 @@ impl App {
             self.delete_at_cursor();
             return;
         }
-        if self.song.tracks[self.track].bars[self.bar].voice(self.voice).len() > 1 {
+        if self.song.tracks[self.track].bars[self.bar]
+            .voice(self.voice)
+            .len()
+            > 1
+        {
             self.edit(|s, t, b, j, _| {
                 s.tracks[t].bars[b].beats.remove(j);
             });
@@ -116,7 +145,14 @@ impl App {
     /// Copies whole bars of every track.
     pub(super) fn all_track_copy(&mut self) {
         let (a, b) = self.bar_range();
-        self.bar_clipboard = (a..=b).map(|i| (self.song.master[i].clone(), self.song.tracks.iter().map(|t| t.bars[i].clone()).collect())).collect();
+        self.bar_clipboard = (a..=b)
+            .map(|i| {
+                (
+                    self.song.master[i].clone(),
+                    self.song.tracks.iter().map(|t| t.bars[i].clone()).collect(),
+                )
+            })
+            .collect();
         self.status = format!("Copied {} bar(s) of every track.", b - a + 1);
     }
 
@@ -149,7 +185,8 @@ impl App {
             for (k, (mb, bars)) in clip.into_iter().enumerate() {
                 s.master.insert(at + k, mb);
                 for (ti, t) in s.tracks.iter_mut().enumerate() {
-                    t.bars.insert(at + k, bars.get(ti).cloned().unwrap_or_else(Bar::empty));
+                    t.bars
+                        .insert(at + k, bars.get(ti).cloned().unwrap_or_else(Bar::empty));
                 }
             }
         });
@@ -164,7 +201,10 @@ impl App {
                 if bar.beats.len() == 1 && bar.is_empty() {
                     continue;
                 }
-                while bar.ticks() > need && bar.beats.len() > 1 && bar.beats.last().map(|b| b.is_rest()).unwrap_or(false) {
+                while bar.ticks() > need
+                    && bar.beats.len() > 1
+                    && bar.beats.last().map(|b| b.is_rest()).unwrap_or(false)
+                {
                     bar.beats.pop();
                 }
                 let mut left = need.saturating_sub(bar.ticks());
@@ -185,14 +225,30 @@ impl App {
     }
 
     pub(super) fn user_templates() -> Vec<PathBuf> {
-        let Some(d) = Self::templates_dir() else { return vec![] };
-        let mut v: Vec<PathBuf> = std::fs::read_dir(d).map(|r| r.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().map(|e| e == fileio::GP_EXT || fileio::OLD_EXTS.iter().any(|x| e == *x)).unwrap_or(false)).collect()).unwrap_or_default();
+        let Some(d) = Self::templates_dir() else {
+            return vec![];
+        };
+        let mut v: Vec<PathBuf> = std::fs::read_dir(d)
+            .map(|r| {
+                r.filter_map(|e| e.ok().map(|e| e.path()))
+                    .filter(|p| {
+                        p.extension()
+                            .map(|e| {
+                                e == fileio::GP_EXT || fileio::OLD_EXTS.iter().any(|x| e == *x)
+                            })
+                            .unwrap_or(false)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
         v.sort();
         v
     }
 
     pub(super) fn save_as_template(&mut self) {
-        let Some(d) = Self::templates_dir() else { return };
+        let Some(d) = Self::templates_dir() else {
+            return;
+        };
         let _ = std::fs::create_dir_all(&d);
         let mut t = self.song.clone();
         for tr in &mut t.tracks {
@@ -200,8 +256,16 @@ impl App {
                 *b = Bar::empty();
             }
         }
-        let name = if self.song.title.trim().is_empty() { "My template".to_string() } else { self.song.title.clone() };
-        let p = d.join(format!("{}.{}", super::widgets::sanitize(&name), fileio::GP_EXT));
+        let name = if self.song.title.trim().is_empty() {
+            "My template".to_string()
+        } else {
+            self.song.title.clone()
+        };
+        let p = d.join(format!(
+            "{}.{}",
+            super::widgets::sanitize(&name),
+            fileio::GP_EXT
+        ));
         match fileio::save_song(&t, &p) {
             Ok(()) => self.status = format!("Saved the template \u{201C}{name}\u{201D}. Find it in File \u{25B8} New from Template."),
             Err(e) => self.status = format!("Couldn't save the template: {e}"),
@@ -228,11 +292,15 @@ impl App {
             return;
         };
         #[cfg(target_os = "windows")]
-        let r = std::process::Command::new("explorer").arg(format!("/select,{}", p.display())).spawn();
+        let r = std::process::Command::new("explorer")
+            .arg(format!("/select,{}", p.display()))
+            .spawn();
         #[cfg(target_os = "macos")]
         let r = std::process::Command::new("open").arg("-R").arg(&p).spawn();
         #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
-        let r = std::process::Command::new("xdg-open").arg(p.parent().unwrap_or(&p)).spawn();
+        let r = std::process::Command::new("xdg-open")
+            .arg(p.parent().unwrap_or(&p))
+            .spawn();
         if let Err(e) = r {
             self.status = format!("Couldn't open the folder: {e}");
         }
@@ -271,7 +339,13 @@ impl App {
     pub(super) fn transpose_song(&mut self, semis: i32, all_tracks: bool) {
         let cur = self.track;
         let mut clipped = false;
-        let range = if self.transpose_sel_only { self.selection().map(|(a, b)| (a.0, b.0)).unwrap_or((self.bar, self.bar)) } else { (0, self.song.bar_count() - 1) };
+        let range = if self.transpose_sel_only {
+            self.selection()
+                .map(|(a, b)| (a.0, b.0))
+                .unwrap_or((self.bar, self.bar))
+        } else {
+            (0, self.song.bar_count() - 1)
+        };
         let diatonic = self.transpose_diatonic;
         let change_key = self.transpose_key && !diatonic;
         self.edit(|s, _, _, _, _| {
@@ -292,14 +366,20 @@ impl App {
                         let mut out: Vec<Note> = vec![];
                         for n in beat.notes.drain(..) {
                             let from = tuning[n.string as usize] as i32 + n.fret as i32;
-                            let target = if diatonic { diatonic_shift(from, key, semis) } else { from + semis };
+                            let target = if diatonic {
+                                diatonic_shift(from, key, semis)
+                            } else {
+                                from + semis
+                            };
                             // Same string if possible, otherwise the nearest free string.
                             let mut placed = None;
                             let mut order: Vec<usize> = (0..nstr).collect();
                             order.sort_by_key(|&s| (s as i32 - n.string as i32).abs());
                             for s in order {
                                 let f = target - tuning[s] as i32;
-                                if (0..=maxf).contains(&f) && !out.iter().any(|o| o.string as usize == s) {
+                                if (0..=maxf).contains(&f)
+                                    && !out.iter().any(|o| o.string as usize == s)
+                                {
                                     placed = Some((s, f));
                                     break;
                                 }
@@ -340,31 +420,44 @@ impl App {
         if self.goto_open {
             let mut open = true;
             let mut go = false;
-            egui::Window::new("Go to").collapsible(false).resizable(false).open(&mut open).anchor(Align2::CENTER_CENTER, Vec2::ZERO).show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(format!("Bar (1\u{2013}{}):", self.song.bar_count()));
-                    let r = ui.add(egui::TextEdit::singleline(&mut self.goto_text).desired_width(60.0));
-                    r.request_focus();
-                    if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+            egui::Window::new("Go to")
+                .collapsible(false)
+                .resizable(false)
+                .open(&mut open)
+                .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
+                .show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(format!("Bar (1\u{2013}{}):", self.song.bar_count()));
+                        let r = ui.add(
+                            egui::TextEdit::singleline(&mut self.goto_text).desired_width(60.0),
+                        );
+                        r.request_focus();
+                        if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                            go = true;
+                        }
+                    });
+                    let marks: Vec<(usize, String)> = self
+                        .song
+                        .master
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(i, m)| m.marker.clone().map(|n| (i, n)))
+                        .collect();
+                    if !marks.is_empty() {
+                        ui.label(RichText::new("Or a section:").weak());
+                        ui.horizontal_wrapped(|ui| {
+                            for (i, n) in marks {
+                                if ui.button(n).clicked() {
+                                    self.goto_text = format!("{}", i + 1);
+                                    go = true;
+                                }
+                            }
+                        });
+                    }
+                    if ui.button("Go").clicked() {
                         go = true;
                     }
                 });
-                let marks: Vec<(usize, String)> = self.song.master.iter().enumerate().filter_map(|(i, m)| m.marker.clone().map(|n| (i, n))).collect();
-                if !marks.is_empty() {
-                    ui.label(RichText::new("Or a section:").weak());
-                    ui.horizontal_wrapped(|ui| {
-                        for (i, n) in marks {
-                            if ui.button(n).clicked() {
-                                self.goto_text = format!("{}", i + 1);
-                                go = true;
-                            }
-                        }
-                    });
-                }
-                if ui.button("Go").clicked() {
-                    go = true;
-                }
-            });
             if go {
                 if let Ok(b) = self.goto_text.trim().parse::<usize>() {
                     self.goto_bar(b.saturating_sub(1));
@@ -437,16 +530,47 @@ impl App {
         }
         // Octave buttons.
         for (k, lab) in [(-1i32, "<"), (1, ">")] {
-            let r = Rect::from_min_size(Pos2::new(side.left() + 6.0 + if k > 0 { 22.0 } else { 0.0 }, side.top() + 8.0), Vec2::new(20.0, 20.0));
-            let resp = ui.interact(r, ui.id().with(("kbo", k)), Sense::click()).on_hover_text("Shift the keyboard by an octave");
-            p.rect_filled(r, 3.0, if resp.hovered() { Color32::from_gray(90) } else { Color32::from_gray(70) });
-            p.text(r.center(), Align2::CENTER_CENTER, lab, FontId::proportional(14.0), Color32::WHITE);
+            let r = Rect::from_min_size(
+                Pos2::new(
+                    side.left() + 6.0 + if k > 0 { 22.0 } else { 0.0 },
+                    side.top() + 8.0,
+                ),
+                Vec2::new(20.0, 20.0),
+            );
+            let resp = ui
+                .interact(r, ui.id().with(("kbo", k)), Sense::click())
+                .on_hover_text("Shift the keyboard by an octave");
+            p.rect_filled(
+                r,
+                3.0,
+                if resp.hovered() {
+                    Color32::from_gray(90)
+                } else {
+                    Color32::from_gray(70)
+                },
+            );
+            p.text(
+                r.center(),
+                Align2::CENTER_CENTER,
+                lab,
+                FontId::proportional(14.0),
+                Color32::WHITE,
+            );
             if resp.clicked() {
                 self.kb_octave = (self.kb_octave + k).clamp(0, 5);
             }
         }
-        p.text(Pos2::new(side.center().x, side.top() + 44.0), Align2::CENTER_CENTER, format!("C{}", self.kb_octave + 1), FontId::proportional(11.0), Color32::from_gray(180));
-        let area = Rect::from_min_max(Pos2::new(side.right() + 2.0, full.top() + 2.0), full.max - Vec2::new(2.0, 2.0));
+        p.text(
+            Pos2::new(side.center().x, side.top() + 44.0),
+            Align2::CENTER_CENTER,
+            format!("C{}", self.kb_octave + 1),
+            FontId::proportional(11.0),
+            Color32::from_gray(180),
+        );
+        let area = Rect::from_min_max(
+            Pos2::new(side.right() + 2.0, full.top() + 2.0),
+            full.max - Vec2::new(2.0, 2.0),
+        );
         // As many keys as fit, up to a full 88-key piano (52 white keys).
         let max_white = 52 - (self.kb_octave - 1).max(0) * 7;
         let n_white = ((area.width() / 17.0) as i32).clamp(14, max_white.max(14));
@@ -464,25 +588,45 @@ impl App {
         }
         let mut keys: Vec<(i32, Rect)> = vec![];
         for (i, &w) in whites.iter().enumerate() {
-            let r = Rect::from_min_size(Pos2::new(area.left() + i as f32 * ww, area.top()), Vec2::new(ww - 1.0, area.height()));
+            let r = Rect::from_min_size(
+                Pos2::new(area.left() + i as f32 * ww, area.top()),
+                Vec2::new(ww - 1.0, area.height()),
+            );
             p.rect_filled(r, 2.0, lit_col(w).unwrap_or(Color32::from_gray(245)));
             if w % 12 == 0 {
-                p.text(Pos2::new(r.center().x, r.bottom() - 9.0), Align2::CENTER_CENTER, format!("C{}", w / 12 - 1), FontId::proportional(9.0), Color32::from_gray(120));
+                p.text(
+                    Pos2::new(r.center().x, r.bottom() - 9.0),
+                    Align2::CENTER_CENTER,
+                    format!("C{}", w / 12 - 1),
+                    FontId::proportional(9.0),
+                    Color32::from_gray(120),
+                );
             }
             keys.push((w, r));
         }
         let mut blacks: Vec<(i32, Rect)> = vec![];
         for (i, &w) in whites.iter().enumerate() {
             if is_black(w + 1) && i + 1 < whites.len() {
-                let r = Rect::from_min_size(Pos2::new(area.left() + (i as f32 + 1.0) * ww - ww * 0.32, area.top()), Vec2::new(ww * 0.62, area.height() * 0.6));
-                p.rect_filled(r, 2.0, lit_col(w + 1).unwrap_or(Color32::from_rgb(28, 30, 34)));
+                let r = Rect::from_min_size(
+                    Pos2::new(area.left() + (i as f32 + 1.0) * ww - ww * 0.32, area.top()),
+                    Vec2::new(ww * 0.62, area.height() * 0.6),
+                );
+                p.rect_filled(
+                    r,
+                    2.0,
+                    lit_col(w + 1).unwrap_or(Color32::from_rgb(28, 30, 34)),
+                );
                 blacks.push((w + 1, r));
             }
         }
         let resp = ui.interact(area, ui.id().with("kbd"), Sense::click());
         if resp.clicked() {
             if let Some(pp) = resp.interact_pointer_pos() {
-                let hit = blacks.iter().find(|(_, r)| r.contains(pp)).or_else(|| keys.iter().find(|(_, r)| r.contains(pp))).map(|(m, _)| *m);
+                let hit = blacks
+                    .iter()
+                    .find(|(_, r)| r.contains(pp))
+                    .or_else(|| keys.iter().find(|(_, r)| r.contains(pp)))
+                    .map(|(m, _)| *m);
                 if let Some(m) = hit {
                     self.place_pitch(m);
                 }
@@ -495,16 +639,27 @@ impl App {
         let tr = self.tr().clone();
         let fret_on = |s: usize| pitch - tr.tuning[s] as i32 - tr.capo_at(s) as i32;
         let fits = |s: usize| (0..=tr.frets as i32).contains(&fret_on(s));
-        let mut choice = if fits(self.string) { Some(self.string) } else { None };
+        let mut choice = if fits(self.string) {
+            Some(self.string)
+        } else {
+            None
+        };
         if choice.is_none() {
-            choice = (0..tr.strings()).filter(|&s| fits(s)).min_by_key(|&s| fret_on(s));
+            choice = (0..tr.strings())
+                .filter(|&s| fits(s))
+                .min_by_key(|&s| fret_on(s));
         }
         match choice {
             Some(s) => {
                 self.string = s;
                 self.set_fret(s, fret_on(s) as u8);
             }
-            None => self.status = format!("{} can't be played on this instrument.", note_name_oct(pitch.clamp(0, 127) as u8)),
+            None => {
+                self.status = format!(
+                    "{} can't be played on this instrument.",
+                    note_name_oct(pitch.clamp(0, 127) as u8)
+                )
+            }
         }
     }
 }
@@ -524,7 +679,9 @@ impl App {
         if dir < 0 {
             self.move_left(false);
         } else {
-            let nb = self.song.tracks[self.track].bars[self.bar].voice(self.voice).len();
+            let nb = self.song.tracks[self.track].bars[self.bar]
+                .voice(self.voice)
+                .len();
             if self.beat + 1 < nb {
                 self.beat += 1;
             } else if self.bar + 1 < self.song.bar_count() {
@@ -548,7 +705,9 @@ impl App {
         if to < 0 || to >= tr.strings() as i32 {
             return;
         }
-        let Some(n) = self.cur_beat().note_on(s as u8).cloned() else { return };
+        let Some(n) = self.cur_beat().note_on(s as u8).cloned() else {
+            return;
+        };
         if self.cur_beat().note_on(to as u8).is_some() {
             self.status = "That string already has a note.".into();
             return;
@@ -586,9 +745,15 @@ impl App {
     /// Copies the previous beat onto the cursor's beat and moves on.
     pub(super) fn copy_last_beat(&mut self) {
         let prev = if self.beat > 0 {
-            Some(self.song.tracks[self.track].bars[self.bar].voice(self.voice)[self.beat - 1].clone())
+            Some(
+                self.song.tracks[self.track].bars[self.bar].voice(self.voice)[self.beat - 1]
+                    .clone(),
+            )
         } else if self.bar > 0 {
-            self.song.tracks[self.track].bars[self.bar - 1].voice(self.voice).last().cloned()
+            self.song.tracks[self.track].bars[self.bar - 1]
+                .voice(self.voice)
+                .last()
+                .cloned()
         } else {
             None
         };
@@ -601,9 +766,15 @@ impl App {
     /// Ties every note of the beat to the same note in the previous beat.
     pub(super) fn tie_beat(&mut self) {
         let prev = if self.beat > 0 {
-            Some(self.song.tracks[self.track].bars[self.bar].voice(self.voice)[self.beat - 1].clone())
+            Some(
+                self.song.tracks[self.track].bars[self.bar].voice(self.voice)[self.beat - 1]
+                    .clone(),
+            )
         } else if self.bar > 0 {
-            self.song.tracks[self.track].bars[self.bar - 1].voice(self.voice).last().cloned()
+            self.song.tracks[self.track].bars[self.bar - 1]
+                .voice(self.voice)
+                .last()
+                .cloned()
         } else {
             None
         };
@@ -639,7 +810,6 @@ pub fn shortcut_rows(ui: &mut Ui) {
         }
     });
 }
-
 
 /// Moves a pitch by steps of the major scale of a key (sharps > 0, flats < 0).
 pub fn diatonic_shift(pitch: i32, key: i8, steps: i32) -> i32 {

@@ -54,7 +54,16 @@ impl Timbre {
     }
     /// Held notes (voices, bowed strings, winds, organ) keep sounding until released.
     pub fn sustained(self) -> bool {
-        matches!(self, Timbre::Organ | Timbre::Synth | Timbre::Voice | Timbre::Bowed | Timbre::Brass | Timbre::Reed | Timbre::Flute)
+        matches!(
+            self,
+            Timbre::Organ
+                | Timbre::Synth
+                | Timbre::Voice
+                | Timbre::Bowed
+                | Timbre::Brass
+                | Timbre::Reed
+                | Timbre::Flute
+        )
     }
 }
 
@@ -121,31 +130,49 @@ struct Voice {
 
 impl Voice {
     fn new(e: &NoteEvent, sr: f32) -> Voice {
-        let (pluck, base_decay, bright, harmonics, drive): (f32, f32, f32, usize, f32) = match e.timbre {
-            Timbre::Steel => (0.16, 2.6, 1.0, 14, 0.0),
-            Timbre::Nylon => (0.3, 2.0, 0.55, 10, 0.0),
-            Timbre::Clean => (0.12, 3.2, 0.8, 12, 0.0),
-            Timbre::Overdrive => (0.15, 3.5, 0.8, 10, 3.5),
-            Timbre::Distortion => (0.15, 4.0, 0.9, 10, 9.0),
-            Timbre::Bass => (0.22, 3.5, 0.5, 9, 0.0),
-            Timbre::Uke => (0.25, 1.4, 0.7, 10, 0.0),
-            Timbre::Banjo => (0.1, 1.2, 1.0, 14, 0.0),
-            Timbre::Piano => (0.12, 4.0, 0.7, 12, 0.0),
-            Timbre::EPiano => (0.5, 3.0, 0.35, 6, 0.0),
-            Timbre::Synth => (0.5, 30.0, 0.9, 12, 1.2),
-            Timbre::Organ | Timbre::Voice | Timbre::Bowed | Timbre::Brass | Timbre::Reed | Timbre::Flute => (0.5, 30.0, 1.0, 12, 0.0),
-            Timbre::Drum => (0.5, 0.3, 1.0, 1, 0.0),
-            Timbre::ClickHigh | Timbre::ClickLow => (0.5, 0.03, 1.0, 1, 0.0),
-        };
+        let (pluck, base_decay, bright, harmonics, drive): (f32, f32, f32, usize, f32) =
+            match e.timbre {
+                Timbre::Steel => (0.16, 2.6, 1.0, 14, 0.0),
+                Timbre::Nylon => (0.3, 2.0, 0.55, 10, 0.0),
+                Timbre::Clean => (0.12, 3.2, 0.8, 12, 0.0),
+                Timbre::Overdrive => (0.15, 3.5, 0.8, 10, 3.5),
+                Timbre::Distortion => (0.15, 4.0, 0.9, 10, 9.0),
+                Timbre::Bass => (0.22, 3.5, 0.5, 9, 0.0),
+                Timbre::Uke => (0.25, 1.4, 0.7, 10, 0.0),
+                Timbre::Banjo => (0.1, 1.2, 1.0, 14, 0.0),
+                Timbre::Piano => (0.12, 4.0, 0.7, 12, 0.0),
+                Timbre::EPiano => (0.5, 3.0, 0.35, 6, 0.0),
+                Timbre::Synth => (0.5, 30.0, 0.9, 12, 1.2),
+                Timbre::Organ
+                | Timbre::Voice
+                | Timbre::Bowed
+                | Timbre::Brass
+                | Timbre::Reed
+                | Timbre::Flute => (0.5, 30.0, 1.0, 12, 0.0),
+                Timbre::Drum => (0.5, 0.3, 1.0, 1, 0.0),
+                Timbre::ClickHigh | Timbre::ClickLow => (0.5, 0.03, 1.0, 1, 0.0),
+            };
         // Held instruments: a fixed blend of harmonics instead of a plucked spectrum.
         let shape: Option<[f32; 12]> = match e.timbre {
             Timbre::Organ => Some([1.0, 0.8, 0.5, 0.45, 0.0, 0.3, 0.0, 0.25, 0.0, 0.0, 0.0, 0.1]),
-            Timbre::Voice => Some([1.0, 0.7, 0.55, 0.35, 0.18, 0.1, 0.06, 0.04, 0.02, 0.0, 0.0, 0.0]),
-            Timbre::Bowed => Some([1.0, 0.5, 0.33, 0.25, 0.2, 0.16, 0.12, 0.1, 0.08, 0.06, 0.05, 0.04]),
-            Timbre::Brass => Some([1.0, 0.8, 0.6, 0.45, 0.35, 0.25, 0.18, 0.12, 0.08, 0.05, 0.03, 0.02]),
-            Timbre::Reed => Some([1.0, 0.25, 0.6, 0.2, 0.4, 0.15, 0.25, 0.1, 0.15, 0.05, 0.08, 0.03]),
-            Timbre::Flute => Some([1.0, 0.25, 0.08, 0.03, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
-            Timbre::Synth => Some([1.0, 0.5, 0.33, 0.25, 0.2, 0.17, 0.14, 0.12, 0.11, 0.1, 0.09, 0.08]),
+            Timbre::Voice => Some([
+                1.0, 0.7, 0.55, 0.35, 0.18, 0.1, 0.06, 0.04, 0.02, 0.0, 0.0, 0.0,
+            ]),
+            Timbre::Bowed => Some([
+                1.0, 0.5, 0.33, 0.25, 0.2, 0.16, 0.12, 0.1, 0.08, 0.06, 0.05, 0.04,
+            ]),
+            Timbre::Brass => Some([
+                1.0, 0.8, 0.6, 0.45, 0.35, 0.25, 0.18, 0.12, 0.08, 0.05, 0.03, 0.02,
+            ]),
+            Timbre::Reed => Some([
+                1.0, 0.25, 0.6, 0.2, 0.4, 0.15, 0.25, 0.1, 0.15, 0.05, 0.08, 0.03,
+            ]),
+            Timbre::Flute => Some([
+                1.0, 0.25, 0.08, 0.03, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+            ]),
+            Timbre::Synth => Some([
+                1.0, 0.5, 0.33, 0.25, 0.2, 0.17, 0.14, 0.12, 0.11, 0.1, 0.09, 0.08,
+            ]),
             _ => None,
         };
         let held = e.timbre.sustained();
@@ -170,13 +197,21 @@ impl Voice {
             }
             if e.harmonic {
                 // Natural harmonic: keep mostly the octave-and-up partials.
-                a = if (k + 1) % 2 == 0 { 1.0 / kf } else { 0.05 / kf };
+                a = if (k + 1) % 2 == 0 {
+                    1.0 / kf
+                } else {
+                    0.05 / kf
+                };
             }
             if let Some(sh) = shape {
                 a = sh.get(k).copied().unwrap_or(0.0);
             }
             env[k] = a;
-            let ds = if held { decay_s } else { decay_s / (1.0 + 0.35 * k as f32) };
+            let ds = if held {
+                decay_s
+            } else {
+                decay_s / (1.0 + 0.35 * k as f32)
+            };
             dec[k] = (-1.0 / (ds * sr)).exp();
         }
         // Normalise.
@@ -192,7 +227,15 @@ impl Voice {
             delay: 0,
             bend_shape: e.bend_shape,
             slide_in: e.slide_in,
-            vib_depth: if e.wide_vibrato { 0.9 } else if matches!(e.timbre, Timbre::Voice | Timbre::Bowed | Timbre::Flute) && !e.vibrato { 0.18 } else { 0.35 },
+            vib_depth: if e.wide_vibrato {
+                0.9
+            } else if matches!(e.timbre, Timbre::Voice | Timbre::Bowed | Timbre::Flute)
+                && !e.vibrato
+            {
+                0.18
+            } else {
+                0.35
+            },
             t: 0,
             len: e.len,
             f0: e.freq,
@@ -217,7 +260,11 @@ impl Voice {
             lp: 0.0,
             release: 1.0,
             attack: if held && !e.fade_in {
-                ((if e.timbre == Timbre::Brass { 0.035 } else { 0.07 }) * sr) as u64
+                ((if e.timbre == Timbre::Brass {
+                    0.035
+                } else {
+                    0.07
+                }) * sr) as u64
             } else if e.fade_in {
                 ((e.len as f32 * 0.6).max(0.05 * sr)) as u64
             } else if e.soft_attack {
@@ -229,7 +276,13 @@ impl Voice {
             string: e.string,
             fret: e.fret,
             click,
-            drum: if e.timbre == Timbre::Drum { (69.0 + 12.0 * (e.freq.max(1.0) / 440.0).log2()).round().clamp(1.0, 127.0) as u8 } else { 0 },
+            drum: if e.timbre == Timbre::Drum {
+                (69.0 + 12.0 * (e.freq.max(1.0) / 440.0).log2())
+                    .round()
+                    .clamp(1.0, 127.0) as u8
+            } else {
+                0
+            },
         }
     }
 
@@ -260,18 +313,33 @@ impl Voice {
         let (s, dur) = match d {
             35 | 36 => {
                 let f = 48.0 + 110.0 * (-t * 28.0).exp();
-                (tone(f, &mut ph) * 1.5 * (-t * 8.0).exp() + n * 0.15 * (-t * 90.0).exp(), 0.5)
+                (
+                    tone(f, &mut ph) * 1.5 * (-t * 8.0).exp() + n * 0.15 * (-t * 90.0).exp(),
+                    0.5,
+                )
             }
-            37 => (n * 0.6 * (-t * 70.0).exp() + tone(420.0, &mut ph) * 0.4 * (-t * 50.0).exp(), 0.12),
-            38 | 40 | 39 => (n * 0.65 * (-t * 15.0).exp() + tone(190.0, &mut ph) * 0.55 * (-t * 22.0).exp(), 0.4),
+            37 => (
+                n * 0.6 * (-t * 70.0).exp() + tone(420.0, &mut ph) * 0.4 * (-t * 50.0).exp(),
+                0.12,
+            ),
+            38 | 40 | 39 => (
+                n * 0.65 * (-t * 15.0).exp() + tone(190.0, &mut ph) * 0.55 * (-t * 22.0).exp(),
+                0.4,
+            ),
             42 | 44 => (hp * 0.55 * (-t * 45.0).exp(), 0.12),
             46 => (hp * 0.45 * (-t * 5.5).exp(), 0.7),
             49 | 57 | 52 | 55 => (hp * 0.5 * (-t * 2.2).exp(), 2.0),
-            51 | 59 | 53 => (hp * 0.22 * (-t * 3.0).exp() + tone(2900.0, &mut ph) * 0.06 * (-t * 2.0).exp(), 1.6),
+            51 | 59 | 53 => (
+                hp * 0.22 * (-t * 3.0).exp() + tone(2900.0, &mut ph) * 0.06 * (-t * 2.0).exp(),
+                1.6,
+            ),
             41 | 43 | 45 | 47 | 48 | 50 => {
                 let base = 70.0 + (d as f32 - 41.0) * 17.0;
                 let f = base * (1.0 + 0.4 * (-t * 18.0).exp());
-                (tone(f, &mut ph) * 1.1 * (-t * 7.0).exp() + n * 0.1 * (-t * 60.0).exp(), 0.7)
+                (
+                    tone(f, &mut ph) * 1.1 * (-t * 7.0).exp() + n * 0.1 * (-t * 60.0).exp(),
+                    0.7,
+                )
             }
             56 => (tone(560.0, &mut ph) * 0.5 * (-t * 14.0).exp(), 0.3),
             _ => (hp * 0.5 * (-t * 22.0).exp(), 0.3),
@@ -396,12 +464,15 @@ impl PlayerState {
         let frames = out.len() / channels.max(1);
         for i in 0..frames {
             if self.playing {
-                while self.next_ev < self.events.len() && self.events[self.next_ev].start <= self.pos {
+                while self.next_ev < self.events.len()
+                    && self.events[self.next_ev].start <= self.pos
+                {
                     let e = self.events[self.next_ev].clone();
                     // Cut a previous note on the same string of the same track.
                     if e.timbre != Timbre::ClickHigh && e.timbre != Timbre::ClickLow {
                         for v in &mut self.voices {
-                            if v.track == e.track && v.string == e.string && !v.click && v.t < v.len {
+                            if v.track == e.track && v.string == e.string && !v.click && v.t < v.len
+                            {
                                 v.len = v.t;
                             }
                         }
@@ -668,9 +739,20 @@ pub fn build_schedule(song: &Song, sr: f32, opt: &ScheduleOptions) -> Schedule {
                 t.mute = k != ti;
                 t.solo = false;
             }
-            let opt2 = ScheduleOptions { from_bar: opt.from_bar, metronome: false, count_in: opt.count_in, speed: opt.speed, only_bars: opt.only_bars };
+            let opt2 = ScheduleOptions {
+                from_bar: opt.from_bar,
+                metronome: false,
+                count_in: opt.count_in,
+                speed: opt.speed,
+                only_bars: opt.only_bars,
+            };
             let extra = build_voice_schedule(&s2, sr, &opt2);
-            sch.events.extend(extra.events.into_iter().filter(|e| !matches!(e.timbre, Timbre::ClickHigh | Timbre::ClickLow)));
+            sch.events.extend(
+                extra
+                    .events
+                    .into_iter()
+                    .filter(|e| !matches!(e.timbre, Timbre::ClickHigh | Timbre::ClickLow)),
+            );
         }
     }
     sch.events.sort_by_key(|e| e.start);
@@ -699,7 +781,11 @@ fn build_voice_schedule(song: &Song, sr: f32, opt: &ScheduleOptions) -> Schedule
             let spt = sr as f64 * 60.0 / (song.tempo_at(b0) as f64 * speed) / QUARTER as f64;
             let beat_ticks = QUARTER * 4 / mb.den.max(1) as u32;
             for i in 0..mb.num as u32 {
-                events.push(click(t + (i as f64 * beat_ticks as f64 * spt) as u64, i == 0, sr));
+                events.push(click(
+                    t + (i as f64 * beat_ticks as f64 * spt) as u64,
+                    i == 0,
+                    sr,
+                ));
             }
             t += (mb.ticks() as f64 * spt) as u64;
         }
@@ -718,7 +804,11 @@ fn build_voice_schedule(song: &Song, sr: f32, opt: &ScheduleOptions) -> Schedule
         if opt.metronome {
             let beat_ticks = QUARTER * 4 / mb.den.max(1) as u32;
             for i in 0..mb.num as u32 {
-                events.push(click(t + (i as f64 * beat_ticks as f64 * spt) as u64, i == 0, sr));
+                events.push(click(
+                    t + (i as f64 * beat_ticks as f64 * spt) as u64,
+                    i == 0,
+                    sr,
+                ));
             }
         }
         for (ti, track) in song.tracks.iter().enumerate() {
@@ -752,8 +842,16 @@ fn build_voice_schedule(song: &Song, sr: f32, opt: &ScheduleOptions) -> Schedule
                     while b + 1 < bar.beats.len() && bar.beats[b + 1].hairpin == beat.hairpin {
                         b += 1;
                     }
-                    let pos = if b > a { (bj - a) as f32 / (b - a) as f32 } else { 0.5 };
-                    hair = if beat.hairpin == 1 { 0.75 + 0.5 * pos } else { 1.25 - 0.5 * pos };
+                    let pos = if b > a {
+                        (bj - a) as f32 / (b - a) as f32
+                    } else {
+                        0.5
+                    };
+                    hair = if beat.hairpin == 1 {
+                        0.75 + 0.5 * pos
+                    } else {
+                        1.25 - 0.5 * pos
+                    };
                 }
                 for (k, n) in beat.notes.iter().enumerate() {
                     if n.tie {
@@ -798,7 +896,14 @@ fn build_voice_schedule(song: &Song, sr: f32, opt: &ScheduleOptions) -> Schedule
                     if beat.fermata {
                         len_ticks *= 1.6;
                     }
-                    let stroke = if beat.stroke == Stroke::None && track.auto_brush && beat.notes.len() > 2 { Stroke::Down } else { beat.stroke };
+                    let stroke = if beat.stroke == Stroke::None
+                        && track.auto_brush
+                        && beat.notes.len() > 2
+                    {
+                        Stroke::Down
+                    } else {
+                        beat.stroke
+                    };
                     let stroke_off = match stroke {
                         Stroke::None => 0.0,
                         Stroke::Down => (nstr - 1 - k.min(nstr - 1)) as f64,
@@ -857,7 +962,10 @@ fn build_voice_schedule(song: &Song, sr: f32, opt: &ScheduleOptions) -> Schedule
                     // Grace note just before the beat.
                     if let Some(g) = n.grace {
                         let gl = (QUARTER as f64 / 8.0 * spt) as u64;
-                        let gp = (track.tuning.get(n.string as usize).copied().unwrap_or(40) as i32 + g as i32 + track.capo_at(n.string as usize) as i32) as f32;
+                        let gp = (track.tuning.get(n.string as usize).copied().unwrap_or(40) as i32
+                            + g as i32
+                            + track.capo_at(n.string as usize) as i32)
+                            as f32;
                         events.push(NoteEvent {
                             start: start.saturating_sub(gl),
                             len: gl.max(1),
@@ -879,9 +987,17 @@ fn build_voice_schedule(song: &Song, sr: f32, opt: &ScheduleOptions) -> Schedule
                     }
                     if beat.tremolo || n.trill > 0 {
                         // Repeated notes (tremolo picking) or alternating notes (trill).
-                        let step_ticks = if n.trill > 0 { QUARTER as f64 / 8.0 } else { QUARTER as f64 / 4.0 };
+                        let step_ticks = if n.trill > 0 {
+                            QUARTER as f64 / 8.0
+                        } else {
+                            QUARTER as f64 / 4.0
+                        };
                         let step = ((step_ticks * spt) as u64).max(1);
-                        let trill_p = (track.tuning.get(n.string as usize).copied().unwrap_or(40) as i32 + n.trill as i32 + track.capo_at(n.string as usize) as i32) as f32;
+                        let trill_p = (track.tuning.get(n.string as usize).copied().unwrap_or(40)
+                            as i32
+                            + n.trill as i32
+                            + track.capo_at(n.string as usize) as i32)
+                            as f32;
                         let total = total.max(1);
                         let mut at = 0u64;
                         let mut i = 0;
@@ -893,14 +1009,21 @@ fn build_voice_schedule(song: &Song, sr: f32, opt: &ScheduleOptions) -> Schedule
                                 freq: if alt { freq_of(trill_p) } else { base.freq },
                                 fret: if alt { n.trill } else { n.fret },
                                 soft_attack: n.trill > 0 && i > 0,
-                                vel: if n.trill > 0 && i > 0 { vel * 0.85 } else { vel },
+                                vel: if n.trill > 0 && i > 0 {
+                                    vel * 0.85
+                                } else {
+                                    vel
+                                },
                                 ..base.clone()
                             });
                             at += step;
                             i += 1;
                         }
                     } else {
-                        events.push(NoteEvent { len: total.max(1), ..base });
+                        events.push(NoteEvent {
+                            len: total.max(1),
+                            ..base
+                        });
                     }
                 }
                 tick += bt;
@@ -927,7 +1050,11 @@ fn click(at: u64, strong: bool, sr: f32) -> NoteEvent {
         vibrato: false,
         vel: if strong { 0.6 } else { 0.4 },
         pan: 0.0,
-        timbre: if strong { Timbre::ClickHigh } else { Timbre::ClickLow },
+        timbre: if strong {
+            Timbre::ClickHigh
+        } else {
+            Timbre::ClickLow
+        },
         muted: false,
         dead: false,
         harmonic: false,
@@ -974,12 +1101,20 @@ fn prev_hammer(song: &Song, ti: usize, bi: usize, bj: usize, s: u8) -> bool {
     } else {
         None
     };
-    prev.and_then(|b| b.note_on(s)).map(|n| n.hammer || n.slide).unwrap_or(false)
+    prev.and_then(|b| b.note_on(s))
+        .map(|n| n.hammer || n.slide)
+        .unwrap_or(false)
 }
 
 /// Renders the whole song with the built-in sound (stereo, interleaved).
 pub fn render_song(song: &Song, sr: f32, speed: f32) -> Vec<f32> {
-    let opt = ScheduleOptions { from_bar: 0, metronome: false, count_in: false, speed, only_bars: None };
+    let opt = ScheduleOptions {
+        from_bar: 0,
+        metronome: false,
+        count_in: false,
+        speed,
+        only_bars: None,
+    };
     let sch = build_schedule(song, sr, &opt);
     let end = sch.end + (sr * 2.0) as u64;
     let mut st = PlayerState {
@@ -1014,7 +1149,13 @@ mod tests {
     fn demo_song_makes_sound() {
         let song = Song::demo();
         let sr = 44100.0;
-        let opt = ScheduleOptions { from_bar: 0, metronome: true, count_in: false, speed: 1.0, only_bars: None };
+        let opt = ScheduleOptions {
+            from_bar: 0,
+            metronome: true,
+            count_in: false,
+            speed: 1.0,
+            only_bars: None,
+        };
         let sch = build_schedule(&song, sr, &opt);
         assert!(!sch.events.is_empty());
         // 16 bars played (4 repeated twice + 8).
@@ -1022,7 +1163,10 @@ mod tests {
         // A second voice adds its notes.
         let mut s2 = song.clone();
         s2.tracks[0].bars[0].pad_voices();
-        s2.tracks[0].bars[0].voices[0] = vec![Beat { notes: vec![Note::new(0, 12)], ..Beat::rest(Dur::Whole) }];
+        s2.tracks[0].bars[0].voices[0] = vec![Beat {
+            notes: vec![Note::new(0, 12)],
+            ..Beat::rest(Dur::Whole)
+        }];
         let sch2 = build_schedule(&s2, sr, &opt);
         assert!(sch2.events.len() > sch.events.len());
         let mut st = PlayerState {
@@ -1052,9 +1196,18 @@ mod tests {
     fn loop_wraps_and_keeps_playing() {
         let song = Song::demo();
         let sr = 8000.0;
-        let opt = ScheduleOptions { from_bar: 0, metronome: false, count_in: false, speed: 1.0, only_bars: Some((4, 5)) };
+        let opt = ScheduleOptions {
+            from_bar: 0,
+            metronome: false,
+            count_in: false,
+            speed: 1.0,
+            only_bars: Some((4, 5)),
+        };
         let sch = build_schedule(&song, sr, &opt);
-        assert_eq!(sch.timeline.iter().map(|t| t.bar).collect::<Vec<_>>(), vec![4, 5]);
+        assert_eq!(
+            sch.timeline.iter().map(|t| t.bar).collect::<Vec<_>>(),
+            vec![4, 5]
+        );
         let t0 = &sch.timeline[0];
         // Loop the second half of bar 5 (ticks 1920..3840).
         let a = t0.start + (1920.0 * t0.samples_per_tick) as u64;
@@ -1075,7 +1228,11 @@ mod tests {
         let mut buf = vec![0.0f32; ((b - a) as usize * 3) * 2];
         st.render(&mut buf, 2);
         assert!(st.playing);
-        assert!(st.pos >= a && st.pos < b, "position {} should stay inside {a}..{b}", st.pos);
+        assert!(
+            st.pos >= a && st.pos < b,
+            "position {} should stay inside {a}..{b}",
+            st.pos
+        );
     }
 
     #[test]

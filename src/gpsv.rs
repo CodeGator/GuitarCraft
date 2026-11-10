@@ -179,7 +179,9 @@ mod tests {
     use super::*;
 
     fn sample(name: &str) -> Option<Vec<u8>> {
-        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("samples").join("Empty.gp");
+        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("samples")
+            .join("Empty.gp");
         let data = std::fs::read(p).ok()?;
         let mut z = zip::ZipArchive::new(std::io::Cursor::new(data)).ok()?;
         let mut v = vec![];
@@ -190,7 +192,9 @@ mod tests {
     #[test]
     fn matches_views_saved_by_guitar_pro() {
         // The sample: two tracks with notation and tab, ten bars, the bass track hidden.
-        let Some(full) = sample("Content/ScoreViews/0.gpsv") else { return };
+        let Some(full) = sample("Content/ScoreViews/0.gpsv") else {
+            return;
+        };
         assert_eq!(view("Full score", &[(1, 0), (1, 1)], 10, 4), full);
         let bass = sample("Content/ScoreViews/1.gpsv").unwrap();
         assert_eq!(view("Electric Bass", &[(0, 0), (0, 1)], 10, 3), bass);

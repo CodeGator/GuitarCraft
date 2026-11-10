@@ -9,7 +9,12 @@ pub enum FretAction {
 }
 
 /// Draws the neck. `marks` are (string, fret, colour) dots; returns a click.
-pub fn fretboard(ui: &mut Ui, track: &Track, marks: &[(u8, u8, Color32)], cursor_string: usize) -> FretAction {
+pub fn fretboard(
+    ui: &mut Ui,
+    track: &Track,
+    marks: &[(u8, u8, Color32)],
+    cursor_string: usize,
+) -> FretAction {
     let frets = track.frets.clamp(12, 30) as usize;
     let n = track.strings().max(1);
     let avail = ui.available_size();
@@ -32,11 +37,27 @@ pub fn fretboard(ui: &mut Ui, track: &Track, marks: &[(u8, u8, Color32)], cursor
     };
     let sy = |s: usize| top + s as f32 * (bottom - top) / (n as f32 - 1.0).max(1.0);
     // Nut.
-    p.rect_filled(Rect::from_min_max(Pos2::new(left + 22.0, top - 6.0), Pos2::new(left + 27.0, bottom + 6.0)), 0.0, Color32::from_rgb(235, 225, 200));
+    p.rect_filled(
+        Rect::from_min_max(
+            Pos2::new(left + 22.0, top - 6.0),
+            Pos2::new(left + 27.0, bottom + 6.0),
+        ),
+        0.0,
+        Color32::from_rgb(235, 225, 200),
+    );
     for f in 1..=frets {
         let x = scale(f as f32);
-        p.line_segment([Pos2::new(x, top - 6.0), Pos2::new(x, bottom + 6.0)], Stroke::new(2.0, Color32::from_rgb(190, 190, 195)));
-        p.text(Pos2::new((x + scale(f as f32 - 1.0)) * 0.5, bottom + 14.0), Align2::CENTER_CENTER, format!("{f}"), FontId::proportional(10.0), Color32::from_gray(150));
+        p.line_segment(
+            [Pos2::new(x, top - 6.0), Pos2::new(x, bottom + 6.0)],
+            Stroke::new(2.0, Color32::from_rgb(190, 190, 195)),
+        );
+        p.text(
+            Pos2::new((x + scale(f as f32 - 1.0)) * 0.5, bottom + 14.0),
+            Align2::CENTER_CENTER,
+            format!("{f}"),
+            FontId::proportional(10.0),
+            Color32::from_gray(150),
+        );
     }
     // Inlays.
     let mid = (top + bottom) * 0.5;
@@ -58,13 +79,34 @@ pub fn fretboard(ui: &mut Ui, track: &Track, marks: &[(u8, u8, Color32)], cursor
     for s in 0..n {
         let y = sy(s);
         let w = 1.0 + s as f32 * 0.35 * (6.0 / n as f32);
-        let col = if s == cursor_string { Color32::from_rgb(255, 230, 150) } else { Color32::from_rgb(210, 205, 195) };
-        p.line_segment([Pos2::new(left + 22.0, y), Pos2::new(right, y)], Stroke::new(w, col));
+        let col = if s == cursor_string {
+            Color32::from_rgb(255, 230, 150)
+        } else {
+            Color32::from_rgb(210, 205, 195)
+        };
+        p.line_segment(
+            [Pos2::new(left + 22.0, y), Pos2::new(right, y)],
+            Stroke::new(w, col),
+        );
         let open = track.tuning.get(s).copied().unwrap_or(40) + track.capo_at(s);
-        p.text(Pos2::new(r.left() + 22.0, y), Align2::CENTER_CENTER, note_name(open), FontId::proportional(12.0), if s == cursor_string { Color32::from_rgb(255, 210, 120) } else { Color32::from_gray(200) });
+        p.text(
+            Pos2::new(r.left() + 22.0, y),
+            Align2::CENTER_CENTER,
+            note_name(open),
+            FontId::proportional(12.0),
+            if s == cursor_string {
+                Color32::from_rgb(255, 210, 120)
+            } else {
+                Color32::from_gray(200)
+            },
+        );
     }
     let pos_of = |s: u8, f: u8| -> Pos2 {
-        let x = if f == 0 { left + 14.0 } else { (scale(f as f32) + scale(f as f32 - 1.0)) * 0.5 };
+        let x = if f == 0 {
+            left + 14.0
+        } else {
+            (scale(f as f32) + scale(f as f32 - 1.0)) * 0.5
+        };
         Pos2::new(x, sy(s as usize))
     };
     // Hover hint.
@@ -72,15 +114,34 @@ pub fn fretboard(ui: &mut Ui, track: &Track, marks: &[(u8, u8, Color32)], cursor
         if let Some((s, f)) = locate(hp, n, frets, &sy, &scale, left) {
             let c = pos_of(s, f);
             p.circle_stroke(c, 8.0, Stroke::new(1.5, Color32::from_white_alpha(140)));
-            let pitch = track.tuning.get(s as usize).copied().unwrap_or(40) as u32 + f as u32 + track.capo_at(s as usize) as u32;
-            p.text(Pos2::new(r.right() - 16.0, r.top() + 4.0), Align2::RIGHT_TOP, format!("String {} · Fret {} · {}", s + 1, f, note_name_oct(pitch.min(127) as u8)), FontId::proportional(11.0), Color32::from_gray(200));
+            let pitch = track.tuning.get(s as usize).copied().unwrap_or(40) as u32
+                + f as u32
+                + track.capo_at(s as usize) as u32;
+            p.text(
+                Pos2::new(r.right() - 16.0, r.top() + 4.0),
+                Align2::RIGHT_TOP,
+                format!(
+                    "String {} · Fret {} · {}",
+                    s + 1,
+                    f,
+                    note_name_oct(pitch.min(127) as u8)
+                ),
+                FontId::proportional(11.0),
+                Color32::from_gray(200),
+            );
         }
     }
     for &(s, f, col) in marks {
         if (s as usize) < n {
             let c = pos_of(s, f);
             p.circle_filled(c, 8.0, col);
-            p.text(c, Align2::CENTER_CENTER, format!("{f}"), FontId::proportional(10.0), Color32::WHITE);
+            p.text(
+                c,
+                Align2::CENTER_CENTER,
+                format!("{f}"),
+                FontId::proportional(10.0),
+                Color32::WHITE,
+            );
         }
     }
     if resp.clicked() {
@@ -93,7 +154,14 @@ pub fn fretboard(ui: &mut Ui, track: &Track, marks: &[(u8, u8, Color32)], cursor
     FretAction::None
 }
 
-fn locate(hp: Pos2, n: usize, frets: usize, sy: &dyn Fn(usize) -> f32, scale: &dyn Fn(f32) -> f32, left: f32) -> Option<(u8, u8)> {
+fn locate(
+    hp: Pos2,
+    n: usize,
+    frets: usize,
+    sy: &dyn Fn(usize) -> f32,
+    scale: &dyn Fn(f32) -> f32,
+    left: f32,
+) -> Option<(u8, u8)> {
     let mut best_s = 0;
     let mut bd = f32::MAX;
     for s in 0..n {

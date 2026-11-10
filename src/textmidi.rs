@@ -72,12 +72,19 @@ pub fn export_ascii(song: &Song, ti: usize) -> String {
     if !song.artist.is_empty() {
         out.push_str(&format!("{}\n", song.artist));
     }
-    out.push_str(&format!("Track: {}   Tuning: {}   Tempo: {}\n\n", tr.name, tuning_name(&tr.tuning), song.tempo));
+    out.push_str(&format!(
+        "Track: {}   Tuning: {}   Tempo: {}\n\n",
+        tr.name,
+        tuning_name(&tr.tuning),
+        song.tempo
+    ));
     let n = tr.strings();
     let per_line = 4;
     for chunk_start in (0..song.bar_count()).step_by(per_line) {
         let mut marks = String::from("   ");
-        let mut lines: Vec<String> = (0..n).map(|s| format!("{:<2}|", note_name(tr.tuning[s]))).collect();
+        let mut lines: Vec<String> = (0..n)
+            .map(|s| format!("{:<2}|", note_name(tr.tuning[s])))
+            .collect();
         for bi in chunk_start..(chunk_start + per_line).min(song.bar_count()) {
             for beat in &tr.bars[bi].beats {
                 let cells: Vec<String> = (0..n)
@@ -96,7 +103,13 @@ pub fn export_ascii(song: &Song, ti: usize) -> String {
                     _ => 3,
                 };
                 let bm = beat_marks(beat);
-                let w = cells.iter().map(|c| c.len() + 1).max().unwrap_or(0).max(base).max(bm.len() + 1);
+                let w = cells
+                    .iter()
+                    .map(|c| c.len() + 1)
+                    .max()
+                    .unwrap_or(0)
+                    .max(base)
+                    .max(bm.len() + 1);
                 marks.push_str(&bm);
                 for _ in bm.len()..w {
                     marks.push(' ');
@@ -160,7 +173,8 @@ fn place_pitches(track: &Track, pitches: &[u8]) -> Vec<Note> {
     ps.sort_by(|a, b| b.cmp(a));
     ps.dedup();
     let lowest = track.tuning.iter().map(|&x| x as i32).min().unwrap_or(40) + track.capo as i32;
-    let highest = track.tuning.iter().map(|&x| x as i32).max().unwrap_or(64) + maxf + track.capo as i32;
+    let highest =
+        track.tuning.iter().map(|&x| x as i32).max().unwrap_or(64) + maxf + track.capo as i32;
     for mut p in ps {
         while p < lowest {
             p += 12;
@@ -202,7 +216,9 @@ fn is_tab_line(l: &str) -> bool {
         },
     };
     let dashes = body.chars().filter(|&c| c == '-').count();
-    let allowed = body.chars().all(|c| c.is_ascii_digit() || "-|hpbrs/\\~xXtWLMg<>().=^vnVSP+*".contains(c) || c == ' ');
+    let allowed = body
+        .chars()
+        .all(|c| c.is_ascii_digit() || "-|hpbrs/\\~xXtWLMg<>().=^vnVSP+*".contains(c) || c == ' ');
     allowed && dashes * 3 >= body.len()
 }
 
@@ -288,15 +304,22 @@ pub fn import_ascii(text: &str) -> Result<Track, String> {
             .iter()
             .map(|l| {
                 let t = l.trim();
-                let start = t.find('|').filter(|&i| i <= 4).map(|i| i + 1).unwrap_or_else(|| t.find('-').unwrap_or(0));
+                let start = t
+                    .find('|')
+                    .filter(|&i| i <= 4)
+                    .map(|i| i + 1)
+                    .unwrap_or_else(|| t.find('-').unwrap_or(0));
                 t[start..].chars().collect()
             })
             .collect();
         let width = rows.iter().map(|r| r.len()).max().unwrap_or(0);
-        let rows: Vec<Vec<char>> = rows.into_iter().map(|mut r| {
-            r.resize(width, '-');
-            r
-        }).collect();
+        let rows: Vec<Vec<char>> = rows
+            .into_iter()
+            .map(|mut r| {
+                r.resize(width, '-');
+                r
+            })
+            .collect();
         // Bar lines are columns where most strings have '|'.
         let mut cuts = vec![0usize];
         for c in 0..width {
@@ -320,7 +343,10 @@ pub fn import_ascii(text: &str) -> Result<Track, String> {
                     if ch.is_ascii_digit() && !prev.is_ascii_digit() {
                         let mut f = ch.to_digit(10).unwrap();
                         let mut k = c + 1;
-                        if k < b && r[k].is_ascii_digit() && f * 10 + r[k].to_digit(10).unwrap() <= 24 {
+                        if k < b
+                            && r[k].is_ascii_digit()
+                            && f * 10 + r[k].to_digit(10).unwrap() <= 24
+                        {
                             f = f * 10 + r[k].to_digit(10).unwrap();
                             k += 1;
                         }
@@ -442,7 +468,8 @@ pub fn import_midi(data: &[u8], title: &str) -> Result<Song, String> {
     let mut sigs: Vec<(u32, u8, u8)> = vec![];
     let mut keys: Vec<(u32, i8)> = vec![];
     // (track index, channel) -> notes, program, name
-    let mut parts: std::collections::BTreeMap<(usize, u8), (Vec<MidiNote>, u8, String)> = Default::default();
+    let mut parts: std::collections::BTreeMap<(usize, u8), (Vec<MidiNote>, u8, String)> =
+        Default::default();
     for ti in 0..ntracks {
         if p + 8 > data.len() || &data[p..p + 4] != b"MTrk" {
             break;
@@ -457,23 +484,30 @@ pub fn import_midi(data: &[u8], title: &str) -> Result<Song, String> {
         let mut programs = [0u8; 16];
         let mut open: std::collections::HashMap<(u8, u8), (u32, u8)> = Default::default();
         while q < end {
-            let Some(dt) = read_vlq(data, &mut q) else { break };
+            let Some(dt) = read_vlq(data, &mut q) else {
+                break;
+            };
             t += dt;
             let Some(&b) = data.get(q) else { break };
             if b == 0xff {
                 let kind = *data.get(q + 1).unwrap_or(&0);
                 q += 2;
-                let Some(l) = read_vlq(data, &mut q) else { break };
+                let Some(l) = read_vlq(data, &mut q) else {
+                    break;
+                };
                 let body = &data[q.min(end)..(q + l as usize).min(end)];
                 match kind {
                     0x03 => name = String::from_utf8_lossy(body).trim().to_string(),
                     0x51 if body.len() == 3 => {
-                        let us = ((body[0] as u32) << 16) | ((body[1] as u32) << 8) | body[2] as u32;
+                        let us =
+                            ((body[0] as u32) << 16) | ((body[1] as u32) << 8) | body[2] as u32;
                         if us > 0 {
                             tempos.push((to_ticks(t), (60_000_000.0 / us as f32).round() as u32));
                         }
                     }
-                    0x58 if body.len() >= 2 => sigs.push((to_ticks(t), body[0].max(1), 1u8 << body[1].min(5))),
+                    0x58 if body.len() >= 2 => {
+                        sigs.push((to_ticks(t), body[0].max(1), 1u8 << body[1].min(5)))
+                    }
                     0x59 if !body.is_empty() => keys.push((to_ticks(t), body[0] as i8)),
                     _ => {}
                 }
@@ -482,7 +516,9 @@ pub fn import_midi(data: &[u8], title: &str) -> Result<Song, String> {
             }
             if b == 0xf0 || b == 0xf7 {
                 q += 1;
-                let Some(l) = read_vlq(data, &mut q) else { break };
+                let Some(l) = read_vlq(data, &mut q) else {
+                    break;
+                };
                 q += l as usize;
                 continue;
             }
@@ -506,8 +542,15 @@ pub fn import_midi(data: &[u8], title: &str) -> Result<Song, String> {
                     if st & 0xf0 == 0x90 && vel > 0 {
                         open.insert((ch, key), (to_ticks(t), vel));
                     } else if let Some((s0, v)) = open.remove(&(ch, key)) {
-                        let e = parts.entry((ti, ch)).or_insert_with(|| (vec![], programs[ch as usize], name.clone()));
-                        e.0.push(MidiNote { start: s0, end: to_ticks(t).max(s0 + 1), pitch: key, vel: v });
+                        let e = parts
+                            .entry((ti, ch))
+                            .or_insert_with(|| (vec![], programs[ch as usize], name.clone()));
+                        e.0.push(MidiNote {
+                            start: s0,
+                            end: to_ticks(t).max(s0 + 1),
+                            pitch: key,
+                            vel: v,
+                        });
                     }
                 }
                 0xA0 | 0xB0 | 0xE0 => {
@@ -541,7 +584,11 @@ pub fn import_midi(data: &[u8], title: &str) -> Result<Song, String> {
     if parts.is_empty() {
         return Err("This MIDI file has no notes.".into());
     }
-    let last = parts.values().flat_map(|v| v.0.iter().map(|n| n.end)).max().unwrap_or(0);
+    let last = parts
+        .values()
+        .flat_map(|v| v.0.iter().map(|n| n.end))
+        .max()
+        .unwrap_or(0);
     // Master bars from time signatures.
     sigs.sort_by_key(|s| s.0);
     let mut master = vec![];
@@ -552,7 +599,11 @@ pub fn import_midi(data: &[u8], title: &str) -> Result<Song, String> {
             num = s.1;
             den = s.2;
         }
-        let mut mb = MasterBar { num, den, ..MasterBar::default() };
+        let mut mb = MasterBar {
+            num,
+            den,
+            ..MasterBar::default()
+        };
         if let Some(k) = keys.iter().rev().find(|k| k.0 <= t) {
             mb.key = k.1.clamp(-7, 7);
         }
@@ -582,7 +633,9 @@ pub fn import_midi(data: &[u8], title: &str) -> Result<Song, String> {
     for (k, ((_, ch), (notes, prog, name))) in parts.into_iter().enumerate() {
         let avg = notes.iter().map(|n| n.pitch as u32).sum::<u32>() / notes.len() as u32;
         let drum = ch == 9;
-        let other = !drum && !Instrument::from_midi_program(prog).has_strings_kind() && !(32..=39).contains(&prog);
+        let other = !drum
+            && !Instrument::from_midi_program(prog).has_strings_kind()
+            && !(32..=39).contains(&prog);
         let bass = !drum && !other && ((32..=39).contains(&prog) || avg < 45);
         let mut tr = Track::default();
         tr.color = TRACK_COLORS[k % TRACK_COLORS.len()];
@@ -590,7 +643,10 @@ pub fn import_midi(data: &[u8], title: &str) -> Result<Song, String> {
             tr = Track::of_instrument(Instrument::Drums, "Drums");
             tr.color = TRACK_COLORS[k % TRACK_COLORS.len()];
         } else if other {
-            tr = Track::of_instrument(Instrument::from_midi_program(prog), Instrument::from_midi_program(prog).name());
+            tr = Track::of_instrument(
+                Instrument::from_midi_program(prog),
+                Instrument::from_midi_program(prog).name(),
+            );
             tr.color = TRACK_COLORS[k % TRACK_COLORS.len()];
         } else if bass {
             tr.instrument = Instrument::Bass;
@@ -598,8 +654,20 @@ pub fn import_midi(data: &[u8], title: &str) -> Result<Song, String> {
         } else {
             tr.instrument = Instrument::from_midi_program(prog);
         }
-        let label = if drum { "Drums" } else if other { tr.instrument.name() } else if bass { "Bass" } else { "Guitar" };
-        tr.name = if name.is_empty() { format!("{} {}", label, k + 1) } else { name };
+        let label = if drum {
+            "Drums"
+        } else if other {
+            tr.instrument.name()
+        } else if bass {
+            "Bass"
+        } else {
+            "Guitar"
+        };
+        tr.name = if name.is_empty() {
+            format!("{} {}", label, k + 1)
+        } else {
+            name
+        };
         // Quantise and group by onset.
         let mut by_onset: std::collections::BTreeMap<u32, (Vec<u8>, u32, u8)> = Default::default();
         for n in &notes {
@@ -624,7 +692,11 @@ pub fn import_midi(data: &[u8], title: &str) -> Result<Song, String> {
                     beats.push(r);
                 }
             };
-            for (i, &o) in onsets.iter().enumerate().filter(|(_, &o)| o >= bs && o < be) {
+            for (i, &o) in onsets
+                .iter()
+                .enumerate()
+                .filter(|(_, &o)| o >= bs && o < be)
+            {
                 if o > pos {
                     push_rest(&mut beats, o - pos);
                 }
@@ -637,11 +709,14 @@ pub fn import_midi(data: &[u8], title: &str) -> Result<Song, String> {
                     let mut b = Beat::rest(d);
                     b.dotted = dot;
                     b.dynamic = Dynamic::from_velocity(*vel);
-                    b.notes = placed.iter().map(|n| {
-                        let mut x = n.clone();
-                        x.tie = j > 0;
-                        x
-                    }).collect();
+                    b.notes = placed
+                        .iter()
+                        .map(|n| {
+                            let mut x = n.clone();
+                            x.tie = j > 0;
+                            x
+                        })
+                        .collect();
                     beats.push(b);
                 }
                 if span > sound {
@@ -681,10 +756,15 @@ mod tests {
 
     #[test]
     fn ascii_plain_tab() {
-        let tab = "e|-----0---|\nB|---1-----|\nG|-2-------|\nD|---------|\nA|3--------|\nE|---------|\n";
+        let tab =
+            "e|-----0---|\nB|---1-----|\nG|-2-------|\nD|---------|\nA|3--------|\nE|---------|\n";
         let t = import_ascii(tab).unwrap();
         assert_eq!(t.bars.len(), 1);
-        let notes: Vec<u8> = t.bars[0].beats.iter().filter_map(|b| b.notes.first().map(|n| n.fret)).collect();
+        let notes: Vec<u8> = t.bars[0]
+            .beats
+            .iter()
+            .filter_map(|b| b.notes.first().map(|n| n.fret))
+            .collect();
         assert_eq!(notes, vec![3, 2, 1, 0]);
     }
 
@@ -698,6 +778,9 @@ mod tests {
         assert!(back.bar_count() >= 12);
         // The first guitar note is the low G.
         let first = &back.tracks[0].bars[0].beats[0];
-        assert_eq!(back.tracks[0].pitch(&first.notes[0]), song.tracks[0].pitch(&song.tracks[0].bars[0].beats[0].notes[0]));
+        assert_eq!(
+            back.tracks[0].pitch(&first.notes[0]),
+            song.tracks[0].pitch(&song.tracks[0].bars[0].beats[0].notes[0])
+        );
     }
 }

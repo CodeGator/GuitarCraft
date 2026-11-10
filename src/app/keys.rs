@@ -36,7 +36,12 @@ impl App {
                 }
                 egui::Event::Paste(_) if !typing => self.paste_any(),
                 egui::Event::Text(t) if !typing => self.symbol_key(&t),
-                egui::Event::Key { key, pressed: true, modifiers, .. } => {
+                egui::Event::Key {
+                    key,
+                    pressed: true,
+                    modifiers,
+                    ..
+                } => {
                     if modifiers.command && !modifiers.alt {
                         match key {
                             Key::S if modifiers.shift => self.save(true),
@@ -80,7 +85,19 @@ impl App {
 
     pub(super) fn key(&mut self, key: Key, m: Modifiers, now: f64) {
         let cmd = m.command;
-        let digit = matches!(key, Key::Num0 | Key::Num1 | Key::Num2 | Key::Num3 | Key::Num4 | Key::Num5 | Key::Num6 | Key::Num7 | Key::Num8 | Key::Num9);
+        let digit = matches!(
+            key,
+            Key::Num0
+                | Key::Num1
+                | Key::Num2
+                | Key::Num3
+                | Key::Num4
+                | Key::Num5
+                | Key::Num6
+                | Key::Num7
+                | Key::Num8
+                | Key::Num9
+        );
         if !digit {
             self.last_digit = None;
         }
@@ -123,7 +140,13 @@ impl App {
                 Key::ArrowRight => self.goto_section(1),
                 Key::Y => self.toggle_note_flag("Artificial harmonic", |n| &mut n.pinch_harmonic),
                 Key::Num8 => self.note_edit(|x| x.spell = (x.spell + 1) % 3),
-                Key::G => self.note_edit(|x| x.grace = if x.grace.is_some() { None } else { Some(x.fret.saturating_sub(2)) }),
+                Key::G => self.note_edit(|x| {
+                    x.grace = if x.grace.is_some() {
+                        None
+                    } else {
+                        Some(x.fret.saturating_sub(2))
+                    }
+                }),
                 _ => {}
             }
             self.clamp_cursor();
@@ -148,7 +171,11 @@ impl App {
                 Key::M if m.shift => {
                     self.vfrom = self.voice;
                     self.vto = if self.voice == 0 { 1 } else { 0 };
-                    self.vrange = if self.selection().is_some() { super::voices::VoiceRange::Selection } else { super::voices::VoiceRange::Bar };
+                    self.vrange = if self.selection().is_some() {
+                        super::voices::VoiceRange::Selection
+                    } else {
+                        super::voices::VoiceRange::Bar
+                    };
                     self.voices_open = true;
                 }
                 Key::C if m.shift => self.all_track_copy(),
@@ -157,7 +184,10 @@ impl App {
                 Key::ArrowRight if m.shift => {
                     self.update_anchor(true);
                     self.bar = (self.bar + 1).min(self.song.bar_count() - 1);
-                    self.beat = self.song.tracks[self.track].bars[self.bar].voice(self.voice).len() - 1;
+                    self.beat = self.song.tracks[self.track].bars[self.bar]
+                        .voice(self.voice)
+                        .len()
+                        - 1;
                 }
                 Key::ArrowLeft if m.shift => {
                     self.update_anchor(true);
@@ -172,7 +202,10 @@ impl App {
                 Key::End if m.shift => {
                     self.update_anchor(true);
                     self.bar = self.song.bar_count() - 1;
-                    self.beat = self.song.tracks[self.track].bars[self.bar].voice(self.voice).len() - 1;
+                    self.beat = self.song.tracks[self.track].bars[self.bar]
+                        .voice(self.voice)
+                        .len()
+                        - 1;
                 }
                 Key::Num1 => self.set_voice(0),
                 Key::Num2 => self.set_voice(1),
@@ -189,14 +222,29 @@ impl App {
                 Key::A => {
                     self.sel_anchor = Some((0, 0));
                     self.bar = self.song.bar_count() - 1;
-                    self.beat = self.song.tracks[self.track].bars[self.bar].voice(self.voice).len() - 1;
+                    self.beat = self.song.tracks[self.track].bars[self.bar]
+                        .voice(self.voice)
+                        .len()
+                        - 1;
                 }
                 Key::G => self.goto_open = true,
                 Key::K => self.open_popup(Popup::KeySig),
                 Key::T => self.open_popup(Popup::TimeSig),
                 Key::Slash => self.bar_edit(|mb| mb.triplet_feel = !mb.triplet_feel),
-                Key::D => self.beat_edit(|b| b.stroke = if b.stroke == Stroke::Down { Stroke::None } else { Stroke::Down }),
-                Key::U => self.beat_edit(|b| b.stroke = if b.stroke == Stroke::Up { Stroke::None } else { Stroke::Up }),
+                Key::D => self.beat_edit(|b| {
+                    b.stroke = if b.stroke == Stroke::Down {
+                        Stroke::None
+                    } else {
+                        Stroke::Down
+                    }
+                }),
+                Key::U => self.beat_edit(|b| {
+                    b.stroke = if b.stroke == Stroke::Up {
+                        Stroke::None
+                    } else {
+                        Stroke::Up
+                    }
+                }),
                 Key::Insert if m.shift => self.add_track(false),
                 Key::Delete if m.shift => self.remove_track(),
                 Key::Insert => self.insert_bar(self.bar),
@@ -246,7 +294,10 @@ impl App {
                 }
                 Key::End => {
                     self.update_anchor(true);
-                    self.beat = self.song.tracks[self.track].bars[self.bar].voice(self.voice).len() - 1;
+                    self.beat = self.song.tracks[self.track].bars[self.bar]
+                        .voice(self.voice)
+                        .len()
+                        - 1;
                 }
                 Key::L => self.tie_beat(),
                 Key::P => {
@@ -287,7 +338,12 @@ impl App {
             Key::ArrowUp => self.string = self.string.saturating_sub(1),
             Key::ArrowDown => self.string = (self.string + 1).min(self.tr().strings() - 1),
             Key::Home => self.beat = 0,
-            Key::End => self.beat = self.song.tracks[self.track].bars[self.bar].voice(self.voice).len() - 1,
+            Key::End => {
+                self.beat = self.song.tracks[self.track].bars[self.bar]
+                    .voice(self.voice)
+                    .len()
+                    - 1
+            }
             Key::PageDown => self.goto_bar(self.bar + 4),
             Key::PageUp => self.goto_bar(self.bar.saturating_sub(4)),
             Key::Insert => self.insert_beat(),
@@ -323,7 +379,13 @@ impl App {
             Key::L => self.toggle_note_flag("Tie", |n| &mut n.tie),
             Key::X => self.toggle_note_flag("Dead note", |n| &mut n.dead),
             Key::O => self.toggle_note_flag("Ghost note", |n| &mut n.ghost),
-            Key::G => self.note_edit(|x| x.grace = if x.grace.is_some() { None } else { Some(x.fret.saturating_sub(2)) }),
+            Key::G => self.note_edit(|x| {
+                x.grace = if x.grace.is_some() {
+                    None
+                } else {
+                    Some(x.fret.saturating_sub(2))
+                }
+            }),
             Key::Y => self.toggle_note_flag("Natural harmonic", |n| &mut n.harmonic),
             Key::N => self.open_popup(Popup::Trill),
             Key::Num0 if self.std_cursor.is_some() => self.std_digit(0),
@@ -350,23 +412,37 @@ impl App {
         }
         self.clamp_cursor();
     }
-
 }
 
 pub const SHORTCUTS: [(&str, &str); 47] = [
     ("Arrow keys", "Move between beats and strings"),
-    ("Tab / Shift + Tab", "Switch between notation and tab, then the next track"),
+    (
+        "Tab / Shift + Tab",
+        "Switch between notation and tab, then the next track",
+    ),
     ("Ctrl + 1 / 2 / 3 / 4", "Edit voice 1, 2, 3 or 4"),
-    ("Alt + 1 / 2 / 3 / 4", "Move the note (or the selected notes) to voice 1, 2, 3 or 4"),
+    (
+        "Alt + 1 / 2 / 3 / 4",
+        "Move the note (or the selected notes) to voice 1, 2, 3 or 4",
+    ),
     ("Ctrl + Shift + M", "Move, copy or swap voices"),
     ("Home / End", "First / last beat of the bar"),
     ("Ctrl + \u{2190} \u{2192}", "Previous / next bar"),
     ("Ctrl + \u{2191} \u{2193}", "Previous / next track"),
     ("Shift + \u{2190} \u{2192}", "Select beats"),
     ("Ctrl + Shift + \u{2190} \u{2192}", "Select bars"),
-    ("Alt + \u{2190} \u{2192}", "Step backward / forward and hear the beat"),
-    ("Alt + \u{2191} \u{2193}", "Move the note to the next string up / down"),
-    ("0 \u{2013} 9", "Tab: type a fret. Notation: 1\u{2013}9 picks the string, 0 the best one"),
+    (
+        "Alt + \u{2190} \u{2192}",
+        "Step backward / forward and hear the beat",
+    ),
+    (
+        "Alt + \u{2191} \u{2193}",
+        "Move the note to the next string up / down",
+    ),
+    (
+        "0 \u{2013} 9",
+        "Tab: type a fret. Notation: 1\u{2013}9 picks the string, 0 the best one",
+    ),
     ("+ / \u{2212}", "Shorter / longer note"),
     (". / Ctrl + .", "Dotted / double-dotted note"),
     ("/", "Triplet"),
@@ -379,10 +455,16 @@ pub const SHORTCUTS: [(&str, &str); 47] = [
     ("O", "Ghost note"),
     ("; / : / !", "Accent / heavy accent / staccato"),
     ("H  S  B  V  N", "Hammer-on, slide, bend, vibrato, trill"),
-    ("I / P / Shift + P", "Let ring / palm mute on note / on beat"),
+    (
+        "I / P / Shift + P",
+        "Let ring / palm mute on note / on beat",
+    ),
     ("X", "Dead note"),
     ("Y / Ctrl + Alt + Y", "Natural / artificial harmonic"),
-    ("Ctrl + 7 / 8 / 9", "Spell with flats / automatically / with sharps"),
+    (
+        "Ctrl + 7 / 8 / 9",
+        "Spell with flats / automatically / with sharps",
+    ),
     ("Shift + D / U", "Pickstroke down / up"),
     ("Ctrl + D / U", "Brush down / up"),
     ("\" / ( ) / $", "Tremolo picking / tapping / slap"),
@@ -391,14 +473,32 @@ pub const SHORTCUTS: [(&str, &str); 47] = [
     ("D", "Directions (Segno, Coda, D.C., D.S.)"),
     ("Ctrl + K / T / /", "Key / time signature / triplet feel"),
     ("Ctrl + Ins / Ctrl + Del", "Insert / delete a bar"),
-    ("Ins / Del / Shift + Del", "Insert a beat / delete a note / delete beats"),
+    (
+        "Ins / Del / Shift + Del",
+        "Insert a beat / delete a note / delete beats",
+    ),
     ("Ctrl + G / Ctrl + E", "Go to a bar / command palette"),
-    ("Alt + Shift + \u{2191} \u{2193}", "Notes up / down a semitone"),
-    ("Space / Ctrl + Space / Esc", "Play-pause / play from the start / stop"),
+    (
+        "Alt + Shift + \u{2191} \u{2193}",
+        "Notes up / down a semitone",
+    ),
+    (
+        "Space / Ctrl + Space / Esc",
+        "Play-pause / play from the start / stop",
+    ),
     ("F9 / F10", "Loop / tempo automations"),
-    ("F2 / F8 / F5 / F6", "Palette / tracks / song / track settings"),
+    (
+        "F2 / F8 / F5 / F6",
+        "Palette / tracks / song / track settings",
+    ),
     ("F3 / F4", "Multitrack / check bar duration"),
     ("Ctrl + + / \u{2212}, F11", "Zoom in / out, full screen"),
-    ("Ctrl + C / X / V (+ Shift)", "Copy / cut / paste (all tracks)"),
-    ("Ctrl + Z / Y, N / O / S / W", "Undo / redo, new / open / save / close"),
+    (
+        "Ctrl + C / X / V (+ Shift)",
+        "Copy / cut / paste (all tracks)",
+    ),
+    (
+        "Ctrl + Z / Y, N / O / S / W",
+        "Undo / redo, new / open / save / close",
+    ),
 ];

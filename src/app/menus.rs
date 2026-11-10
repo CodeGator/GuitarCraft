@@ -53,7 +53,10 @@ impl App {
             if !mine.is_empty() {
                 ui.separator();
                 for p in mine {
-                    let name = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+                    let name = p
+                        .file_stem()
+                        .map(|s| s.to_string_lossy().to_string())
+                        .unwrap_or_default();
                     if ui.button(name).clicked() {
                         if self.dirty {
                             self.status = "Save or undo your changes first.".into();
@@ -74,8 +77,15 @@ impl App {
                 ui.label(RichText::new("No recent files").weak());
             }
             for p in self.recent.clone() {
-                let name = p.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-                if ui.button(name).on_hover_text(p.display().to_string()).clicked() {
+                let name = p
+                    .file_name()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                if ui
+                    .button(name)
+                    .on_hover_text(p.display().to_string())
+                    .clicked()
+                {
                     if self.dirty {
                         self.status = "Save or undo your changes first.".into();
                     } else {
@@ -123,7 +133,10 @@ impl App {
         }
         ui.separator();
         ui.menu_button("Import", |ui| {
-            if ui.button("Guitar Pro file (.gp, .gpx, .gp3\u{2013}.gp5)...").clicked() {
+            if ui
+                .button("Guitar Pro file (.gp, .gpx, .gp3\u{2013}.gp5)...")
+                .clicked()
+            {
                 self.request(Pending::Open);
                 ui.close();
             }
@@ -178,7 +191,14 @@ impl App {
             self.last_copy_all = false;
             ui.close();
         }
-        if item_if(ui, !self.clipboard.is_empty() || !self.bar_clipboard.is_empty(), "Paste", "Ctrl+V").clicked() {
+        if item_if(
+            ui,
+            !self.clipboard.is_empty() || !self.bar_clipboard.is_empty(),
+            "Paste",
+            "Ctrl+V",
+        )
+        .clicked()
+        {
             self.paste_any();
             ui.close();
         }
@@ -193,14 +213,28 @@ impl App {
         ui.separator();
         ui.menu_button("Voices", |ui| {
             for v in 0..VOICES {
-                if check(ui, self.voice == v, &format!("Voice {}", v + 1), &format!("Ctrl+{}", v + 1)).clicked() {
+                if check(
+                    ui,
+                    self.voice == v,
+                    &format!("Voice {}", v + 1),
+                    &format!("Ctrl+{}", v + 1),
+                )
+                .clicked()
+                {
                     self.set_voice(v);
                     ui.close();
                 }
             }
             ui.separator();
             for v in 0..VOICES {
-                if item_if(ui, v != self.voice, &format!("Move Note to Voice {}", v + 1), &format!("Alt+{}", v + 1)).clicked() {
+                if item_if(
+                    ui,
+                    v != self.voice,
+                    &format!("Move Note to Voice {}", v + 1),
+                    &format!("Alt+{}", v + 1),
+                )
+                .clicked()
+                {
                     self.move_to_voice(v);
                     ui.close();
                 }
@@ -242,7 +276,14 @@ impl App {
             self.move_track(-1);
             ui.close();
         }
-        if item_if(ui, self.track + 1 < self.song.tracks.len(), "Move Down", "Ctrl+Alt+Down").clicked() {
+        if item_if(
+            ui,
+            self.track + 1 < self.song.tracks.len(),
+            "Move Down",
+            "Ctrl+Alt+Down",
+        )
+        .clicked()
+        {
             self.move_track(1);
             ui.close();
         }
@@ -266,7 +307,14 @@ impl App {
             }
         }
         ui.separator();
-        if item_if(ui, self.track + 1 < self.song.tracks.len(), "Next Track", "Ctrl+Down").clicked() {
+        if item_if(
+            ui,
+            self.track + 1 < self.song.tracks.len(),
+            "Next Track",
+            "Ctrl+Down",
+        )
+        .clicked()
+        {
             self.track += 1;
             self.clamp_cursor();
             ui.close();
@@ -322,7 +370,14 @@ impl App {
             self.open_popup(Popup::Repeat);
             ui.close();
         }
-        if check(ui, mb.direction_target != 0 || mb.direction_jump != 0, "Directions...", "D").clicked() {
+        if check(
+            ui,
+            mb.direction_target != 0 || mb.direction_jump != 0,
+            "Directions...",
+            "D",
+        )
+        .clicked()
+        {
             self.dir_open = true;
             ui.close();
         }
@@ -336,7 +391,11 @@ impl App {
     fn note_menu(&mut self, ui: &mut Ui) {
         let cur = self.cur_beat().clone();
         let has = !cur.is_rest();
-        let n = cur.note_on(self.string as u8).or(cur.notes.first()).cloned().unwrap_or_default();
+        let n = cur
+            .note_on(self.string as u8)
+            .or(cur.notes.first())
+            .cloned()
+            .unwrap_or_default();
         if item(ui, "Insert a Beat", "Ins").clicked() {
             self.insert_beat();
             ui.close();
@@ -416,7 +475,11 @@ impl App {
         ui.separator();
         ui.add_enabled_ui(has, |ui| {
             ui.menu_button("Accidentals", |ui| {
-                for (v, l) in [(0u8, "Automatic"), (1, "Sharps (\u{266F})"), (2, "Flats (\u{266D})")] {
+                for (v, l) in [
+                    (0u8, "Automatic"),
+                    (1, "Sharps (\u{266F})"),
+                    (2, "Flats (\u{266D})"),
+                ] {
                     if check(ui, n.spell == v, l, "").clicked() {
                         self.note_edit(|x| x.spell = v);
                         ui.close();
@@ -460,7 +523,13 @@ impl App {
         }
         ui.separator();
         ui.menu_button("Octave Sign", |ui| {
-            for (v, l) in [(0i8, "None"), (1, "8va"), (2, "15ma"), (-1, "8vb"), (-2, "15mb")] {
+            for (v, l) in [
+                (0i8, "None"),
+                (1, "8va"),
+                (2, "15ma"),
+                (-1, "8vb"),
+                (-2, "15mb"),
+            ] {
                 if check(ui, cur.ottava == v, l, "").clicked() {
                     self.beat_edit(|b| b.ottava = v);
                     ui.close();
@@ -472,7 +541,11 @@ impl App {
     fn effects_menu(&mut self, ui: &mut Ui) {
         let cur = self.cur_beat().clone();
         let has = !cur.is_rest();
-        let n = cur.note_on(self.string as u8).or(cur.notes.first()).cloned().unwrap_or_default();
+        let n = cur
+            .note_on(self.string as u8)
+            .or(cur.notes.first())
+            .cloned()
+            .unwrap_or_default();
         ui.add_enabled_ui(has, |ui| {
             ui.menu_button("Grace Note", |ui| {
                 if check(ui, n.grace.is_none(), "None", "").clicked() {
@@ -574,11 +647,23 @@ impl App {
         });
         ui.separator();
         if check(ui, cur.stroke == Stroke::Down, "Brush Downstroke", "Ctrl+D").clicked() {
-            self.beat_edit(|b| b.stroke = if b.stroke == Stroke::Down { Stroke::None } else { Stroke::Down });
+            self.beat_edit(|b| {
+                b.stroke = if b.stroke == Stroke::Down {
+                    Stroke::None
+                } else {
+                    Stroke::Down
+                }
+            });
             ui.close();
         }
         if check(ui, cur.stroke == Stroke::Up, "Brush Upstroke", "Ctrl+U").clicked() {
-            self.beat_edit(|b| b.stroke = if b.stroke == Stroke::Up { Stroke::None } else { Stroke::Up });
+            self.beat_edit(|b| {
+                b.stroke = if b.stroke == Stroke::Up {
+                    Stroke::None
+                } else {
+                    Stroke::Up
+                }
+            });
             ui.close();
         }
         ui.separator();
@@ -608,7 +693,13 @@ impl App {
             ui.close();
         }
         ui.separator();
-        let marks: Vec<(usize, String)> = self.song.master.iter().enumerate().filter_map(|(i, m)| m.marker.clone().map(|n| (i, n))).collect();
+        let marks: Vec<(usize, String)> = self
+            .song
+            .master
+            .iter()
+            .enumerate()
+            .filter_map(|(i, m)| m.marker.clone().map(|n| (i, n)))
+            .collect();
         if marks.is_empty() {
             ui.label(RichText::new("No sections yet").weak());
         }
@@ -633,7 +724,11 @@ impl App {
         if item(ui, "Move/Swap Voices...", "Ctrl+Shift+M").clicked() {
             self.vfrom = self.voice;
             self.vto = if self.voice == 0 { 1 } else { 0 };
-            self.vrange = if self.selection().is_some() { super::voices::VoiceRange::Selection } else { super::voices::VoiceRange::Bar };
+            self.vrange = if self.selection().is_some() {
+                super::voices::VoiceRange::Selection
+            } else {
+                super::voices::VoiceRange::Bar
+            };
             self.voices_open = true;
             ui.close();
         }
@@ -711,7 +806,14 @@ impl App {
         ui.separator();
         ui.menu_button("Relative Speed", |ui| {
             for v in [25.0f32, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0] {
-                if check(ui, (self.speed - v).abs() < 0.5, &format!("{}%", v as i32), "").clicked() {
+                if check(
+                    ui,
+                    (self.speed - v).abs() < 0.5,
+                    &format!("{}%", v as i32),
+                    "",
+                )
+                .clicked()
+                {
                     self.speed = v;
                     ui.close();
                 }
@@ -721,7 +823,11 @@ impl App {
             self.trainer_open = true;
             ui.close();
         }
-        ui.add(egui::Slider::new(&mut self.speed, 10.0..=300.0).suffix("%").text("Speed"));
+        ui.add(
+            egui::Slider::new(&mut self.speed, 10.0..=300.0)
+                .suffix("%")
+                .text("Speed"),
+        );
         ui.add(egui::Slider::new(&mut self.master_volume, 0.0..=1.5).text("Volume"));
     }
 
@@ -747,7 +853,11 @@ impl App {
             self.single_track = !self.single_track;
         }
         ui.menu_button("Notation", |ui| {
-            for (v, l) in [(Notation::Both, "Standard + Tablature"), (Notation::TabOnly, "Tablature Only"), (Notation::StandardOnly, "Standard Only")] {
+            for (v, l) in [
+                (Notation::Both, "Standard + Tablature"),
+                (Notation::TabOnly, "Tablature Only"),
+                (Notation::StandardOnly, "Standard Only"),
+            ] {
                 if check(ui, self.notation == v, l, "").clicked() {
                     self.notation = v;
                     ui.close();
@@ -765,7 +875,13 @@ impl App {
             self.zoom_step(-1);
         }
         ui.separator();
-        for (v, l) in [(0u8, "Page - Vertical"), (1, "Page - Horizontal"), (2, "Page - Grid"), (3, "Screen - Vertical"), (4, "Screen - Horizontal")] {
+        for (v, l) in [
+            (0u8, "Page - Vertical"),
+            (1, "Page - Horizontal"),
+            (2, "Page - Grid"),
+            (3, "Screen - Vertical"),
+            (4, "Screen - Horizontal"),
+        ] {
             if check(ui, self.view_mode == v, l, "").clicked() {
                 self.view_mode = v;
                 ui.close();
@@ -779,8 +895,16 @@ impl App {
     }
 
     fn window_menu(&mut self, ui: &mut Ui) {
-        let title = if self.song.title.is_empty() { "Untitled".to_string() } else { self.song.title.clone() };
-        let name = if self.song.artist.is_empty() { title } else { format!("{} - {}", self.song.artist, title) };
+        let title = if self.song.title.is_empty() {
+            "Untitled".to_string()
+        } else {
+            self.song.title.clone()
+        };
+        let name = if self.song.artist.is_empty() {
+            title
+        } else {
+            format!("{} - {}", self.song.artist, title)
+        };
         if check(ui, !self.show_home, &format!("1 {name}"), "").clicked() {
             self.show_home = false;
             ui.close();

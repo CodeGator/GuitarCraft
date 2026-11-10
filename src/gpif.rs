@@ -9,13 +9,17 @@ use std::collections::HashMap;
 use std::io::Read;
 
 pub fn import_gp(data: &[u8]) -> Result<Song, String> {
-    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(data)).map_err(|_| "This .gp file isn't a readable archive.".to_string())?;
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(data))
+        .map_err(|_| "This .gp file isn't a readable archive.".to_string())?;
     let mut xml = String::new();
     let name = (0..zip.len())
         .filter_map(|i| zip.by_index(i).ok().map(|f| f.name().to_string()))
         .find(|n| n.ends_with("score.gpif"))
         .ok_or_else(|| "No score was found inside this .gp file.".to_string())?;
-    zip.by_name(&name).map_err(|e| e.to_string())?.read_to_string(&mut xml).map_err(|e| e.to_string())?;
+    zip.by_name(&name)
+        .map_err(|e| e.to_string())?
+        .read_to_string(&mut xml)
+        .map_err(|e| e.to_string())?;
     let mut song = parse_gpif(&xml)?;
     // Which tracks the full score shows (the others are hidden with the eye icon).
     let mut view = vec![];
@@ -65,7 +69,8 @@ pub fn import_gpx(data: &[u8]) -> Result<Song, String> {
     } else {
         return Err("This .gpx file has an unknown layout.".into());
     };
-    let file = read_bcfs(&fs, "score.gpif").ok_or_else(|| "No score was found inside this .gpx file.".to_string())?;
+    let file = read_bcfs(&fs, "score.gpif")
+        .ok_or_else(|| "No score was found inside this .gpx file.".to_string())?;
     let xml = String::from_utf8_lossy(&file).to_string();
     parse_gpif(&xml)
 }
@@ -125,7 +130,9 @@ fn full_score_tracks(view: &[u8]) -> Option<Vec<usize>> {
         if wt != 2 {
             continue;
         }
-        let Some(key) = pb_fields(d)?.into_iter().find(|g| g.0 == 9 && g.1 == 2) else { continue };
+        let Some(key) = pb_fields(d)?.into_iter().find(|g| g.0 == 9 && g.1 == 2) else {
+            continue;
+        };
         let mut track = 0usize;
         for (h, hw, v, _) in pb_fields(key.3)? {
             if h == 1 && hw == 0 {
@@ -178,12 +185,20 @@ fn decompress_bcfz(d: &[u8]) -> Result<Vec<u8>, String> {
     }
     let expected = i32::from_le_bytes([d[0], d[1], d[2], d[3]]).max(0) as usize;
     let mut out: Vec<u8> = Vec::with_capacity(expected);
-    let mut b = Bits { d: &d[4..], pos: 0, bit: 0 };
+    let mut b = Bits {
+        d: &d[4..],
+        pos: 0,
+        bit: 0,
+    };
     while out.len() < expected {
         let Some(flag) = b.bit() else { break };
         if flag == 1 {
-            let (Some(ws), _) = (b.bits(4), ()) else { break };
-            let (Some(offset), Some(size)) = (b.bits_rev(ws), b.bits_rev(ws)) else { break };
+            let (Some(ws), _) = (b.bits(4), ()) else {
+                break;
+            };
+            let (Some(offset), Some(size)) = (b.bits_rev(ws), b.bits_rev(ws)) else {
+                break;
+            };
             let offset = offset as usize;
             if offset == 0 || offset > out.len() {
                 return Err("This .gpx file is damaged.".into());
@@ -244,7 +259,8 @@ fn read_bcfs(d: &[u8], want: &str) -> Option<Vec<u8>> {
 }
 
 fn child<'a, 'i>(n: Node<'a, 'i>, name: &str) -> Option<Node<'a, 'i>> {
-    n.children().find(|c| c.is_element() && c.tag_name().name() == name)
+    n.children()
+        .find(|c| c.is_element() && c.tag_name().name() == name)
 }
 
 fn text(n: Option<Node>) -> String {
@@ -291,7 +307,8 @@ struct TrackInfo {
 }
 
 pub fn parse_gpif(xml: &str) -> Result<Song, String> {
-    let doc = Document::parse(xml).map_err(|e| format!("The score inside the file couldn't be read ({e})."))?;
+    let doc = Document::parse(xml)
+        .map_err(|e| format!("The score inside the file couldn't be read ({e})."))?;
     let root = doc.root_element();
     let mut song = Song::new_blank();
     if let Some(sc) = child(root, "Score") {
@@ -316,7 +333,11 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
         for a in autos.children().filter(|c| c.has_tag_name("Automation")) {
             if text(child(a, "Type")) == "Tempo" {
                 let bar = text(child(a, "Bar")).parse::<usize>().unwrap_or(0);
-                let v = text(child(a, "Value")).split_whitespace().next().and_then(|x| x.parse::<f32>().ok()).unwrap_or(120.0);
+                let v = text(child(a, "Value"))
+                    .split_whitespace()
+                    .next()
+                    .and_then(|x| x.parse::<f32>().ok())
+                    .unwrap_or(120.0);
                 tempos.push((bar, v.round().clamp(20.0, 400.0) as u32));
                 if text(child(a, "Linear")) == "true" {
                     ramps.push(bar);
@@ -329,8 +350,15 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
     let mut tracks = vec![];
     let mut staff_offset = 0;
     if let Some(ts) = child(root, "Tracks") {
-        for (k, t) in ts.children().filter(|c| c.has_tag_name("Track")).enumerate() {
-            let staves = child(t, "Staves").map(|s| s.children().filter(|c| c.has_tag_name("Staff")).count()).unwrap_or(1).max(1);
+        for (k, t) in ts
+            .children()
+            .filter(|c| c.has_tag_name("Track"))
+            .enumerate()
+        {
+            let staves = child(t, "Staves")
+                .map(|s| s.children().filter(|c| c.has_tag_name("Staff")).count())
+                .unwrap_or(1)
+                .max(1);
             let mut tuning: Vec<u8> = vec![];
             let mut capo = 0u8;
             let mut tuning_flat = true;
@@ -345,16 +373,32 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
                         tuning_flat = child(p, "Flat").is_some();
                         tuning_label = text(child(p, "Label"));
                         tuning_label_visible = text(child(p, "LabelVisible")) != "false";
-                        let mut v: Vec<u8> = text(child(p, "Pitches")).split_whitespace().filter_map(|x| x.parse::<i32>().ok()).map(|x| x.clamp(0, 127) as u8).collect();
+                        let mut v: Vec<u8> = text(child(p, "Pitches"))
+                            .split_whitespace()
+                            .filter_map(|x| x.parse::<i32>().ok())
+                            .map(|x| x.clamp(0, 127) as u8)
+                            .collect();
                         v.reverse();
                         tuning = v;
                     }
-                    Some("CapoFret") => capo = text(child(p, "Fret")).parse::<i32>().unwrap_or(0).clamp(0, 24) as u8,
-                    Some("PartialCapoFret") => partial = text(child(p, "Fret")).parse::<i32>().unwrap_or(0).clamp(0, 24) as u8,
+                    Some("CapoFret") => {
+                        capo = text(child(p, "Fret"))
+                            .parse::<i32>()
+                            .unwrap_or(0)
+                            .clamp(0, 24) as u8
+                    }
+                    Some("PartialCapoFret") => {
+                        partial = text(child(p, "Fret"))
+                            .parse::<i32>()
+                            .unwrap_or(0)
+                            .clamp(0, 24) as u8
+                    }
                     Some("PartialCapoStringFlags") => partial_bits = text(child(p, "Bitset")),
                     Some("DiagramCollection") | Some("DiagramWorkingSet") => {
                         for it in p.descendants().filter(|d| d.has_tag_name("Item")) {
-                            if let (Some(id), Some(name)) = (it.attribute("id"), it.attribute("name")) {
+                            if let (Some(id), Some(name)) =
+                                (it.attribute("id"), it.attribute("name"))
+                            {
                                 chords.insert(id.to_string(), name.to_string());
                             }
                         }
@@ -363,12 +407,30 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
                 }
             }
             let name = text(child(t, "Name"));
-            let inst_type = t.descendants().find(|d| d.has_tag_name("Type") && d.parent().map(|p| p.has_tag_name("InstrumentSet")).unwrap_or(false)).map(|n| text(Some(n)).to_lowercase()).unwrap_or_default();
-            let program = t.descendants().find(|d| d.has_tag_name("Program")).map(|n| text(Some(n))).and_then(|x| x.parse::<i32>().ok()).unwrap_or(25);
+            let inst_type = t
+                .descendants()
+                .find(|d| {
+                    d.has_tag_name("Type")
+                        && d.parent()
+                            .map(|p| p.has_tag_name("InstrumentSet"))
+                            .unwrap_or(false)
+                })
+                .map(|n| text(Some(n)).to_lowercase())
+                .unwrap_or_default();
+            let program = t
+                .descendants()
+                .find(|d| d.has_tag_name("Program"))
+                .map(|n| text(Some(n)))
+                .and_then(|x| x.parse::<i32>().ok())
+                .unwrap_or(25);
             let drum = inst_type.contains("drum") || inst_type.contains("percussion");
             let keep = tuning.len() <= 8;
             let mut tr = Track {
-                name: if name.is_empty() { format!("Track {}", k + 1) } else { name.clone() },
+                name: if name.is_empty() {
+                    format!("Track {}", k + 1)
+                } else {
+                    name.clone()
+                },
                 instrument: Instrument::from_midi_program(program.clamp(0, 127) as u8),
                 tuning: tuning.clone(),
                 capo,
@@ -381,19 +443,46 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
             tr.partial_capo = partial;
             // One digit per string, the lowest string first.
             let n = partial_bits.len();
-            tr.partial_capo_strings = partial_bits.chars().enumerate().filter(|(_, c)| *c == '1').map(|(k, _)| n - 1 - k).filter(|&s| s < 8).fold(0u8, |a, s| a | (1 << s));
+            tr.partial_capo_strings = partial_bits
+                .chars()
+                .enumerate()
+                .filter(|(_, c)| *c == '1')
+                .map(|(k, _)| n - 1 - k)
+                .filter(|&s| s < 8)
+                .fold(0u8, |a, s| a | (1 << s));
             tr.tuning_label = tuning_label.clone();
             tr.tuning_label_visible = tuning_label_visible;
-            tr.palm_mute = text(child(t, "PalmMute")).parse::<f32>().unwrap_or(0.0).clamp(0.0, 1.0);
-            tr.accentuation = text(child(t, "AutoAccentuation")).parse::<f32>().unwrap_or(0.0).clamp(0.0, 1.0);
+            tr.palm_mute = text(child(t, "PalmMute"))
+                .parse::<f32>()
+                .unwrap_or(0.0)
+                .clamp(0.0, 1.0);
+            tr.accentuation = text(child(t, "AutoAccentuation"))
+                .parse::<f32>()
+                .unwrap_or(0.0)
+                .clamp(0.0, 1.0);
             // Flags: an empty element when on (older files may say true/false).
-            tr.auto_let_ring = child(t, "LetRingThroughout").map(|n| text(Some(n)) != "false").unwrap_or(false);
-            tr.auto_brush = child(t, "AutoBrush").map(|n| text(Some(n)) != "false").unwrap_or(false);
+            tr.auto_let_ring = child(t, "LetRingThroughout")
+                .map(|n| text(Some(n)) != "false")
+                .unwrap_or(false);
+            tr.auto_brush = child(t, "AutoBrush")
+                .map(|n| text(Some(n)) != "false")
+                .unwrap_or(false);
             let style = text(child(t, "PlayingStyle"));
-            tr.playing_style = PLAYING_STYLES.iter().position(|p| p.1 == style).unwrap_or(0) as u8;
+            tr.playing_style = PLAYING_STYLES
+                .iter()
+                .position(|p| p.1 == style)
+                .unwrap_or(0) as u8;
             // Mixer: the channel strip holds pan (11) and volume (12), from 0 to 1.
-            if let Some(ps) = t.descendants().find(|d| d.has_tag_name("Parameters") && d.parent().map(|p| p.has_tag_name("ChannelStrip")).unwrap_or(false)) {
-                let v: Vec<f32> = text(Some(ps)).split_whitespace().filter_map(|x| x.parse::<f32>().ok()).collect();
+            if let Some(ps) = t.descendants().find(|d| {
+                d.has_tag_name("Parameters")
+                    && d.parent()
+                        .map(|p| p.has_tag_name("ChannelStrip"))
+                        .unwrap_or(false)
+            }) {
+                let v: Vec<f32> = text(Some(ps))
+                    .split_whitespace()
+                    .filter_map(|x| x.parse::<f32>().ok())
+                    .collect();
                 if v.len() > 12 {
                     tr.pan = (v[11] * 2.0 - 1.0).clamp(-1.0, 1.0);
                     tr.volume = v[12].clamp(0.0, 1.0);
@@ -410,16 +499,29 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
                     tr.lyrics_bar = text(child(line, "Offset")).parse::<usize>().unwrap_or(0);
                 }
             }
-            let col: Vec<u8> = text(child(t, "Color")).split_whitespace().filter_map(|x| x.parse::<u8>().ok()).collect();
+            let col: Vec<u8> = text(child(t, "Color"))
+                .split_whitespace()
+                .filter_map(|x| x.parse::<u8>().ok())
+                .collect();
             if col.len() >= 3 {
                 tr.color = [col[0], col[1], col[2]];
             }
-            if !tuning.is_empty() && (inst_type.contains("bass") || name.to_lowercase().contains("bass") || tuning.iter().min().map(|&m| m < 36).unwrap_or(false) && tuning.len() <= 5) {
+            if !tuning.is_empty()
+                && (inst_type.contains("bass")
+                    || name.to_lowercase().contains("bass")
+                    || tuning.iter().min().map(|&m| m < 36).unwrap_or(false) && tuning.len() <= 5)
+            {
                 tr.instrument = Instrument::Bass;
             }
             // The instrument family named in the file (e.g. ukulele, banjo, cello).
-            if let Some(i) = Instrument::ALL.iter().copied().find(|&i| crate::gpifwrite::inst_type(i).0.to_lowercase() == inst_type) {
-                if crate::gpifwrite::inst_type(tr.instrument).0 != crate::gpifwrite::inst_type(i).0 && i.has_strings_kind() == !tuning.is_empty() {
+            if let Some(i) = Instrument::ALL
+                .iter()
+                .copied()
+                .find(|&i| crate::gpifwrite::inst_type(i).0.to_lowercase() == inst_type)
+            {
+                if crate::gpifwrite::inst_type(tr.instrument).0 != crate::gpifwrite::inst_type(i).0
+                    && i.has_strings_kind() == !tuning.is_empty()
+                {
                     tr.instrument = i;
                 }
             }
@@ -427,16 +529,21 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
                 tr.instrument = Instrument::Drums;
             } else if !tuning.is_empty() && !tr.has_strings() {
                 // Tuned tracks are played on strings, whatever their sound.
-                tr.instrument = if inst_type.contains("bass") { Instrument::Bass } else { Instrument::CleanGuitar };
+                tr.instrument = if inst_type.contains("bass") {
+                    Instrument::Bass
+                } else {
+                    Instrument::CleanGuitar
+                };
             } else if tuning.is_empty() {
                 let low = inst_type.as_str();
-                tr.instrument = if low.contains("voice") || low.contains("vocal") || low.contains("choir") {
-                    Instrument::LeadVocals
-                } else if tr.has_strings() {
-                    Instrument::Piano
-                } else {
-                    tr.instrument
-                };
+                tr.instrument =
+                    if low.contains("voice") || low.contains("vocal") || low.contains("choir") {
+                        Instrument::LeadVocals
+                    } else if tr.has_strings() {
+                        Instrument::Piano
+                    } else {
+                        tr.instrument
+                    };
             }
             if drum || tuning.is_empty() {
                 tr.tuning = tr.instrument.default_tuning();
@@ -444,7 +551,11 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
                 tr.capo = 0;
                 tr.grand_staff = staves > 1 && tr.kind() == InstrumentType::Keyboard;
             }
-            infos.push(TrackInfo { keep, staff_offset, chords });
+            infos.push(TrackInfo {
+                keep,
+                staff_offset,
+                chords,
+            });
             tracks.push(tr);
             staff_offset += staves;
         }
@@ -461,30 +572,51 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
     let mut master = vec![];
     let mut num = 4u8;
     let mut den = 4u8;
-    let mbs: Vec<Node> = child(root, "MasterBars").map(|m| m.children().filter(|c| c.has_tag_name("MasterBar")).collect()).unwrap_or_default();
+    let mbs: Vec<Node> = child(root, "MasterBars")
+        .map(|m| {
+            m.children()
+                .filter(|c| c.has_tag_name("MasterBar"))
+                .collect()
+        })
+        .unwrap_or_default();
     for (mi, m) in mbs.iter().enumerate() {
         let time = text(child(*m, "Time"));
         if let Some((a, b)) = time.split_once('/') {
             num = a.trim().parse::<u8>().unwrap_or(num).max(1);
             den = b.trim().parse::<u8>().unwrap_or(den).max(1);
         }
-        let mut mb = MasterBar { num, den, ..MasterBar::default() };
+        let mut mb = MasterBar {
+            num,
+            den,
+            ..MasterBar::default()
+        };
         if let Some(r) = child(*m, "Repeat") {
             mb.repeat_open = r.attribute("start") == Some("true");
             if r.attribute("end") == Some("true") {
-                mb.repeat_close = r.attribute("count").and_then(|c| c.parse::<u8>().ok()).unwrap_or(2).max(2);
+                mb.repeat_close = r
+                    .attribute("count")
+                    .and_then(|c| c.parse::<u8>().ok())
+                    .unwrap_or(2)
+                    .max(2);
             }
         }
         if let Some(k) = child(*m, "Key") {
-            mb.key = text(child(k, "AccidentalCount")).parse::<i8>().unwrap_or(0).clamp(-7, 7);
+            mb.key = text(child(k, "AccidentalCount"))
+                .parse::<i8>()
+                .unwrap_or(0)
+                .clamp(-7, 7);
             mb.key_minor = text(child(k, "Mode")) == "Minor";
         }
         mb.tempo_ramp = ramps.contains(&mi);
         if let Some(d) = child(*m, "Directions") {
             let tn = text(child(d, "Target"));
             let jn = text(child(d, "Jump"));
-            mb.direction_target = (1..=5u8).find(|&c| crate::gpifwrite::direction_target_name(c) == Some(tn.as_str())).unwrap_or(0);
-            mb.direction_jump = (1..=10u8).find(|&c| crate::gpifwrite::direction_jump_name(c) == Some(jn.as_str())).unwrap_or(0);
+            mb.direction_target = (1..=5u8)
+                .find(|&c| crate::gpifwrite::direction_target_name(c) == Some(tn.as_str()))
+                .unwrap_or(0);
+            mb.direction_jump = (1..=10u8)
+                .find(|&c| crate::gpifwrite::direction_jump_name(c) == Some(jn.as_str()))
+                .unwrap_or(0);
         }
         // Fermatas: offsets as a fraction of a whole note.
         let fermata_ticks: Vec<u32> = child(*m, "Fermatas")
@@ -494,14 +626,21 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
                     .filter_map(|c| {
                         let o = text(child(c, "Offset"));
                         let (a, b) = o.split_once('/')?;
-                        let (a, b) = (a.trim().parse::<u64>().ok()?, b.trim().parse::<u64>().ok()?.max(1));
+                        let (a, b) = (
+                            a.trim().parse::<u64>().ok()?,
+                            b.trim().parse::<u64>().ok()?.max(1),
+                        );
                         Some((a * QUARTER as u64 * 4 / b) as u32)
                     })
                     .collect()
             })
             .unwrap_or_default();
         mb.double_bar = child(*m, "DoubleBar").is_some();
-        mb.endings = text(child(*m, "AlternateEndings")).split_whitespace().filter_map(|x| x.parse::<u8>().ok()).filter(|x| (1..=8).contains(x)).fold(0u8, |a, x| a | (1 << (x - 1)));
+        mb.endings = text(child(*m, "AlternateEndings"))
+            .split_whitespace()
+            .filter_map(|x| x.parse::<u8>().ok())
+            .filter(|x| (1..=8).contains(x))
+            .fold(0u8, |a, x| a | (1 << (x - 1)));
         let feel = text(child(*m, "TripletFeel"));
         mb.triplet_feel = feel.contains("Triplet");
         if let Some(s) = child(*m, "Section") {
@@ -515,28 +654,59 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
         if let Some(&(_, t)) = tempos.iter().find(|(b, _)| *b == mi && mi > 0) {
             mb.tempo = Some(t);
         }
-        let bar_ids: Vec<String> = text(child(*m, "Bars")).split_whitespace().map(|s| s.to_string()).collect();
+        let bar_ids: Vec<String> = text(child(*m, "Bars"))
+            .split_whitespace()
+            .map(|s| s.to_string())
+            .collect();
         for (ti, info) in infos.iter().enumerate() {
             let mut bar = Bar::new(vec![]);
             if info.keep {
                 let nstr = tracks[ti].tuning.len();
                 let virt = !tracks[ti].has_strings();
-                if let Some(bn) = bar_ids.get(info.staff_offset).and_then(|id| bars_idx.get(id)) {
-                    let voice_ids: Vec<String> = text(child(*bn, "Voices")).split_whitespace().take(VOICES).map(|s| s.to_string()).collect();
+                if let Some(bn) = bar_ids
+                    .get(info.staff_offset)
+                    .and_then(|id| bars_idx.get(id))
+                {
+                    let voice_ids: Vec<String> = text(child(*bn, "Voices"))
+                        .split_whitespace()
+                        .take(VOICES)
+                        .map(|s| s.to_string())
+                        .collect();
                     for (vk, vid) in voice_ids.iter().enumerate() {
-                        let Some(vn) = voices_idx.get(vid) else { continue };
+                        let Some(vn) = voices_idx.get(vid) else {
+                            continue;
+                        };
                         let mut beats = vec![];
                         // Grace notes come as short beats just before the note they lead into.
                         let mut grace: Vec<Note> = vec![];
                         for bid in text(child(*vn, "Beats")).split_whitespace() {
                             if let Some(bt) = beats_idx.get(bid) {
                                 if child(*bt, "GraceNotes").is_some() {
-                                    grace = read_beat(*bt, &rhythms_idx, &notes_idx, nstr, &info.chords, virt).notes;
+                                    grace = read_beat(
+                                        *bt,
+                                        &rhythms_idx,
+                                        &notes_idx,
+                                        nstr,
+                                        &info.chords,
+                                        virt,
+                                    )
+                                    .notes;
                                     continue;
                                 }
-                                let mut b = read_beat(*bt, &rhythms_idx, &notes_idx, nstr, &info.chords, virt);
+                                let mut b = read_beat(
+                                    *bt,
+                                    &rhythms_idx,
+                                    &notes_idx,
+                                    nstr,
+                                    &info.chords,
+                                    virt,
+                                );
                                 for g in grace.drain(..) {
-                                    let target = if virt { b.notes.first_mut() } else { b.note_on_mut(g.string) };
+                                    let target = if virt {
+                                        b.notes.first_mut()
+                                    } else {
+                                        b.note_on_mut(g.string)
+                                    };
                                     if let Some(n) = target {
                                         n.grace = Some(g.fret);
                                     }
@@ -553,11 +723,35 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
                     }
                 }
                 if tracks[ti].grand() {
-                    if let Some(bn) = bar_ids.get(info.staff_offset + 1).and_then(|id| bars_idx.get(id)) {
-                        let vid = text(child(*bn, "Voices")).split_whitespace().next().map(|x| x.to_string());
+                    if let Some(bn) = bar_ids
+                        .get(info.staff_offset + 1)
+                        .and_then(|id| bars_idx.get(id))
+                    {
+                        let vid = text(child(*bn, "Voices"))
+                            .split_whitespace()
+                            .next()
+                            .map(|x| x.to_string());
                         if let Some(vn) = vid.and_then(|v| voices_idx.get(&v).copied()) {
-                            let beats: Vec<Beat> = text(child(vn, "Beats")).split_whitespace().filter_map(|bid| beats_idx.get(bid)).filter(|bt| child(**bt, "GraceNotes").is_none()).map(|bt| read_beat(*bt, &rhythms_idx, &notes_idx, nstr, &info.chords, virt)).collect();
-                            let same = beats.len() == bar.beats.len() && beats.iter().zip(bar.beats.iter()).all(|(a, b)| a.ticks() == b.ticks());
+                            let beats: Vec<Beat> = text(child(vn, "Beats"))
+                                .split_whitespace()
+                                .filter_map(|bid| beats_idx.get(bid))
+                                .filter(|bt| child(**bt, "GraceNotes").is_none())
+                                .map(|bt| {
+                                    read_beat(
+                                        *bt,
+                                        &rhythms_idx,
+                                        &notes_idx,
+                                        nstr,
+                                        &info.chords,
+                                        virt,
+                                    )
+                                })
+                                .collect();
+                            let same = beats.len() == bar.beats.len()
+                                && beats
+                                    .iter()
+                                    .zip(bar.beats.iter())
+                                    .all(|(a, b)| a.ticks() == b.ticks());
                             if same {
                                 for (low, up) in beats.into_iter().zip(bar.beats.iter_mut()) {
                                     for mut n in low.notes {
@@ -569,7 +763,9 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
                                 }
                             } else if beats.iter().any(|b| !b.is_rest()) {
                                 bar.pad_voices();
-                                if let Some(slot) = (0..bar.voices.len()).find(|&k| bar.voices[k].iter().all(|b| b.is_rest())) {
+                                if let Some(slot) = (0..bar.voices.len())
+                                    .find(|&k| bar.voices[k].iter().all(|b| b.is_rest()))
+                                {
                                     bar.voices[slot] = beats;
                                 }
                             }
@@ -599,14 +795,29 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
         song.tempo = t;
     }
     song.master = master;
-    song.tracks = tracks.into_iter().zip(infos.iter()).filter(|(_, i)| i.keep).map(|(t, _)| t).collect();
+    song.tracks = tracks
+        .into_iter()
+        .zip(infos.iter())
+        .filter(|(_, i)| i.keep)
+        .map(|(t, _)| t)
+        .collect();
     song.normalize();
     Ok(song)
 }
 
-fn read_beat(bt: Node, rhythms: &HashMap<String, Node>, notes: &HashMap<String, Node>, nstr: usize, chords: &HashMap<String, String>, virt: bool) -> Beat {
+fn read_beat(
+    bt: Node,
+    rhythms: &HashMap<String, Node>,
+    notes: &HashMap<String, Node>,
+    nstr: usize,
+    chords: &HashMap<String, String>,
+    virt: bool,
+) -> Beat {
     let mut beat = Beat::rest(Dur::Quarter);
-    if let Some(r) = child(bt, "Rhythm").and_then(|r| r.attribute("ref")).and_then(|id| rhythms.get(id)) {
+    if let Some(r) = child(bt, "Rhythm")
+        .and_then(|r| r.attribute("ref"))
+        .and_then(|id| rhythms.get(id))
+    {
         beat.dur = match text(child(*r, "NoteValue")).as_str() {
             "Whole" => Dur::Whole,
             "Half" => Dur::Half,
@@ -698,37 +909,51 @@ fn read_beat(bt: Node, rhythms: &HashMap<String, Node>, notes: &HashMap<String, 
         let p = props(*nn);
         let mut n = if virt {
             // Instruments without strings: the note's pitch, on the next free virtual string.
-            let pitch = p.get("Midi").map(|x| text(child(*x, "Number"))).and_then(|x| x.parse::<i32>().ok()).or_else(|| {
-                let cp = p.get("ConcertPitch").or_else(|| p.get("TransposedPitch"))?;
-                let pt = child(*cp, "Pitch")?;
-                let step = match text(child(pt, "Step")).as_str() {
-                    "C" => 0,
-                    "D" => 2,
-                    "E" => 4,
-                    "F" => 5,
-                    "G" => 7,
-                    "A" => 9,
-                    "B" => 11,
-                    _ => return None,
-                };
-                let acc = match text(child(pt, "Accidental")).as_str() {
-                    "#" => 1,
-                    "b" => -1,
-                    "##" | "x" => 2,
-                    "bb" => -2,
-                    _ => 0,
-                };
-                let oct = text(child(pt, "Octave")).parse::<i32>().ok()?;
-                Some((oct + 1) * 12 + step + acc)
-            });
+            let pitch = p
+                .get("Midi")
+                .map(|x| text(child(*x, "Number")))
+                .and_then(|x| x.parse::<i32>().ok())
+                .or_else(|| {
+                    let cp = p.get("ConcertPitch").or_else(|| p.get("TransposedPitch"))?;
+                    let pt = child(*cp, "Pitch")?;
+                    let step = match text(child(pt, "Step")).as_str() {
+                        "C" => 0,
+                        "D" => 2,
+                        "E" => 4,
+                        "F" => 5,
+                        "G" => 7,
+                        "A" => 9,
+                        "B" => 11,
+                        _ => return None,
+                    };
+                    let acc = match text(child(pt, "Accidental")).as_str() {
+                        "#" => 1,
+                        "b" => -1,
+                        "##" | "x" => 2,
+                        "bb" => -2,
+                        _ => 0,
+                    };
+                    let oct = text(child(pt, "Octave")).parse::<i32>().ok()?;
+                    Some((oct + 1) * 12 + step + acc)
+                });
             let Some(pitch) = pitch else { continue };
             if beat.notes.len() >= nstr {
                 continue;
             }
             Note::new(beat.notes.len() as u8, pitch.clamp(0, 127) as u8)
         } else {
-            let Some(s) = p.get("String").and_then(|x| text(child(*x, "String")).parse::<usize>().ok()) else { continue };
-            let Some(f) = p.get("Fret").and_then(|x| text(child(*x, "Fret")).parse::<i32>().ok()) else { continue };
+            let Some(s) = p
+                .get("String")
+                .and_then(|x| text(child(*x, "String")).parse::<usize>().ok())
+            else {
+                continue;
+            };
+            let Some(f) = p
+                .get("Fret")
+                .and_then(|x| text(child(*x, "Fret")).parse::<i32>().ok())
+            else {
+                continue;
+            };
             if s >= nstr {
                 continue;
             }
@@ -737,7 +962,10 @@ fn read_beat(bt: Node, rhythms: &HashMap<String, Node>, notes: &HashMap<String, 
         n.dead = p.contains_key("Muted");
         n.palm_mute = p.contains_key("PalmMuted");
         n.hammer = p.contains_key("HopoOrigin");
-        let htype = p.get("HarmonicType").map(|x| text(child(*x, "HType"))).unwrap_or_default();
+        let htype = p
+            .get("HarmonicType")
+            .map(|x| text(child(*x, "HType")))
+            .unwrap_or_default();
         if htype == "Pinch" || htype == "Artificial" {
             n.pinch_harmonic = true;
         } else {
@@ -752,7 +980,10 @@ fn read_beat(bt: Node, rhythms: &HashMap<String, Node>, notes: &HashMap<String, 
         if p.contains_key("Bended") {
             let mut v = 0.0f32;
             for k in ["BendDestinationValue", "BendMiddleValue"] {
-                if let Some(x) = p.get(k).and_then(|x| text(child(*x, "Float")).parse::<f32>().ok()) {
+                if let Some(x) = p
+                    .get(k)
+                    .and_then(|x| text(child(*x, "Float")).parse::<f32>().ok())
+                {
                     v = v.max(x);
                 }
             }
@@ -839,7 +1070,11 @@ mod tests {
         let mut bits: Vec<u8> = vec![];
         let push = |bits: &mut Vec<u8>, v: u32, n: u32, rev: bool| {
             for i in 0..n {
-                let b = if rev { (v >> i) & 1 } else { (v >> (n - 1 - i)) & 1 };
+                let b = if rev {
+                    (v >> i) & 1
+                } else {
+                    (v >> (n - 1 - i)) & 1
+                };
                 bits.push(b as u8);
             }
         };

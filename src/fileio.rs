@@ -11,8 +11,16 @@ pub const GP5_EXT: &str = "gp5";
 
 /// Saves a song as a Guitar Pro file: .gp5 for the older format, otherwise .gp.
 pub fn save_song(song: &Song, path: &std::path::Path) -> Result<(), String> {
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
-    let data = if ext == GP5_EXT { crate::gp5write::export_gp5(song) } else { crate::gpifwrite::export_gp(song)? };
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let data = if ext == GP5_EXT {
+        crate::gp5write::export_gp5(song)
+    } else {
+        crate::gpifwrite::export_gp(song)?
+    };
     std::fs::write(path, data).map_err(|e| e.to_string())
 }
 
@@ -20,14 +28,33 @@ pub fn save_song(song: &Song, path: &std::path::Path) -> Result<(), String> {
 /// The newer Guitar Pro format has all of these; Guitar Pro 5 predates them.
 pub fn gp5_losses(song: &Song) -> Vec<&'static str> {
     let mut out = vec![];
-    let beats = || song.tracks.iter().flat_map(|t| t.bars.iter().flat_map(|b| (0..VOICES).flat_map(move |v| b.voice(v).iter())));
-    if song.tracks.iter().any(|t| t.bars.iter().any(|b| (2..VOICES).any(|v| b.voice_used(v)))) {
+    let beats = || {
+        song.tracks.iter().flat_map(|t| {
+            t.bars
+                .iter()
+                .flat_map(|b| (0..VOICES).flat_map(move |v| b.voice(v).iter()))
+        })
+    };
+    if song
+        .tracks
+        .iter()
+        .any(|t| t.bars.iter().any(|b| (2..VOICES).any(|v| b.voice_used(v))))
+    {
         out.push("voices 3 and 4");
     }
-    if song.tracks.iter().any(|t| t.has_strings() && t.strings() > 7) {
+    if song
+        .tracks
+        .iter()
+        .any(|t| t.has_strings() && t.strings() > 7)
+    {
         out.push("strings beyond the seventh");
     }
-    if song.tracks.iter().any(|t| !t.has_strings() && t.bars.iter().any(|b| b.beats.iter().any(|x| x.notes.len() > 7))) {
+    if song.tracks.iter().any(|t| {
+        !t.has_strings()
+            && t.bars
+                .iter()
+                .any(|b| b.beats.iter().any(|x| x.notes.len() > 7))
+    }) {
         out.push("chords of more than 7 notes");
     }
     if beats().any(|x| x.double_dot) {
@@ -54,22 +81,39 @@ pub fn gp5_losses(song: &Song) -> Vec<&'static str> {
     if song.tracks.iter().any(|t| t.palm_mute > 0.0) {
         out.push("palm mute amount");
     }
-    if song.tracks.iter().any(|t| t.grand_staff != matches!(t.instrument, Instrument::Piano | Instrument::ElectricPiano | Instrument::Organ) && t.kind() == InstrumentType::Keyboard) {
+    if song.tracks.iter().any(|t| {
+        t.grand_staff
+            != matches!(
+                t.instrument,
+                Instrument::Piano | Instrument::ElectricPiano | Instrument::Organ
+            )
+            && t.kind() == InstrumentType::Keyboard
+    }) {
         out.push("single/grand staff choice");
     }
     out
 }
 
 pub fn load_song(path: &std::path::Path) -> Result<Song, String> {
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
     let data = std::fs::read(path).map_err(|e| e.to_string())?;
-    let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "Untitled".into());
+    let stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "Untitled".into());
     let mut song = match ext.as_str() {
         "gp3" | "gp4" | "gp5" => crate::gpimport::import(&data)?,
         "gp" => crate::gpif::import_gp(&data)?,
         "gpx" => crate::gpif::import_gpx(&data)?,
         "mid" | "midi" => crate::textmidi::import_midi(&data, &stem)?,
-        "txt" | "tab" => song_from_track(crate::textmidi::import_ascii(&String::from_utf8_lossy(&data))?, &stem),
+        "txt" | "tab" => song_from_track(
+            crate::textmidi::import_ascii(&String::from_utf8_lossy(&data))?,
+            &stem,
+        ),
         _ => serde_json::from_slice::<Song>(&data).map_err(|e| format!("Not a song file: {e}"))?,
     };
     song.normalize();
@@ -123,7 +167,17 @@ pub fn export_midi(song: &Song) -> Vec<u8> {
         let tempo = song.tempo_at(bi);
         if tempo != last_tempo {
             let us = 60_000_000 / tempo;
-            tempo_ev.push((t, vec![0xff, 0x51, 0x03, (us >> 16) as u8, (us >> 8) as u8, us as u8]));
+            tempo_ev.push((
+                t,
+                vec![
+                    0xff,
+                    0x51,
+                    0x03,
+                    (us >> 16) as u8,
+                    (us >> 8) as u8,
+                    us as u8,
+                ],
+            ));
             last_tempo = tempo;
         }
         let mb = &song.master[bi];
@@ -140,14 +194,30 @@ pub fn export_midi(song: &Song) -> Vec<u8> {
     chunk(&mut out, &mut tempo_ev);
 
     for (ti, tr) in song.tracks.iter().enumerate() {
-        let ch = if tr.instrument == Instrument::Drums { 9 } else if ti >= 9 { (ti + 1) as u8 } else { ti as u8 } & 0x0f;
+        let ch = if tr.instrument == Instrument::Drums {
+            9
+        } else if ti >= 9 {
+            (ti + 1) as u8
+        } else {
+            ti as u8
+        } & 0x0f;
         let mut ev: Vec<(u32, Vec<u8>)> = vec![];
         let mut nm = vec![0xff, 0x03, tr.name.len().min(127) as u8];
         nm.extend_from_slice(&tr.name.as_bytes()[..tr.name.len().min(127)]);
         ev.push((0, nm));
         ev.push((0, vec![0xC0 | ch, tr.instrument.midi_program()]));
-        ev.push((0, vec![0xB0 | ch, 7, (tr.volume.clamp(0.0, 1.0) * 127.0) as u8]));
-        ev.push((0, vec![0xB0 | ch, 10, ((tr.pan.clamp(-1.0, 1.0) + 1.0) * 63.5) as u8]));
+        ev.push((
+            0,
+            vec![0xB0 | ch, 7, (tr.volume.clamp(0.0, 1.0) * 127.0) as u8],
+        ));
+        ev.push((
+            0,
+            vec![
+                0xB0 | ch,
+                10,
+                ((tr.pan.clamp(-1.0, 1.0) + 1.0) * 63.5) as u8,
+            ],
+        ));
         let mut t = 0u32;
         for &bi in &order {
             for v in 0..VOICES {
@@ -183,7 +253,9 @@ pub use crate::textmidi::export_ascii;
 pub fn song_from_track(track: Track, title: &str) -> Song {
     let mut s = Song::new_blank();
     s.title = title.to_string();
-    s.master = (0..track.bars.len().max(1)).map(|_| MasterBar::default()).collect();
+    s.master = (0..track.bars.len().max(1))
+        .map(|_| MasterBar::default())
+        .collect();
     s.tracks = vec![track];
     s.normalize();
     s

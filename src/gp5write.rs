@@ -26,7 +26,15 @@ impl W {
     }
     /// Text as single bytes (Latin-1); other characters become '?'.
     fn latin(s: &str) -> Vec<u8> {
-        s.chars().map(|c| if (c as u32) < 256 { c as u32 as u8 } else { b'?' }).collect()
+        s.chars()
+            .map(|c| {
+                if (c as u32) < 256 {
+                    c as u32 as u8
+                } else {
+                    b'?'
+                }
+            })
+            .collect()
     }
     /// Byte length, then a block of fixed size.
     fn byte_str(&mut self, s: &str, size: usize) {
@@ -72,14 +80,30 @@ fn channels(song: &Song) -> Vec<(usize, usize)> {
 }
 
 pub fn export_gp5(song: &Song) -> Vec<u8> {
-    let mut w = W { b: Vec::with_capacity(64 * 1024) };
+    let mut w = W {
+        b: Vec::with_capacity(64 * 1024),
+    };
     w.byte_str("FICHIER GUITAR PRO v5.10", 30);
     // Song information.
-    for s in [&song.title, &song.subtitle, &song.artist, &song.album, &song.words, &song.music_by, &song.copyright, &song.tabbed_by, &song.instructions] {
+    for s in [
+        &song.title,
+        &song.subtitle,
+        &song.artist,
+        &song.album,
+        &song.words,
+        &song.music_by,
+        &song.copyright,
+        &song.tabbed_by,
+        &song.instructions,
+    ] {
         w.int_byte_str(s);
     }
     // The notice, line by line.
-    let notice: Vec<&str> = if song.notice.is_empty() { vec![] } else { song.notice.lines().collect() };
+    let notice: Vec<&str> = if song.notice.is_empty() {
+        vec![]
+    } else {
+        song.notice.lines().collect()
+    };
     w.i32(notice.len() as i32);
     for l in notice {
         w.int_byte_str(l);
@@ -108,7 +132,18 @@ pub fn export_gp5(song: &Song) -> Vec<u8> {
         w.i32(v);
     }
     w.i16(0x01FF);
-    for s in ["%TITLE%", "%SUBTITLE%", "%ARTIST%", "%ALBUM%", "Words by %WORDS%", "Music by %MUSIC%", "Words & Music by %WORDSMUSIC%", "Copyright %COPYRIGHT%", "All Rights Reserved - International Copyright Secured", "Page %N%/%P%"] {
+    for s in [
+        "%TITLE%",
+        "%SUBTITLE%",
+        "%ARTIST%",
+        "%ALBUM%",
+        "Words by %WORDS%",
+        "Music by %MUSIC%",
+        "Words & Music by %WORDSMUSIC%",
+        "Copyright %COPYRIGHT%",
+        "All Rights Reserved - International Copyright Secured",
+        "Page %N%/%P%",
+    ] {
         w.int_byte_str(s);
     }
     w.int_byte_str("Moderate");
@@ -121,8 +156,14 @@ pub fn export_gp5(song: &Song) -> Vec<u8> {
     let mut table = vec![(25i32, 13u8, 8u8); 64];
     for (k, t) in song.tracks.iter().enumerate() {
         let vol = (t.volume.clamp(0.0, 1.0) * 16.0).round() as u8;
-        let bal = ((t.pan.clamp(-1.0, 1.0) * 8.0) + 8.0).round().clamp(0.0, 16.0) as u8;
-        let prog = if t.instrument == Instrument::Drums { 0 } else { t.instrument.midi_program() as i32 };
+        let bal = ((t.pan.clamp(-1.0, 1.0) * 8.0) + 8.0)
+            .round()
+            .clamp(0.0, 16.0) as u8;
+        let prog = if t.instrument == Instrument::Drums {
+            0
+        } else {
+            t.instrument.midi_program() as i32
+        };
         let (a, b) = chans[k];
         table[a] = (prog, vol, bal);
         table[b] = (prog, vol, bal);
@@ -137,7 +178,13 @@ pub fn export_gp5(song: &Song) -> Vec<u8> {
     // Directions: the bar (counted from 1) of each sign, or -1.
     let mut dirs = [-1i16; 19];
     for (i, mb) in song.master.iter().enumerate() {
-        for slot in [gp5_direction_slot(mb.direction_target, 0), gp5_direction_slot(0, mb.direction_jump)].into_iter().flatten() {
+        for slot in [
+            gp5_direction_slot(mb.direction_target, 0),
+            gp5_direction_slot(0, mb.direction_jump),
+        ]
+        .into_iter()
+        .flatten()
+        {
             if dirs[slot] < 0 {
                 dirs[slot] = i as i16 + 1;
             }
@@ -153,7 +200,11 @@ pub fn export_gp5(song: &Song) -> Vec<u8> {
 
     // Bar headers.
     for (i, mb) in song.master.iter().enumerate() {
-        let prev = if i > 0 { Some(&song.master[i - 1]) } else { None };
+        let prev = if i > 0 {
+            Some(&song.master[i - 1])
+        } else {
+            None
+        };
         let mut flags = 0u8;
         if prev.map(|p| p.num != mb.num).unwrap_or(true) {
             flags |= 0x01;
@@ -173,7 +224,10 @@ pub fn export_gp5(song: &Song) -> Vec<u8> {
         if mb.marker.is_some() {
             flags |= 0x20;
         }
-        if prev.map(|p| p.key != mb.key || p.key_minor != mb.key_minor).unwrap_or(true) {
+        if prev
+            .map(|p| p.key != mb.key || p.key_minor != mb.key_minor)
+            .unwrap_or(true)
+        {
             flags |= 0x40;
         }
         if mb.double_bar {
@@ -205,7 +259,11 @@ pub fn export_gp5(song: &Song) -> Vec<u8> {
         }
         if flags & 0x03 != 0 {
             // Eighth notes per beam group.
-            let beams = if mb.den == 8 && mb.num % 3 == 0 { [3, 3, 3, 3] } else { [2, 2, 2, 2] };
+            let beams = if mb.den == 8 && mb.num % 3 == 0 {
+                [3, 3, 3, 3]
+            } else {
+                [2, 2, 2, 2]
+            };
             w.b.extend_from_slice(&beams);
         }
         if flags & 0x10 == 0 {
@@ -241,7 +299,11 @@ pub fn export_gp5(song: &Song) -> Vec<u8> {
         let n = t.strings().clamp(1, 7);
         w.i32(n as i32);
         for s in 0..7 {
-            w.i32(if s < n { t.tuning.get(s).copied().unwrap_or(0) as i32 } else { 0 });
+            w.i32(if s < n {
+                t.tuning.get(s).copied().unwrap_or(0) as i32
+            } else {
+                0
+            });
         }
         let (a, b) = chans[k];
         w.i32((a / 16) as i32 + 1);
@@ -263,7 +325,7 @@ pub fn export_gp5(song: &Song) -> Vec<u8> {
         w.i16(f2);
         w.u8((t.accentuation.clamp(0.0, 1.0) * 5.0).round() as u8);
         w.u8(0); // bank
-        // Sound engine settings: humanize, unused values, instrument, equalizer, effect.
+                 // Sound engine settings: humanize, unused values, instrument, equalizer, effect.
         w.u8(0);
         w.zeros(12);
         w.zeros(12);
@@ -295,7 +357,11 @@ pub fn export_gp5(song: &Song) -> Vec<u8> {
                 }
                 w.i32(beats.len() as i32);
                 for (j, beat) in beats.iter().enumerate() {
-                    let tempo = if ti == 0 && v == 0 && j == 0 && bi > 0 { song.master[bi].tempo } else { None };
+                    let tempo = if ti == 0 && v == 0 && j == 0 && bi > 0 {
+                        song.master[bi].tempo
+                    } else {
+                        None
+                    };
                     write_beat(&mut w, t, beat, tempo);
                 }
             }
@@ -316,7 +382,8 @@ fn write_beat(w: &mut W, t: &Track, beat: &Beat, tempo: Option<u32>) {
     if beat.text.is_some() {
         flags |= 0x04;
     }
-    let effects = beat.fade_in || beat.technique != 0 || beat.stroke != Stroke::None || beat.pick != 0;
+    let effects =
+        beat.fade_in || beat.technique != 0 || beat.stroke != Stroke::None || beat.pick != 0;
     if effects {
         flags |= 0x08;
     }
@@ -342,7 +409,14 @@ fn write_beat(w: &mut W, t: &Track, beat: &Beat, tempo: Option<u32>) {
         w.u8(0);
         w.int_byte_str(name);
         if beat.chord_diagram && t.has_strings() && t.strings() <= 6 {
-            let first = beat.notes.iter().map(|n| n.fret).filter(|&f| f > 0).min().unwrap_or(1).max(1);
+            let first = beat
+                .notes
+                .iter()
+                .map(|n| n.fret)
+                .filter(|&f| f > 0)
+                .min()
+                .unwrap_or(1)
+                .max(1);
             w.i32(first as i32);
             for s in 0..6u8 {
                 w.i32(beat.note_on(s).map(|n| n.fret as i32).unwrap_or(-1));
@@ -375,7 +449,11 @@ fn write_beat(w: &mut W, t: &Track, beat: &Beat, tempo: Option<u32>) {
             w.u8(beat.technique);
         }
         if beat.stroke != Stroke::None {
-            let (down, up) = if beat.stroke == Stroke::Down { (3, 0) } else { (0, 3) };
+            let (down, up) = if beat.stroke == Stroke::Down {
+                (3, 0)
+            } else {
+                (0, 3)
+            };
             w.u8(down);
             w.u8(up);
         }
@@ -411,7 +489,12 @@ fn write_beat(w: &mut W, t: &Track, beat: &Beat, tempo: Option<u32>) {
             }
         }
     } else {
-        for (k, n) in beat.notes.iter().take(7.min(t.strings().max(1))).enumerate() {
+        for (k, n) in beat
+            .notes
+            .iter()
+            .take(7.min(t.strings().max(1)))
+            .enumerate()
+        {
             placed.push((k, n));
         }
     }
@@ -428,7 +511,21 @@ fn write_beat(w: &mut W, t: &Track, beat: &Beat, tempo: Option<u32>) {
 }
 
 fn write_note(w: &mut W, beat: &Beat, n: &Note) {
-    let fx = n.bend > 0 || n.hammer || n.let_ring || n.grace.is_some() || n.staccato || n.palm_mute || beat.tremolo || n.slide || n.slide_in || n.slide_out || n.harmonic || n.pinch_harmonic || n.trill > 0 || n.vibrato || n.wide_vibrato;
+    let fx = n.bend > 0
+        || n.hammer
+        || n.let_ring
+        || n.grace.is_some()
+        || n.staccato
+        || n.palm_mute
+        || beat.tremolo
+        || n.slide
+        || n.slide_in
+        || n.slide_out
+        || n.harmonic
+        || n.pinch_harmonic
+        || n.trill > 0
+        || n.vibrato
+        || n.wide_vibrato;
     let mut flags = 0x20 | 0x10;
     if n.heavy_accent {
         flags |= 0x02;
@@ -443,8 +540,18 @@ fn write_note(w: &mut W, beat: &Beat, n: &Note) {
         flags |= 0x40;
     }
     w.u8(flags);
-    w.u8(if n.tie { 2 } else if n.dead { 3 } else { 1 });
-    let dynv = Dynamic::ALL.iter().position(|d| *d == beat.dynamic).unwrap_or(4) as i8 + 1;
+    w.u8(if n.tie {
+        2
+    } else if n.dead {
+        3
+    } else {
+        1
+    });
+    let dynv = Dynamic::ALL
+        .iter()
+        .position(|d| *d == beat.dynamic)
+        .unwrap_or(4) as i8
+        + 1;
     w.i8(dynv);
     w.i8(n.fret.min(127) as i8);
     w.u8(0);
@@ -575,7 +682,24 @@ mod tests {
         assert_eq!(back2.master[5].direction_jump, 7);
         assert_eq!(back2.master[9].direction_target, DIR_CODA);
         for (x, y) in song.master.iter().zip(back.master.iter()) {
-            assert_eq!((x.num, x.den, x.key, x.repeat_open, x.repeat_close, &x.marker), (y.num, y.den, y.key, y.repeat_open, y.repeat_close, &y.marker));
+            assert_eq!(
+                (
+                    x.num,
+                    x.den,
+                    x.key,
+                    x.repeat_open,
+                    x.repeat_close,
+                    &x.marker
+                ),
+                (
+                    y.num,
+                    y.den,
+                    y.key,
+                    y.repeat_open,
+                    y.repeat_close,
+                    &y.marker
+                )
+            );
         }
     }
 
@@ -586,8 +710,17 @@ mod tests {
         let mut drums = Track::of_instrument(Instrument::Drums, "Drums");
         let mut voc = Track::of_instrument(Instrument::LeadVocals, "Voice");
         voc.lyrics = "la la la".into();
-        let chord = |ps: &[u8]| Beat { notes: ps.iter().enumerate().map(|(k, &p)| Note::new(k as u8, p)).collect(), ..Beat::rest(Dur::Whole) };
-        piano.bars = (0..4).map(|_| Bar::new(vec![chord(&[48, 60, 64, 67])])).collect();
+        let chord = |ps: &[u8]| Beat {
+            notes: ps
+                .iter()
+                .enumerate()
+                .map(|(k, &p)| Note::new(k as u8, p))
+                .collect(),
+            ..Beat::rest(Dur::Whole)
+        };
+        piano.bars = (0..4)
+            .map(|_| Bar::new(vec![chord(&[48, 60, 64, 67])]))
+            .collect();
         drums.bars = (0..4).map(|_| Bar::new(vec![chord(&[36, 42])])).collect();
         voc.bars = (0..4).map(|_| Bar::new(vec![chord(&[72])])).collect();
         song.tracks = vec![voc, piano, drums];
@@ -597,9 +730,17 @@ mod tests {
         assert_eq!(back.tracks[1].instrument, Instrument::Piano);
         assert!(back.tracks[1].grand());
         assert_eq!(back.tracks[2].instrument, Instrument::Drums);
-        let p: Vec<u8> = back.tracks[1].bars[0].beats[0].notes.iter().map(|n| back.tracks[1].pitch(n)).collect();
+        let p: Vec<u8> = back.tracks[1].bars[0].beats[0]
+            .notes
+            .iter()
+            .map(|n| back.tracks[1].pitch(n))
+            .collect();
         assert_eq!(p, vec![48, 60, 64, 67]);
-        let d: Vec<u8> = back.tracks[2].bars[0].beats[0].notes.iter().map(|n| back.tracks[2].pitch(n)).collect();
+        let d: Vec<u8> = back.tracks[2].bars[0].beats[0]
+            .notes
+            .iter()
+            .map(|n| back.tracks[2].pitch(n))
+            .collect();
         assert_eq!(d, vec![36, 42]);
         assert!(!back.tracks[2].has_tab());
     }

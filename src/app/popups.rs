@@ -41,8 +41,26 @@ impl Popup {
 }
 
 pub fn key_name(k: i8) -> String {
-    const SHARP: [&str; 8] = ["C major / A minor", "G major / E minor", "D major / B minor", "A major / F\u{266F} minor", "E major / C\u{266F} minor", "B major / G\u{266F} minor", "F\u{266F} major / D\u{266F} minor", "C\u{266F} major / A\u{266F} minor"];
-    const FLAT: [&str; 8] = ["C major / A minor", "F major / D minor", "B\u{266D} major / G minor", "E\u{266D} major / C minor", "A\u{266D} major / F minor", "D\u{266D} major / B\u{266D} minor", "G\u{266D} major / E\u{266D} minor", "C\u{266D} major / A\u{266D} minor"];
+    const SHARP: [&str; 8] = [
+        "C major / A minor",
+        "G major / E minor",
+        "D major / B minor",
+        "A major / F\u{266F} minor",
+        "E major / C\u{266F} minor",
+        "B major / G\u{266F} minor",
+        "F\u{266F} major / D\u{266F} minor",
+        "C\u{266F} major / A\u{266F} minor",
+    ];
+    const FLAT: [&str; 8] = [
+        "C major / A minor",
+        "F major / D minor",
+        "B\u{266D} major / G minor",
+        "E\u{266D} major / C minor",
+        "A\u{266D} major / F minor",
+        "D\u{266D} major / B\u{266D} minor",
+        "G\u{266D} major / E\u{266D} minor",
+        "C\u{266D} major / A\u{266D} minor",
+    ];
     if k >= 0 {
         SHARP[k.min(7) as usize].to_string()
     } else {
@@ -66,7 +84,12 @@ impl App {
     /// Opens a popup with a copy of the current bar, beat and note to edit.
     pub(super) fn open_popup(&mut self, kind: Popup) {
         let beat = self.cur_beat().clone();
-        let note = if self.std_cursor.is_some() { self.note_at_std() } else { beat.note_on(self.string as u8).cloned() }.or_else(|| beat.notes.first().cloned());
+        let note = if self.std_cursor.is_some() {
+            self.note_at_std()
+        } else {
+            beat.note_on(self.string as u8).cloned()
+        }
+        .or_else(|| beat.notes.first().cloned());
         if kind.needs_note() && note.is_none() {
             self.status = "Put a note on this beat first.".into();
             return;
@@ -87,7 +110,12 @@ impl App {
         }
         self.pop_text = match kind {
             Popup::Section => mb.marker.clone().unwrap_or_else(|| {
-                let k = self.song.master.iter().filter(|m| m.marker.is_some()).count();
+                let k = self
+                    .song
+                    .master
+                    .iter()
+                    .filter(|m| m.marker.is_some())
+                    .count();
                 format!("Section {}", (b'A' + (k % 26) as u8) as char)
             }),
             Popup::Text => beat.text.clone().unwrap_or_default(),
@@ -116,20 +144,43 @@ impl App {
                     Popup::TimeSig => {
                         ui.label(RichText::new(format!("Bar {bar_no}")).weak());
                         ui.horizontal(|ui| {
-                            let r = ui.add(egui::DragValue::new(&mut self.pop_bar.num).range(1..=32));
+                            let r =
+                                ui.add(egui::DragValue::new(&mut self.pop_bar.num).range(1..=32));
                             if ui.memory(|m| m.focused().is_none()) {
                                 r.request_focus();
                             }
                             ui.label(RichText::new("/").size(18.0));
-                            egui::ComboBox::from_id_salt("pop_den").width(50.0).selected_text(format!("{}", self.pop_bar.den)).show_ui(ui, |ui| {
-                                for d in [1u8, 2, 4, 8, 16, 32] {
-                                    ui.selectable_value(&mut self.pop_bar.den, d, format!("{d}"));
-                                }
-                            });
+                            egui::ComboBox::from_id_salt("pop_den")
+                                .width(50.0)
+                                .selected_text(format!("{}", self.pop_bar.den))
+                                .show_ui(ui, |ui| {
+                                    for d in [1u8, 2, 4, 8, 16, 32] {
+                                        ui.selectable_value(
+                                            &mut self.pop_bar.den,
+                                            d,
+                                            format!("{d}"),
+                                        );
+                                    }
+                                });
                         });
                         ui.horizontal_wrapped(|ui| {
-                            for (n, d) in [(2u8, 4u8), (3, 4), (4, 4), (5, 4), (6, 8), (7, 8), (9, 8), (12, 8)] {
-                                if ui.selectable_label(self.pop_bar.num == n && self.pop_bar.den == d, format!("{n}/{d}")).clicked() {
+                            for (n, d) in [
+                                (2u8, 4u8),
+                                (3, 4),
+                                (4, 4),
+                                (5, 4),
+                                (6, 8),
+                                (7, 8),
+                                (9, 8),
+                                (12, 8),
+                            ] {
+                                if ui
+                                    .selectable_label(
+                                        self.pop_bar.num == n && self.pop_bar.den == d,
+                                        format!("{n}/{d}"),
+                                    )
+                                    .clicked()
+                                {
                                     self.pop_bar.num = n;
                                     self.pop_bar.den = d;
                                 }
@@ -143,45 +194,79 @@ impl App {
                         // The key on a staff, as it will look in the score.
                         let bass = self.song.tracks[self.track].instrument.is_bass();
                         key_staff(ui, self.pop_bar.key, bass, self.music_font);
-                        egui::Grid::new("keysig").num_columns(2).spacing(Vec2::new(10.0, 8.0)).show(ui, |ui| {
-                            ui.label("Mode:");
-                            ui.horizontal(|ui| {
-                                ui.spacing_mut().item_spacing.x = 0.0;
-                                for (minor, lab) in [(true, "Minor"), (false, "Major")] {
-                                    let on = self.pop_bar.key_minor == minor;
-                                    let b = egui::Button::new(RichText::new(lab).color(if on { egui::Color32::WHITE } else { egui::Color32::from_gray(200) }))
-                                        .fill(if on { egui::Color32::from_rgb(61, 123, 224) } else { egui::Color32::from_rgb(60, 64, 74) })
-                                        .min_size(Vec2::new(54.0, 24.0));
-                                    if ui.add(b).clicked() {
-                                        self.pop_bar.key_minor = minor;
+                        egui::Grid::new("keysig")
+                            .num_columns(2)
+                            .spacing(Vec2::new(10.0, 8.0))
+                            .show(ui, |ui| {
+                                ui.label("Mode:");
+                                ui.horizontal(|ui| {
+                                    ui.spacing_mut().item_spacing.x = 0.0;
+                                    for (minor, lab) in [(true, "Minor"), (false, "Major")] {
+                                        let on = self.pop_bar.key_minor == minor;
+                                        let b =
+                                            egui::Button::new(RichText::new(lab).color(if on {
+                                                egui::Color32::WHITE
+                                            } else {
+                                                egui::Color32::from_gray(200)
+                                            }))
+                                            .fill(if on {
+                                                egui::Color32::from_rgb(61, 123, 224)
+                                            } else {
+                                                egui::Color32::from_rgb(60, 64, 74)
+                                            })
+                                            .min_size(Vec2::new(54.0, 24.0));
+                                        if ui.add(b).clicked() {
+                                            self.pop_bar.key_minor = minor;
+                                        }
                                     }
-                                }
+                                });
+                                ui.end_row();
+                                ui.label("Note:");
+                                let minor = self.pop_bar.key_minor;
+                                egui::ComboBox::from_id_salt("pop_key")
+                                    .width(150.0)
+                                    .selected_text(key_label(self.pop_bar.key, minor))
+                                    .show_ui(ui, |ui| {
+                                        for k in -7i8..=7 {
+                                            ui.selectable_value(
+                                                &mut self.pop_bar.key,
+                                                k,
+                                                key_label(k, minor),
+                                            );
+                                        }
+                                    });
+                                ui.end_row();
                             });
-                            ui.end_row();
-                            ui.label("Note:");
-                            let minor = self.pop_bar.key_minor;
-                            egui::ComboBox::from_id_salt("pop_key").width(150.0).selected_text(key_label(self.pop_bar.key, minor)).show_ui(ui, |ui| {
-                                for k in -7i8..=7 {
-                                    ui.selectable_value(&mut self.pop_bar.key, k, key_label(k, minor));
-                                }
-                            });
-                            ui.end_row();
-                        });
                         ui.label(RichText::new(key_name(self.pop_bar.key)).weak());
                         ui.checkbox(&mut self.pop_until_next, "Until the next change");
                     }
                     Popup::Section => {
                         ui.label(RichText::new(format!("Section starting at bar {bar_no}")).weak());
-                        let r = ui.add(egui::TextEdit::singleline(&mut self.pop_text).desired_width(280.0));
+                        let r = ui.add(
+                            egui::TextEdit::singleline(&mut self.pop_text).desired_width(280.0),
+                        );
                         r.request_focus();
                         ui.horizontal_wrapped(|ui| {
-                            for s in ["Intro", "Verse", "Pre-Chorus", "Chorus", "Bridge", "Solo", "Interlude", "Outro"] {
+                            for s in [
+                                "Intro",
+                                "Verse",
+                                "Pre-Chorus",
+                                "Chorus",
+                                "Bridge",
+                                "Solo",
+                                "Interlude",
+                                "Outro",
+                            ] {
                                 if ui.small_button(s).clicked() {
                                     self.pop_text = s.to_string();
                                 }
                             }
                         });
-                        ui.label(RichText::new("Write the name in [brackets] to show it in a frame.").small().weak());
+                        ui.label(
+                            RichText::new("Write the name in [brackets] to show it in a frame.")
+                                .small()
+                                .weak(),
+                        );
                     }
                     Popup::Tempo => {
                         if self.bar == 0 {
@@ -194,7 +279,11 @@ impl App {
                             let mut on = self.pop_bar.tempo.is_some();
                             ui.horizontal(|ui| {
                                 if ui.checkbox(&mut on, "Change to").changed() {
-                                    self.pop_bar.tempo = if on { Some(self.song.tempo_at(self.bar)) } else { None };
+                                    self.pop_bar.tempo = if on {
+                                        Some(self.song.tempo_at(self.bar))
+                                    } else {
+                                        None
+                                    };
                                 }
                                 if let Some(t) = &mut self.pop_bar.tempo {
                                     ui.add(egui::DragValue::new(t).range(20..=400).suffix(" bpm"));
@@ -206,7 +295,9 @@ impl App {
                         ui.label(RichText::new(format!("Repeat closing at bar {bar_no}")).weak());
                         ui.horizontal(|ui| {
                             ui.label("Play");
-                            ui.add(egui::DragValue::new(&mut self.pop_bar.repeat_close).range(2..=16));
+                            ui.add(
+                                egui::DragValue::new(&mut self.pop_bar.repeat_close).range(2..=16),
+                            );
                             ui.label("times");
                         });
                         if ui.button("Remove the repeat").clicked() {
@@ -214,7 +305,10 @@ impl App {
                         }
                     }
                     Popup::Endings => {
-                        ui.label(RichText::new(format!("Bar {bar_no} is played on these passes:")).weak());
+                        ui.label(
+                            RichText::new(format!("Bar {bar_no} is played on these passes:"))
+                                .weak(),
+                        );
                         ui.horizontal_wrapped(|ui| {
                             for k in 0..8u8 {
                                 let mut on = self.pop_bar.endings & (1 << k) != 0;
@@ -225,15 +319,31 @@ impl App {
                         });
                     }
                     Popup::Text => {
-                        let r = ui.add(egui::TextEdit::singleline(&mut self.pop_text).desired_width(280.0).hint_text("e.g. rit., a tempo, slowly"));
+                        let r = ui.add(
+                            egui::TextEdit::singleline(&mut self.pop_text)
+                                .desired_width(280.0)
+                                .hint_text("e.g. rit., a tempo, slowly"),
+                        );
                         r.request_focus();
                     }
                     Popup::Bend => {
-                        ui.label(RichText::new(format!("String {}, fret {}", self.pop_note.string + 1, self.pop_note.fret)).weak());
+                        ui.label(
+                            RichText::new(format!(
+                                "String {}, fret {}",
+                                self.pop_note.string + 1,
+                                self.pop_note.fret
+                            ))
+                            .weak(),
+                        );
                         egui::Grid::new("bendg").num_columns(2).show(ui, |ui| {
                             ui.label("Type:");
                             ui.horizontal_wrapped(|ui| {
-                                for (v, l) in [(0u8, "Bend"), (1, "Bend + release"), (2, "Pre-bend"), (3, "Pre-bend + release")] {
+                                for (v, l) in [
+                                    (0u8, "Bend"),
+                                    (1, "Bend + release"),
+                                    (2, "Pre-bend"),
+                                    (3, "Pre-bend + release"),
+                                ] {
                                     ui.radio_value(&mut self.pop_note.bend_kind, v, l);
                                 }
                             });
@@ -251,7 +361,14 @@ impl App {
                         }
                     }
                     Popup::Trill => {
-                        ui.label(RichText::new(format!("String {}, fret {}", self.pop_note.string + 1, self.pop_note.fret)).weak());
+                        ui.label(
+                            RichText::new(format!(
+                                "String {}, fret {}",
+                                self.pop_note.string + 1,
+                                self.pop_note.fret
+                            ))
+                            .weak(),
+                        );
                         ui.horizontal(|ui| {
                             ui.label("Trill with fret");
                             ui.add(egui::DragValue::new(&mut self.pop_note.trill).range(1..=30));
@@ -261,7 +378,14 @@ impl App {
                         }
                     }
                     Popup::Grace => {
-                        ui.label(RichText::new(format!("Before string {}, fret {}", self.pop_note.string + 1, self.pop_note.fret)).weak());
+                        ui.label(
+                            RichText::new(format!(
+                                "Before string {}, fret {}",
+                                self.pop_note.string + 1,
+                                self.pop_note.fret
+                            ))
+                            .weak(),
+                        );
                         let mut g = self.pop_note.grace.unwrap_or(0);
                         ui.horizontal(|ui| {
                             ui.label("Grace note on fret");
@@ -333,7 +457,9 @@ impl App {
             Popup::TimeSig => self.edit(move |s, _, _, _, _| {
                 let old = (s.master[bar].num, s.master[bar].den);
                 let mut i = bar;
-                while i < s.master.len() && (i == bar || (until && (s.master[i].num, s.master[i].den) == old)) {
+                while i < s.master.len()
+                    && (i == bar || (until && (s.master[i].num, s.master[i].den) == old))
+                {
                     s.master[i].num = mb.num;
                     s.master[i].den = mb.den;
                     i += 1;
@@ -342,13 +468,17 @@ impl App {
             Popup::KeySig => self.edit(move |s, _, _, _, _| {
                 let old = (s.master[bar].key, s.master[bar].key_minor);
                 let mut i = bar;
-                while i < s.master.len() && (i == bar || (until && (s.master[i].key, s.master[i].key_minor) == old)) {
+                while i < s.master.len()
+                    && (i == bar || (until && (s.master[i].key, s.master[i].key_minor) == old))
+                {
                     s.master[i].key = mb.key;
                     s.master[i].key_minor = mb.key_minor;
                     i += 1;
                 }
             }),
-            Popup::Section => self.bar_edit(move |m| m.marker = if text.is_empty() { None } else { Some(text) }),
+            Popup::Section => {
+                self.bar_edit(move |m| m.marker = if text.is_empty() { None } else { Some(text) })
+            }
             Popup::Tempo => {
                 if bar == 0 {
                     let t = mb.tempo.unwrap_or(120);
@@ -363,7 +493,9 @@ impl App {
             }
             Popup::Repeat => self.bar_edit(move |m| m.repeat_close = mb.repeat_close.max(2)),
             Popup::Endings => self.bar_edit(move |m| m.endings = mb.endings),
-            Popup::Text => self.edit(move |s, t, b, j, _| s.tracks[t].bars[b].beats[j].text = if text.is_empty() { None } else { Some(text) }),
+            Popup::Text => self.edit(move |s, t, b, j, _| {
+                s.tracks[t].bars[b].beats[j].text = if text.is_empty() { None } else { Some(text) }
+            }),
             Popup::Bend | Popup::Trill | Popup::Grace => {
                 let s = note.string;
                 self.edit(move |so, t, b, j, _| {
@@ -385,8 +517,13 @@ impl App {
 
 /// "G (#)", "Bb (bb)", "F#m (######)": the key's tonic and its accidentals, like the original's list.
 pub fn key_label(k: i8, minor: bool) -> String {
-    const MAJOR: [&str; 15] = ["Cb", "Gb", "Db", "Ab", "Eb", "Bb", "F", "C", "G", "D", "A", "E", "B", "F#", "C#"];
-    const MINOR: [&str; 15] = ["Abm", "Ebm", "Bbm", "Fm", "Cm", "Gm", "Dm", "Am", "Em", "Bm", "F#m", "C#m", "G#m", "D#m", "A#m"];
+    const MAJOR: [&str; 15] = [
+        "Cb", "Gb", "Db", "Ab", "Eb", "Bb", "F", "C", "G", "D", "A", "E", "B", "F#", "C#",
+    ];
+    const MINOR: [&str; 15] = [
+        "Abm", "Ebm", "Bbm", "Fm", "Cm", "Gm", "Dm", "Am", "Em", "Bm", "F#m", "C#m", "G#m", "D#m",
+        "A#m",
+    ];
     let i = (k.clamp(-7, 7) + 7) as usize;
     let name = if minor { MINOR[i] } else { MAJOR[i] };
     match k {
@@ -399,7 +536,10 @@ pub fn key_label(k: i8, minor: bool) -> String {
 /// A staff with a clef and the sharps or flats of a key, drawn light on the dialog.
 fn key_staff(ui: &mut egui::Ui, key: i8, bass: bool, music_font: bool) {
     use egui::{Color32, FontFamily, FontId, Pos2, Sense, Stroke};
-    let (r, _) = ui.allocate_exact_size(Vec2::new(ui.available_width().max(240.0), 78.0), Sense::hover());
+    let (r, _) = ui.allocate_exact_size(
+        Vec2::new(ui.available_width().max(240.0), 78.0),
+        Sense::hover(),
+    );
     let p = ui.painter();
     let ls = 8.0;
     let top = r.top() + 22.0;
@@ -408,24 +548,51 @@ fn key_staff(ui: &mut egui::Ui, key: i8, bass: bool, music_font: bool) {
     let left = r.center().x - width * 0.5;
     for i in 0..5 {
         let y = top + i as f32 * ls;
-        p.line_segment([Pos2::new(left, y), Pos2::new(left + width, y)], Stroke::new(1.0, Color32::from_gray(200)));
+        p.line_segment(
+            [Pos2::new(left, y), Pos2::new(left + width, y)],
+            Stroke::new(1.0, Color32::from_gray(200)),
+        );
     }
     let bottom = top + 4.0 * ls;
     let music = |s: f32| FontId::new(s, FontFamily::Name("music".into()));
     if music_font {
         if bass {
-            p.text(Pos2::new(left + 16.0, top + ls), Align2::CENTER_CENTER, "\u{1D122}", music(ls * 4.2), ink);
+            p.text(
+                Pos2::new(left + 16.0, top + ls),
+                Align2::CENTER_CENTER,
+                "\u{1D122}",
+                music(ls * 4.2),
+                ink,
+            );
         } else {
-            p.text(Pos2::new(left + 16.0, top + 2.2 * ls), Align2::CENTER_CENTER, "\u{1D11E}", music(ls * 5.6), ink);
+            p.text(
+                Pos2::new(left + 16.0, top + 2.2 * ls),
+                Align2::CENTER_CENTER,
+                "\u{1D11E}",
+                music(ls * 5.6),
+                ink,
+            );
         }
     } else {
-        p.text(Pos2::new(left + 16.0, top + 2.0 * ls), Align2::CENTER_CENTER, if bass { "F" } else { "G" }, FontId::proportional(ls * 3.5), ink);
+        p.text(
+            Pos2::new(left + 16.0, top + 2.0 * ls),
+            Align2::CENTER_CENTER,
+            if bass { "F" } else { "G" },
+            FontId::proportional(ls * 3.5),
+            ink,
+        );
     }
     let glyph = if key > 0 { "\u{266F}" } else { "\u{266D}" };
     for (i, pos) in crate::score::key_positions(key).iter().enumerate() {
         let pos = if bass { pos - 2 } else { *pos };
         let y = bottom - pos as f32 * ls * 0.5;
-        p.text(Pos2::new(left + 38.0 + i as f32 * 10.0, y), Align2::CENTER_CENTER, glyph, music(ls * 2.4), ink);
+        p.text(
+            Pos2::new(left + 38.0 + i as f32 * 10.0, y),
+            Align2::CENTER_CENTER,
+            glyph,
+            music(ls * 2.4),
+            ink,
+        );
     }
 }
 

@@ -32,11 +32,18 @@ impl App {
         let mut items: Vec<(usize, usize, Vec<u8>)> = vec![];
         if let Some((a, b)) = self.selection() {
             for bi in a.0..=b.0 {
-                let n = self.song.tracks[self.track].bars[bi].voice(self.voice).len();
+                let n = self.song.tracks[self.track].bars[bi]
+                    .voice(self.voice)
+                    .len();
                 let from = if bi == a.0 { a.1 } else { 0 };
                 let to = if bi == b.0 { b.1 } else { n.saturating_sub(1) };
                 for j in from..=to.min(n.saturating_sub(1)) {
-                    let strings: Vec<u8> = self.song.tracks[self.track].bars[bi].voice(self.voice)[j].notes.iter().map(|x| x.string).collect();
+                    let strings: Vec<u8> = self.song.tracks[self.track].bars[bi].voice(self.voice)
+                        [j]
+                        .notes
+                        .iter()
+                        .map(|x| x.string)
+                        .collect();
                     if !strings.is_empty() {
                         items.push((bi, j, strings));
                     }
@@ -44,7 +51,11 @@ impl App {
             }
         } else {
             let beat = self.cur_beat();
-            let under = if self.std_cursor.is_some() { self.note_at_std() } else { beat.note_on(self.string as u8).cloned() };
+            let under = if self.std_cursor.is_some() {
+                self.note_at_std()
+            } else {
+                beat.note_on(self.string as u8).cloned()
+            };
             let strings: Vec<u8> = match under {
                 Some(n) => vec![n.string],
                 None => beat.notes.iter().map(|x| x.string).collect(),
@@ -90,7 +101,13 @@ impl App {
 
     /// Moves (or copies) notes of the given beats from voice `from` to voice `to`.
     /// Returns how many notes were placed and how many didn't fit.
-    fn transfer(&mut self, from: usize, to: usize, items: &[(usize, usize, Vec<u8>)], copy: bool) -> (usize, usize) {
+    fn transfer(
+        &mut self,
+        from: usize,
+        to: usize,
+        items: &[(usize, usize, Vec<u8>)],
+        copy: bool,
+    ) -> (usize, usize) {
         let mut moved = 0;
         let mut blocked = 0;
         let items = items.to_vec();
@@ -103,9 +120,16 @@ impl App {
             for (bi, j, strings) in &items {
                 let need = s.master[*bi].ticks();
                 let bar = &mut s.tracks[ti].bars[*bi];
-                let Some(src) = bar.voice(from).get(*j).cloned() else { continue };
+                let Some(src) = bar.voice(from).get(*j).cloned() else {
+                    continue;
+                };
                 let t = bar.beat_start(from, *j);
-                let notes: Vec<Note> = src.notes.iter().filter(|n| strings.contains(&n.string)).cloned().collect();
+                let notes: Vec<Note> = src
+                    .notes
+                    .iter()
+                    .filter(|n| strings.contains(&n.string))
+                    .cloned()
+                    .collect();
                 if notes.is_empty() {
                     continue;
                 }
@@ -205,15 +229,25 @@ impl App {
                 Some((a, b)) => (a.0..=b.0)
                     .map(|bi| {
                         let n = self.song.tracks[self.track].bars[bi].voice(from).len();
-                        let s = if bi == a.0 && from == self.voice { a.1 } else { 0 };
-                        let e = if bi == b.0 && from == self.voice { b.1 } else { n.saturating_sub(1) };
+                        let s = if bi == a.0 && from == self.voice {
+                            a.1
+                        } else {
+                            0
+                        };
+                        let e = if bi == b.0 && from == self.voice {
+                            b.1
+                        } else {
+                            n.saturating_sub(1)
+                        };
                         (bi, s, e)
                     })
                     .collect(),
                 None => vec![],
             },
             VoiceRange::Bar => vec![(self.bar, 0, usize::MAX)],
-            VoiceRange::Track => (0..self.song.bar_count()).map(|b| (b, 0, usize::MAX)).collect(),
+            VoiceRange::Track => (0..self.song.bar_count())
+                .map(|b| (b, 0, usize::MAX))
+                .collect(),
         };
         if self.vaction == VoiceAction::Swap {
             let bars: Vec<usize> = ranges.iter().map(|r| r.0).collect();
@@ -230,7 +264,12 @@ impl App {
             });
             self.voice = keep;
             self.clamp_cursor();
-            self.status = format!("Swapped voices {} and {} in {} bar(s).", from + 1, to + 1, bars.len());
+            self.status = format!(
+                "Swapped voices {} and {} in {} bar(s).",
+                from + 1,
+                to + 1,
+                bars.len()
+            );
             return;
         }
         let mut items = vec![];

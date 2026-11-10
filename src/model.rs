@@ -279,7 +279,10 @@ pub struct Bar {
 
 impl Bar {
     pub fn new(beats: Vec<Beat>) -> Bar {
-        Bar { beats, voices: vec![] }
+        Bar {
+            beats,
+            voices: vec![],
+        }
     }
     pub fn empty() -> Bar {
         Bar::new(vec![Beat::rest(Dur::Whole)])
@@ -311,7 +314,10 @@ impl Bar {
         (0..VOICES).any(|v| {
             let b = self.voice(v);
             let placeholder = b.len() == 1 && b[0].is_rest();
-            !placeholder && !b.is_empty() && self.voice_ticks(v) != need && (v == 0 || self.voice_used(v))
+            !placeholder
+                && !b.is_empty()
+                && self.voice_ticks(v) != need
+                && (v == 0 || self.voice_used(v))
         })
     }
     /// Voices whose length doesn't match the bar: (voice, ticks too many (+) or too few (-)).
@@ -320,7 +326,10 @@ impl Bar {
             .filter(|&v| {
                 let b = self.voice(v);
                 let placeholder = b.len() == 1 && b[0].is_rest();
-                !placeholder && !b.is_empty() && self.voice_ticks(v) != need && (v == 0 || self.voice_used(v))
+                !placeholder
+                    && !b.is_empty()
+                    && self.voice_ticks(v) != need
+                    && (v == 0 || self.voice_used(v))
             })
             .map(|v| (v, self.voice_ticks(v) as i64 - need as i64))
             .collect()
@@ -353,7 +362,14 @@ impl Bar {
     /// Puts notes into voice `v` at tick `t`, fitting them into that voice's rhythm:
     /// into a beat starting there, or by splitting a rest. `src` gives the note's
     /// rhythm and beat settings. Returns false if a note is already playing there.
-    pub fn put_notes(&mut self, v: usize, t: u32, src: &Beat, notes: &[Note], bar_len: u32) -> bool {
+    pub fn put_notes(
+        &mut self,
+        v: usize,
+        t: u32,
+        src: &Beat,
+        notes: &[Note],
+        bar_len: u32,
+    ) -> bool {
         let list = self.voice_mut(v);
         // An unused voice is one long rest filling the bar.
         if list.iter().all(|b| b.is_rest()) {
@@ -396,7 +412,10 @@ impl Bar {
         let used = if b.ticks() <= space {
             b.ticks()
         } else {
-            let (d, dot) = split_ticks(space).first().copied().unwrap_or((Dur::SixtyFourth, false));
+            let (d, dot) = split_ticks(space)
+                .first()
+                .copied()
+                .unwrap_or((Dur::SixtyFourth, false));
             b.dur = d;
             b.dotted = dot;
             b.double_dot = false;
@@ -411,7 +430,9 @@ impl Bar {
 
     /// Every beat of every voice.
     pub fn all_beats_mut(&mut self) -> impl Iterator<Item = &mut Beat> {
-        self.beats.iter_mut().chain(self.voices.iter_mut().flatten())
+        self.beats
+            .iter_mut()
+            .chain(self.voices.iter_mut().flatten())
     }
 }
 
@@ -484,7 +505,13 @@ pub enum InstrumentType {
 }
 
 impl InstrumentType {
-    pub const ALL: [InstrumentType; 5] = [InstrumentType::Stringed, InstrumentType::Keyboard, InstrumentType::Vocal, InstrumentType::Orchestra, InstrumentType::Drums];
+    pub const ALL: [InstrumentType; 5] = [
+        InstrumentType::Stringed,
+        InstrumentType::Keyboard,
+        InstrumentType::Vocal,
+        InstrumentType::Orchestra,
+        InstrumentType::Drums,
+    ];
     pub fn name(self) -> &'static str {
         match self {
             InstrumentType::Stringed => "Stringed",
@@ -495,7 +522,11 @@ impl InstrumentType {
         }
     }
     pub fn instruments(self) -> Vec<Instrument> {
-        Instrument::ALL.iter().copied().filter(|i| i.kind() == self).collect()
+        Instrument::ALL
+            .iter()
+            .copied()
+            .filter(|i| i.kind() == self)
+            .collect()
     }
 }
 
@@ -606,7 +637,8 @@ impl Instrument {
     pub fn kind(self) -> InstrumentType {
         use Instrument::*;
         match self {
-            SteelGuitar | NylonGuitar | CleanGuitar | OverdriveGuitar | DistortionGuitar | Bass | Ukulele | Banjo => InstrumentType::Stringed,
+            SteelGuitar | NylonGuitar | CleanGuitar | OverdriveGuitar | DistortionGuitar | Bass
+            | Ukulele | Banjo => InstrumentType::Stringed,
             Piano | ElectricPiano | Organ | Synth => InstrumentType::Keyboard,
             LeadVocals | Choir => InstrumentType::Vocal,
             Violin | Cello | Strings | Trumpet | Saxophone | Flute => InstrumentType::Orchestra,
@@ -675,7 +707,8 @@ impl Instrument {
         use Instrument::*;
         match self {
             Bass => Clef::Bass8,
-            SteelGuitar | NylonGuitar | CleanGuitar | OverdriveGuitar | DistortionGuitar | Banjo => Clef::Treble8,
+            SteelGuitar | NylonGuitar | CleanGuitar | OverdriveGuitar | DistortionGuitar
+            | Banjo => Clef::Treble8,
             Cello => Clef::Bass,
             Drums => Clef::Percussion,
             _ => Clef::Treble,
@@ -687,8 +720,20 @@ impl Instrument {
         match self.kind() {
             InstrumentType::Stringed => 0,
             InstrumentType::Keyboard => 10,
-            InstrumentType::Vocal => if self == Instrument::Choir { 4 } else { 2 },
-            InstrumentType::Orchestra => if self == Instrument::Strings { 6 } else { 2 },
+            InstrumentType::Vocal => {
+                if self == Instrument::Choir {
+                    4
+                } else {
+                    2
+                }
+            }
+            InstrumentType::Orchestra => {
+                if self == Instrument::Strings {
+                    6
+                } else {
+                    2
+                }
+            }
             InstrumentType::Drums => 8,
         }
     }
@@ -704,12 +749,22 @@ impl Instrument {
     }
     /// Highest "fret" for a new track (for instruments without strings, the highest pitch).
     pub fn default_frets(self) -> u8 {
-        if self.kind() == InstrumentType::Stringed { 24 } else { 127 }
+        if self.kind() == InstrumentType::Stringed {
+            24
+        } else {
+            127
+        }
     }
 }
 
 /// Playing styles: the name shown and the name stored in .gp files.
-pub const PLAYING_STYLES: [(&str, &str); 5] = [("Default", "Default"), ("Pick", "StringedPick"), ("Fingers", "StringedFinger"), ("Picking", "StringedPicking"), ("Bass Slap", "BassSlap")];
+pub const PLAYING_STYLES: [(&str, &str); 5] = [
+    ("Default", "Default"),
+    ("Pick", "StringedPick"),
+    ("Fingers", "StringedFinger"),
+    ("Picking", "StringedPicking"),
+    ("Bass Slap", "BassSlap"),
+];
 
 /// Name of a General MIDI drum sound, from the manual's drum map.
 pub fn drum_name(p: u8) -> &'static str {
@@ -814,7 +869,9 @@ pub fn tuning_name(t: &[u8]) -> String {
 }
 
 pub fn note_name(midi: u8) -> String {
-    const N: [&str; 12] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+    const N: [&str; 12] = [
+        "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
+    ];
     N[(midi % 12) as usize].to_string()
 }
 
@@ -955,7 +1012,10 @@ impl Track {
             instrument: i,
             tuning: i.default_tuning(),
             frets: i.default_frets(),
-            grand_staff: matches!(i, Instrument::Piano | Instrument::ElectricPiano | Instrument::Organ),
+            grand_staff: matches!(
+                i,
+                Instrument::Piano | Instrument::ElectricPiano | Instrument::Organ
+            ),
             ..Track::default()
         }
     }
@@ -975,7 +1035,10 @@ impl Track {
             refit_notes(self, &old_tuning, old_capo);
         }
         if i.kind() != old_kind {
-            self.grand_staff = matches!(i, Instrument::Piano | Instrument::ElectricPiano | Instrument::Organ);
+            self.grand_staff = matches!(
+                i,
+                Instrument::Piano | Instrument::ElectricPiano | Instrument::Organ
+            );
         }
     }
 }
@@ -989,7 +1052,9 @@ pub fn refit_notes(t: &mut Track, old_tuning: &[u8], old_capo: u8) {
         for beat in bar.all_beats_mut() {
             let mut out: Vec<Note> = vec![];
             for note in beat.notes.drain(..) {
-                let Some(&open) = old_tuning.get(note.string as usize) else { continue };
+                let Some(&open) = old_tuning.get(note.string as usize) else {
+                    continue;
+                };
                 let pitch = open as i32 + note.fret as i32 + old_capo as i32;
                 let mut order: Vec<usize> = (0..n).collect();
                 order.sort_by_key(|&s| (s as i32 - note.string as i32).abs());
@@ -1132,7 +1197,14 @@ impl Song {
 
     /// Tempo points: (bar, bpm, gradual change to the next point). Bar 0 is always there.
     pub fn tempo_points(&self) -> Vec<(usize, u32, bool)> {
-        let mut v = vec![(0, self.master.first().and_then(|m| m.tempo).unwrap_or(self.tempo), self.master.first().map(|m| m.tempo_ramp).unwrap_or(false))];
+        let mut v = vec![(
+            0,
+            self.master
+                .first()
+                .and_then(|m| m.tempo)
+                .unwrap_or(self.tempo),
+            self.master.first().map(|m| m.tempo_ramp).unwrap_or(false),
+        )];
         for (i, m) in self.master.iter().enumerate().skip(1) {
             if let Some(t) = m.tempo {
                 v.push((i, t, m.tempo_ramp));
@@ -1170,7 +1242,10 @@ impl Song {
         let mut al_fine = false;
         let mut al_coda = 0u8; // 0 none, 3 coda, 4 double coda
         let mut done_jumps: std::collections::HashSet<usize> = Default::default();
-        let has_al_coda = self.master.iter().any(|m| matches!(m.direction_jump, 3 | 4 | 7));
+        let has_al_coda = self
+            .master
+            .iter()
+            .any(|m| matches!(m.direction_jump, 3 | 4 | 7));
         let find_target = |t: u8| self.master.iter().position(|m| m.direction_target == t);
         while i < n && guard < 20000 {
             guard += 1;
@@ -1215,12 +1290,23 @@ impl Song {
                 }
             }
             // Fine ends the piece once a jump has been made.
-            if m.direction_target == DIR_FINE && jumped && (al_fine || !self.master.iter().any(|x| matches!(x.direction_jump, 2 | 6))) {
+            if m.direction_target == DIR_FINE
+                && jumped
+                && (al_fine
+                    || !self
+                        .master
+                        .iter()
+                        .any(|x| matches!(x.direction_jump, 2 | 6)))
+            {
                 break;
             }
             // To Coda / To Double Coda.
             if matches!(m.direction_jump, 9 | 10) && jumped {
-                let want = if m.direction_jump == 9 { DIR_CODA } else { DIR_DOUBLE_CODA };
+                let want = if m.direction_jump == 9 {
+                    DIR_CODA
+                } else {
+                    DIR_DOUBLE_CODA
+                };
                 if !has_al_coda || al_coda == want {
                     if let Some(t) = find_target(want) {
                         if t > i {
@@ -1535,7 +1621,14 @@ pub const DIR_DOUBLE_CODA: u8 = 4;
 pub const DIR_FINE: u8 = 5;
 
 /// Names of direction targets, by code.
-pub const TARGET_NAMES: [&str; 6] = ["None", "Segno", "Segno Segno", "Coda", "Double Coda", "Fine"];
+pub const TARGET_NAMES: [&str; 6] = [
+    "None",
+    "Segno",
+    "Segno Segno",
+    "Coda",
+    "Double Coda",
+    "Fine",
+];
 
 /// Names of direction jumps, by code.
 pub const JUMP_NAMES: [&str; 11] = [
@@ -1703,7 +1796,10 @@ mod direction_tests {
 
     #[test]
     fn lyrics_split() {
-        assert_eq!(split_lyrics("Hel-lo my+friend  la"), vec!["Hel-", "lo", "my friend", "", "la"]);
+        assert_eq!(
+            split_lyrics("Hel-lo my+friend  la"),
+            vec!["Hel-", "lo", "my friend", "", "la"]
+        );
         assert_eq!(split_lyrics("[Verse] one\n\ntwo"), vec!["one", "two"]);
     }
 }
@@ -1714,9 +1810,18 @@ mod length_words_tests {
 
     #[test]
     fn says_how_much_to_add_or_remove() {
-        assert_eq!(length_advice(0, -(QUARTER as i64), 4), "Voice 1 is too short: add 1 beat (a quarter note)");
-        assert_eq!(length_advice(0, QUARTER as i64 / 2, 4), "Voice 1 is too long: remove \u{BD} beat (an eighth note)");
-        assert_eq!(length_advice(1, -(QUARTER as i64 * 3 / 2), 4), "Voice 2 is too short: add 1\u{BD} beats (a dotted quarter note)");
+        assert_eq!(
+            length_advice(0, -(QUARTER as i64), 4),
+            "Voice 1 is too short: add 1 beat (a quarter note)"
+        );
+        assert_eq!(
+            length_advice(0, QUARTER as i64 / 2, 4),
+            "Voice 1 is too long: remove \u{BD} beat (an eighth note)"
+        );
+        assert_eq!(
+            length_advice(1, -(QUARTER as i64 * 3 / 2), 4),
+            "Voice 2 is too short: add 1\u{BD} beats (a dotted quarter note)"
+        );
         assert_eq!(beats_words(QUARTER * 2, 4), "2 beats");
         assert_eq!(beats_words(QUARTER / 2, 8), "1 beat");
     }
@@ -1731,7 +1836,10 @@ mod voice_tests {
         let mut s = Song::new_blank();
         s.normalize();
         s.swap_in(0, 1);
-        s.tracks[0].bars[0].beats = vec![Beat { notes: vec![Note::new(0, 5)], ..Beat::rest(Dur::Whole) }];
+        s.tracks[0].bars[0].beats = vec![Beat {
+            notes: vec![Note::new(0, 5)],
+            ..Beat::rest(Dur::Whole)
+        }];
         s.swap_out_all();
         assert!(s.tracks[0].bars[0].voice_used(1));
         assert!(!s.tracks[0].bars[0].voice_used(0));
@@ -1782,7 +1890,11 @@ pub fn beats_words(ticks: u32, den: u8) -> String {
         let b = ticks as f32 / unit as f32;
         return format!("{b:.2} beats");
     }
-    let n = if whole == 0 && !frac.is_empty() { frac.to_string() } else { format!("{whole}{frac}") };
+    let n = if whole == 0 && !frac.is_empty() {
+        frac.to_string()
+    } else {
+        format!("{whole}{frac}")
+    };
     let plural = !(whole == 1 && frac.is_empty()) && !(whole == 0 && !frac.is_empty());
     format!("{n} beat{}", if plural { "s" } else { "" })
 }
@@ -1790,7 +1902,10 @@ pub fn beats_words(ticks: u32, den: u8) -> String {
 /// A length as note values, e.g. "a quarter note" or "a half note + an eighth note".
 pub fn note_values_words(ticks: u32) -> String {
     let parts = split_ticks(ticks);
-    let covered: u32 = parts.iter().map(|(d, dot)| if *dot { d.ticks() * 3 / 2 } else { d.ticks() }).sum();
+    let covered: u32 = parts
+        .iter()
+        .map(|(d, dot)| if *dot { d.ticks() * 3 / 2 } else { d.ticks() })
+        .sum();
     if parts.is_empty() || covered != ticks || parts.len() > 3 {
         return String::new();
     }
@@ -1814,11 +1929,23 @@ pub fn note_values_words(ticks: u32) -> String {
 pub fn length_advice(voice: usize, diff: i64, den: u8) -> String {
     let t = diff.unsigned_abs() as u32;
     let values = note_values_words(t);
-    let values = if values.is_empty() { String::new() } else { format!(" ({values})") };
-    if diff < 0 {
-        format!("Voice {} is too short: add {}{values}", voice + 1, beats_words(t, den))
+    let values = if values.is_empty() {
+        String::new()
     } else {
-        format!("Voice {} is too long: remove {}{values}", voice + 1, beats_words(t, den))
+        format!(" ({values})")
+    };
+    if diff < 0 {
+        format!(
+            "Voice {} is too short: add {}{values}",
+            voice + 1,
+            beats_words(t, den)
+        )
+    } else {
+        format!(
+            "Voice {} is too long: remove {}{values}",
+            voice + 1,
+            beats_words(t, den)
+        )
     }
 }
 
@@ -1839,7 +1966,10 @@ mod move_voice_tests {
     use super::*;
 
     fn q(f: u8, s: u8) -> Beat {
-        Beat { notes: vec![Note::new(s, f)], ..Beat::rest(Dur::Quarter) }
+        Beat {
+            notes: vec![Note::new(s, f)],
+            ..Beat::rest(Dur::Quarter)
+        }
     }
 
     #[test]
@@ -1851,7 +1981,10 @@ mod move_voice_tests {
         // Rest (half) then the quarter note then a quarter rest.
         let v = b.voice(1);
         assert_eq!(v.iter().map(|x| x.ticks()).sum::<u32>(), 3840);
-        assert_eq!(b.beat_start(1, v.iter().position(|x| !x.is_rest()).unwrap()), 1920);
+        assert_eq!(
+            b.beat_start(1, v.iter().position(|x| !x.is_rest()).unwrap()),
+            1920
+        );
         assert!(b.voice_used(1));
     }
 
@@ -1865,7 +1998,10 @@ mod move_voice_tests {
         // Same string already used.
         assert!(!b.put_notes(0, 0, &src, &[Note::new(4, 5)], 3840));
         // Inside a note: not possible.
-        let mut e = Bar::new(vec![Beat { notes: vec![Note::new(0, 1)], ..Beat::rest(Dur::Whole) }]);
+        let mut e = Bar::new(vec![Beat {
+            notes: vec![Note::new(0, 1)],
+            ..Beat::rest(Dur::Whole)
+        }]);
         assert!(!e.put_notes(0, 960, &src, &[Note::new(2, 2)], 3840));
     }
 }

@@ -64,7 +64,20 @@ pub fn inst_type(i: Instrument) -> (&'static str, &'static str) {
 
 /// Pitch as step letter, accidental and octave (middle C = C4).
 fn pitch_parts(p: i32) -> (&'static str, &'static str, i32) {
-    const N: [(&str, &str); 12] = [("C", ""), ("C", "#"), ("D", ""), ("D", "#"), ("E", ""), ("F", ""), ("F", "#"), ("G", ""), ("G", "#"), ("A", ""), ("A", "#"), ("B", "")];
+    const N: [(&str, &str); 12] = [
+        ("C", ""),
+        ("C", "#"),
+        ("D", ""),
+        ("D", "#"),
+        ("E", ""),
+        ("F", ""),
+        ("F", "#"),
+        ("G", ""),
+        ("G", "#"),
+        ("A", ""),
+        ("A", "#"),
+        ("B", ""),
+    ];
     let (s, a) = N[p.rem_euclid(12) as usize];
     (s, a, p.div_euclid(12) - 1)
 }
@@ -134,7 +147,10 @@ impl GpOptions {
     /// What a normal save writes: chord names (Guitar Pro 8 opens them), and
     /// layout views only when a track is hidden.
     pub fn safe(song: &Song) -> GpOptions {
-        GpOptions { chords: true, views: song.tracks.iter().any(|t| !t.visible) }
+        GpOptions {
+            chords: true,
+            views: song.tracks.iter().any(|t| !t.visible),
+        }
     }
 }
 
@@ -178,8 +194,16 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
     );
     // Tempo changes.
     let ids: Vec<String> = (0..song.tracks.len()).map(|k| k.to_string()).collect();
-    let _ = write!(x, "<MasterTrack><Tracks>{}</Tracks><Automations>", ids.join(" "));
-    let mut points = vec![(0usize, song.tempo, song.master.first().map(|m| m.tempo_ramp).unwrap_or(false))];
+    let _ = write!(
+        x,
+        "<MasterTrack><Tracks>{}</Tracks><Automations>",
+        ids.join(" ")
+    );
+    let mut points = vec![(
+        0usize,
+        song.tempo,
+        song.master.first().map(|m| m.tempo_ramp).unwrap_or(false),
+    )];
     for (bi, mb) in song.master.iter().enumerate().skip(1) {
         if let Some(t) = mb.tempo {
             points.push((bi, t, mb.tempo_ramp));
@@ -218,10 +242,18 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
         let _ = write!(x, "<InstrumentSet><Name>{label}</Name><Type>{ty}</Type><LineCount>5</LineCount><Elements>");
         if drum {
             for (name, ms) in DRUMS {
-                let _ = write!(x, "<Element><Name>{name}</Name><Type>{}</Type><SoundbankName/><Articulations>", name.to_lowercase().replace(' ', ""));
+                let _ = write!(
+                    x,
+                    "<Element><Name>{name}</Name><Type>{}</Type><SoundbankName/><Articulations>",
+                    name.to_lowercase().replace(' ', "")
+                );
                 for &m in ms {
                     let (line, cross) = drum_staff_pos(m);
-                    let head = if cross { "noteheadXBlack noteheadXHalf noteheadXWhole" } else { "noteheadBlack noteheadHalf noteheadWhole" };
+                    let head = if cross {
+                        "noteheadXBlack noteheadXHalf noteheadXWhole"
+                    } else {
+                        "noteheadBlack noteheadHalf noteheadWhole"
+                    };
                     let _ = write!(
                         x,
                         "<Articulation><Name>{}</Name><StaffLine>{}</StaffLine><Noteheads>{head}</Noteheads><TechniquePlacement>outside</TechniquePlacement><TechniqueSymbol></TechniqueSymbol><InputMidiNumbers>{m}</InputMidiNumbers><OutputRSESound/><OutputMidiNumber>{m}</OutputMidiNumber></Articulation>",
@@ -235,7 +267,11 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
             x.push_str("<Element><Name>Pitched</Name><Type>pitched</Type><SoundbankName/><Articulations><Articulation><Name/><StaffLine>0</StaffLine><Noteheads>noteheadBlack noteheadHalf noteheadWhole</Noteheads><TechniquePlacement>outside</TechniquePlacement><TechniqueSymbol></TechniqueSymbol><InputMidiNumbers/><OutputRSESound/><OutputMidiNumber>0</OutputMidiNumber></Articulation></Articulations></Element>");
         }
         x.push_str("</Elements></InstrumentSet>");
-        let _ = write!(x, "<Transpose><Chromatic>0</Chromatic><Octave>{}</Octave></Transpose>", if t.clef().shift() != 0 { -1 } else { 0 });
+        let _ = write!(
+            x,
+            "<Transpose><Chromatic>0</Chromatic><Octave>{}</Octave></Transpose>",
+            if t.clef().shift() != 0 { -1 } else { 0 }
+        );
         let (prog, primary, secondary) = if drum {
             (0, 9, 9)
         } else {
@@ -243,7 +279,11 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
             let mut next = || {
                 let c = chan % 15;
                 chan += 1;
-                if c >= 9 { c + 1 } else { c }
+                if c >= 9 {
+                    c + 1
+                } else {
+                    c
+                }
             };
             let (a, b) = (next(), next());
             (t.instrument.midi_program(), a, b)
@@ -254,19 +294,40 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
             if drum { 128 } else { 0 }
         );
         x.push_str("<ForcedSound>-1</ForcedSound>");
-        let state = if t.solo { "Solo" } else if t.mute { "Mute" } else { "Default" };
-        let _ = write!(x, "<PlaybackState>{state}</PlaybackState><AudioEngineState>MIDI</AudioEngineState>");
+        let state = if t.solo {
+            "Solo"
+        } else if t.mute {
+            "Mute"
+        } else {
+            "Default"
+        };
+        let _ = write!(
+            x,
+            "<PlaybackState>{state}</PlaybackState><AudioEngineState>MIDI</AudioEngineState>"
+        );
         let mut strip = [0.5f32; 16];
         strip[9] = 0.0;
         strip[11] = (t.pan.clamp(-1.0, 1.0) + 1.0) * 0.5;
         strip[12] = t.volume.clamp(0.0, 1.0);
         let params: Vec<String> = strip.iter().map(|v| format!("{v:.6}")).collect();
-        let _ = write!(x, "<RSE><ChannelStrip version=\"E56\"><Parameters>{}</Parameters></ChannelStrip></RSE>", params.join(" "));
+        let _ = write!(
+            x,
+            "<RSE><ChannelStrip version=\"E56\"><Parameters>{}</Parameters></ChannelStrip></RSE>",
+            params.join(" ")
+        );
         // Lyrics: the first of five lines.
         x.push_str("<Lyrics dispatched=\"true\">");
         for line in 0..5 {
-            let (text, from) = if line == 0 { (t.lyrics.as_str(), t.lyrics_bar) } else { ("", 0) };
-            let _ = write!(x, "<Line><Text>{}</Text><Offset>{from}</Offset></Line>", cdata(text));
+            let (text, from) = if line == 0 {
+                (t.lyrics.as_str(), t.lyrics_bar)
+            } else {
+                ("", 0)
+            };
+            let _ = write!(
+                x,
+                "<Line><Text>{}</Text><Offset>{from}</Offset></Line>",
+                cdata(text)
+            );
         }
         x.push_str("</Lyrics><Staves>");
         let staves = if t.grand() { 2 } else { 1 };
@@ -290,19 +351,42 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
                 );
             }
             // Chord names used by the track.
-            let mut names: Vec<&String> = if opts().chords { t.bars.iter().flat_map(|b| b.beats.iter().filter_map(|x| x.chord.as_ref())).collect() } else { vec![] };
+            let mut names: Vec<&String> = if opts().chords {
+                t.bars
+                    .iter()
+                    .flat_map(|b| b.beats.iter().filter_map(|x| x.chord.as_ref()))
+                    .collect()
+            } else {
+                vec![]
+            };
             names.sort();
             names.dedup();
             x.push_str("<Property name=\"ChordCollection\"><Items/></Property><Property name=\"ChordWorkingSet\"><Items/></Property><Property name=\"DiagramCollection\"><Items>");
             for (i, n) in names.iter().enumerate() {
-                let _ = write!(x, "<Item id=\"{i}\" name=\"{}\"/>", n.replace('&', "&amp;").replace('"', "&quot;").replace('<', "&lt;"));
+                let _ = write!(
+                    x,
+                    "<Item id=\"{i}\" name=\"{}\"/>",
+                    n.replace('&', "&amp;")
+                        .replace('"', "&quot;")
+                        .replace('<', "&lt;")
+                );
             }
-            x.push_str("</Items></Property><Property name=\"DiagramWorkingSet\"><Items/></Property>");
+            x.push_str(
+                "</Items></Property><Property name=\"DiagramWorkingSet\"><Items/></Property>",
+            );
             if t.has_strings() {
                 if t.tuning_flat {
                     x.push_str("<Property name=\"TuningFlat\"><Enable /></Property>");
                 }
-                let _ = write!(x, "<Name>{}</Name>", cdata(if tuning_name(&t.tuning).contains('(') { "Standard" } else { "" }));
+                let _ = write!(
+                    x,
+                    "<Name>{}</Name>",
+                    cdata(if tuning_name(&t.tuning).contains('(') {
+                        "Standard"
+                    } else {
+                        ""
+                    })
+                );
             }
             x.push_str("</Properties></Staff>");
         }
@@ -311,14 +395,28 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
     x.push_str("</Tracks>\n");
 
     // Bars, voices, beats and notes.
-    let mut ids = Ids { beats: String::new(), notes: String::new(), rhythms: vec![], voices: String::new(), bars: String::new(), nbeats: 0, nnotes: 0, nvoices: 0, nbars: 0 };
+    let mut ids = Ids {
+        beats: String::new(),
+        notes: String::new(),
+        rhythms: vec![],
+        voices: String::new(),
+        bars: String::new(),
+        nbeats: 0,
+        nnotes: 0,
+        nvoices: 0,
+        nbars: 0,
+    };
     let mut master = String::from("<MasterBars>\n");
     for (bi, mb) in song.master.iter().enumerate() {
         let mut bar_ids = vec![];
         for t in &song.tracks {
             let key = mb.key;
             let chords: Vec<&String> = {
-                let mut v: Vec<&String> = t.bars.iter().flat_map(|b| b.beats.iter().filter_map(|x| x.chord.as_ref())).collect();
+                let mut v: Vec<&String> = t
+                    .bars
+                    .iter()
+                    .flat_map(|b| b.beats.iter().filter_map(|x| x.chord.as_ref()))
+                    .collect();
                 v.sort();
                 v.dedup();
                 v
@@ -362,21 +460,43 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
                             })
                             .collect();
                         if !graced.is_empty() {
-                            let gb = Beat { notes: graced.clone(), dynamic: beat.dynamic, ..Beat::rest(Dur::ThirtySecond) };
+                            let gb = Beat {
+                                notes: graced.clone(),
+                                dynamic: beat.dynamic,
+                                ..Beat::rest(Dur::ThirtySecond)
+                            };
                             let refs: Vec<&Note> = graced.iter().collect();
-                            beat_ids.push(write_beat_ex(&mut ids, t, &gb, &refs, &chords, key, false, true));
+                            beat_ids.push(write_beat_ex(
+                                &mut ids, t, &gb, &refs, &chords, key, false, true,
+                            ));
                         }
-                        beat_ids.push(write_beat(&mut ids, t, beat, &notes, &chords, key, v == 0 && low != Some(true)));
+                        beat_ids.push(write_beat(
+                            &mut ids,
+                            t,
+                            beat,
+                            &notes,
+                            &chords,
+                            key,
+                            v == 0 && low != Some(true),
+                        ));
                     }
                     let vid = ids.nvoices;
                     ids.nvoices += 1;
                     let list: Vec<String> = beat_ids.iter().map(|b| b.to_string()).collect();
-                    let _ = write!(ids.voices, "<Voice id=\"{vid}\"><Beats>{}</Beats></Voice>\n", list.join(" "));
+                    let _ = write!(
+                        ids.voices,
+                        "<Voice id=\"{vid}\"><Beats>{}</Beats></Voice>\n",
+                        list.join(" ")
+                    );
                     vids.push(vid.to_string());
                 }
                 let id = ids.nbars;
                 ids.nbars += 1;
-                let _ = write!(ids.bars, "<Bar id=\"{id}\"><Clef>{clef}</Clef><Voices>{}</Voices></Bar>\n", vids.join(" "));
+                let _ = write!(
+                    ids.bars,
+                    "<Bar id=\"{id}\"><Clef>{clef}</Clef><Voices>{}</Voices></Bar>\n",
+                    vids.join(" ")
+                );
                 bar_ids.push(id.to_string());
             }
         }
@@ -386,14 +506,32 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
             master.push_str("<DoubleBar/>");
         }
         if let Some(m) = &mb.marker {
-            let _ = write!(master, "<Section><Letter>{}</Letter><Text>{}</Text></Section>", cdata(""), cdata(m));
+            let _ = write!(
+                master,
+                "<Section><Letter>{}</Letter><Text>{}</Text></Section>",
+                cdata(""),
+                cdata(m)
+            );
         }
         if mb.repeat_open || mb.repeat_close > 0 {
-            let _ = write!(master, "<Repeat start=\"{}\" end=\"{}\" count=\"{}\"/>", mb.repeat_open, mb.repeat_close > 0, mb.repeat_close.max(if mb.repeat_close > 0 { 2 } else { 0 }));
+            let _ = write!(
+                master,
+                "<Repeat start=\"{}\" end=\"{}\" count=\"{}\"/>",
+                mb.repeat_open,
+                mb.repeat_close > 0,
+                mb.repeat_close.max(if mb.repeat_close > 0 { 2 } else { 0 })
+            );
         }
         if mb.endings != 0 {
-            let list: Vec<String> = (0..8).filter(|k| mb.endings & (1 << k) != 0).map(|k| (k + 1).to_string()).collect();
-            let _ = write!(master, "<AlternateEndings>{}</AlternateEndings>", list.join(" "));
+            let list: Vec<String> = (0..8)
+                .filter(|k| mb.endings & (1 << k) != 0)
+                .map(|k| (k + 1).to_string())
+                .collect();
+            let _ = write!(
+                master,
+                "<AlternateEndings>{}</AlternateEndings>",
+                list.join(" ")
+            );
         }
         if mb.direction_target != 0 || mb.direction_jump != 0 {
             master.push_str("<Directions>");
@@ -438,7 +576,11 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
     x.push_str(&master);
     let _ = write!(x, "<Bars>\n{}</Bars>\n<Voices>\n{}</Voices>\n<Beats>\n{}</Beats>\n<Notes>\n{}</Notes>\n<Rhythms>\n", ids.bars, ids.voices, ids.beats, ids.notes);
     for (i, (d, dot, dd, tup)) in ids.rhythms.iter().enumerate() {
-        let _ = write!(x, "<Rhythm id=\"{i}\"><NoteValue>{}</NoteValue>", note_value(*d));
+        let _ = write!(
+            x,
+            "<Rhythm id=\"{i}\"><NoteValue>{}</NoteValue>",
+            note_value(*d)
+        );
         if *dd {
             x.push_str("<AugmentationDot count=\"2\"/>");
         } else if *dot {
@@ -493,21 +635,45 @@ pub fn direction_jump_name(j: u8) -> Option<&'static str> {
     }
 }
 
-fn write_beat(ids: &mut Ids, t: &Track, beat: &Beat, notes: &[&Note], chords: &[&String], key: i8, marks: bool) -> usize {
+fn write_beat(
+    ids: &mut Ids,
+    t: &Track,
+    beat: &Beat,
+    notes: &[&Note],
+    chords: &[&String],
+    key: i8,
+    marks: bool,
+) -> usize {
     write_beat_ex(ids, t, beat, notes, chords, key, marks, false)
 }
 
 #[allow(clippy::too_many_arguments)]
-fn write_beat_ex(ids: &mut Ids, t: &Track, beat: &Beat, notes: &[&Note], chords: &[&String], key: i8, marks: bool, grace: bool) -> usize {
+fn write_beat_ex(
+    ids: &mut Ids,
+    t: &Track,
+    beat: &Beat,
+    notes: &[&Note],
+    chords: &[&String],
+    key: i8,
+    marks: bool,
+    grace: bool,
+) -> usize {
     let id = ids.nbeats;
     ids.nbeats += 1;
     let r = ids.rhythm(beat);
-    let mut x = format!("<Beat id=\"{id}\"><Dynamic>{}</Dynamic><Rhythm ref=\"{r}\"/>", dyn_name(beat.dynamic));
+    let mut x = format!(
+        "<Beat id=\"{id}\"><Dynamic>{}</Dynamic><Rhythm ref=\"{r}\"/>",
+        dyn_name(beat.dynamic)
+    );
     if grace {
         x.push_str("<GraceNotes>BeforeBeat</GraceNotes>");
     }
     if marks {
-        if let Some(c) = beat.chord.as_ref().and_then(|c| chords.iter().position(|n| *n == c)) {
+        if let Some(c) = beat
+            .chord
+            .as_ref()
+            .and_then(|c| chords.iter().position(|n| *n == c))
+        {
             if opts().chords {
                 let _ = write!(x, "<Chord>{c}</Chord>");
             }
@@ -546,8 +712,12 @@ fn write_beat_ex(ids: &mut Ids, t: &Track, beat: &Beat, notes: &[&Note], chords:
     }
     let mut props = String::new();
     match beat.stroke {
-        Stroke::Down => props.push_str("<Property name=\"Brush\"><Direction>Down</Direction></Property>"),
-        Stroke::Up => props.push_str("<Property name=\"Brush\"><Direction>Up</Direction></Property>"),
+        Stroke::Down => {
+            props.push_str("<Property name=\"Brush\"><Direction>Down</Direction></Property>")
+        }
+        Stroke::Up => {
+            props.push_str("<Property name=\"Brush\"><Direction>Up</Direction></Property>")
+        }
         Stroke::None => {}
     }
     match beat.pick {
@@ -577,24 +747,38 @@ fn write_note(ids: &mut Ids, t: &Track, beat: &Beat, n: &Note, key: i8) -> usize
     if n.ghost {
         x.push_str("<AntiAccent>Normal</AntiAccent>");
     }
-    let acc = (if n.staccato { 1 } else { 0 }) | (if n.heavy_accent { 4 } else { 0 }) | (if n.accent { 8 } else { 0 });
+    let acc = (if n.staccato { 1 } else { 0 })
+        | (if n.heavy_accent { 4 } else { 0 })
+        | (if n.accent { 8 } else { 0 });
     if acc != 0 {
         let _ = write!(x, "<Accent>{acc}</Accent>");
     }
     if t.instrument == Instrument::Drums {
-        let _ = write!(x, "<InstrumentArticulation>{}</InstrumentArticulation>", drum_articulation(pitch as u8));
+        let _ = write!(
+            x,
+            "<InstrumentArticulation>{}</InstrumentArticulation>",
+            drum_articulation(pitch as u8)
+        );
     }
     if n.let_ring {
         x.push_str("<LetRing/>");
     }
     if n.vibrato || n.wide_vibrato {
-        let _ = write!(x, "<Vibrato>{}</Vibrato>", if n.wide_vibrato { "Wide" } else { "Slight" });
+        let _ = write!(
+            x,
+            "<Vibrato>{}</Vibrato>",
+            if n.wide_vibrato { "Wide" } else { "Slight" }
+        );
     }
     if n.tie {
         x.push_str("<Tie origin=\"false\" destination=\"true\"/>");
     }
     if n.trill > 0 {
-        let _ = write!(x, "<Trill>{}</Trill>", (pitch + n.trill as i32 - n.fret as i32).clamp(0, 127));
+        let _ = write!(
+            x,
+            "<Trill>{}</Trill>",
+            (pitch + n.trill as i32 - n.fret as i32).clamp(0, 127)
+        );
     }
     x.push_str("<Properties>");
     let written = pitch + t.clef().shift();
@@ -603,7 +787,10 @@ fn write_note(ids: &mut Ids, t: &Track, beat: &Beat, n: &Note, key: i8) -> usize
     let _ = key;
     let _ = write!(x, "<Property name=\"ConcertPitch\"><Pitch><Step>{step}</Step><Accidental>{accd}</Accidental><Octave>{oct}</Octave></Pitch></Property>");
     let _ = write!(x, "<Property name=\"TransposedPitch\"><Pitch><Step>{wstep}</Step><Accidental>{waccd}</Accidental><Octave>{woct}</Octave></Pitch></Property>");
-    let _ = write!(x, "<Property name=\"Midi\"><Number>{pitch}</Number></Property>");
+    let _ = write!(
+        x,
+        "<Property name=\"Midi\"><Number>{pitch}</Number></Property>"
+    );
     if t.has_strings() {
         let nstr = t.strings();
         let _ = write!(x, "<Property name=\"String\"><String>{}</String></Property><Property name=\"Fret\"><Fret>{}</Fret></Property>", nstr - 1 - (n.string as usize).min(nstr - 1), n.fret);
@@ -621,8 +808,13 @@ fn write_note(ids: &mut Ids, t: &Track, beat: &Beat, n: &Note, key: i8) -> usize
         let _ = write!(x, "<Property name=\"HarmonicType\"><HType>{}</HType></Property><Property name=\"HarmonicFret\"><HFret>12</HFret></Property>", if n.pinch_harmonic { "Pinch" } else { "Natural" });
     }
     if n.slide || n.slide_in || n.slide_out {
-        let flags = (if n.slide { 2 } else { 0 }) | (if n.slide_out { 4 } else { 0 }) | (if n.slide_in { 16 } else { 0 });
-        let _ = write!(x, "<Property name=\"Slide\"><Flags>{flags}</Flags></Property>");
+        let flags = (if n.slide { 2 } else { 0 })
+            | (if n.slide_out { 4 } else { 0 })
+            | (if n.slide_in { 16 } else { 0 });
+        let _ = write!(
+            x,
+            "<Property name=\"Slide\"><Flags>{flags}</Flags></Property>"
+        );
     }
     if n.bend > 0 {
         let v = n.bend as f32 * 25.0;
@@ -678,14 +870,16 @@ pub fn export_gp_with(song: &Song, o: GpOptions) -> Result<Vec<u8>, String> {
     let mut buf = std::io::Cursor::new(Vec::new());
     {
         let mut z = zip::ZipWriter::new(&mut buf);
-        let opt = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        let opt = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
         let e = |e: zip::result::ZipError| e.to_string();
         z.start_file("VERSION", opt).map_err(e)?;
         z.write_all(b"7.0").map_err(|e| e.to_string())?;
         z.start_file("Content/score.gpif", opt).map_err(e)?;
         z.write_all(xml.as_bytes()).map_err(|e| e.to_string())?;
         z.start_file("Content/PartConfiguration", opt).map_err(e)?;
-        z.write_all(&part_configuration(song)).map_err(|e| e.to_string())?;
+        z.write_all(&part_configuration(song))
+            .map_err(|e| e.to_string())?;
         // This app's stylesheet, kept in its own file next to the score (other
         // programs skip files they don't know). Left out when it's the standard one.
         if song.style != crate::style::Stylesheet::standard() {
@@ -705,7 +899,9 @@ pub fn export_gp_with(song: &Song, o: GpOptions) -> Result<Vec<u8>, String> {
             }
             v
         };
-        let mut shown: Vec<usize> = (0..song.tracks.len()).filter(|&k| song.tracks[k].visible).collect();
+        let mut shown: Vec<usize> = (0..song.tracks.len())
+            .filter(|&k| song.tracks[k].visible)
+            .collect();
         if shown.is_empty() {
             shown = (0..song.tracks.len()).collect();
         }
@@ -715,10 +911,18 @@ pub fn export_gp_with(song: &Song, o: GpOptions) -> Result<Vec<u8>, String> {
             return Ok(buf.into_inner());
         }
         z.start_file("Content/ScoreViews/0.gpsv", opt).map_err(e)?;
-        z.write_all(&crate::gpsv::view("Full score", &full, song.bar_count(), 4)).map_err(|e| e.to_string())?;
+        z.write_all(&crate::gpsv::view("Full score", &full, song.bar_count(), 4))
+            .map_err(|e| e.to_string())?;
         for k in 0..song.tracks.len() {
-            z.start_file(format!("Content/ScoreViews/{}.gpsv", k + 1), opt).map_err(e)?;
-            z.write_all(&crate::gpsv::view(&song.tracks[k].name, &staves_of(k), song.bar_count(), 4)).map_err(|e| e.to_string())?;
+            z.start_file(format!("Content/ScoreViews/{}.gpsv", k + 1), opt)
+                .map_err(e)?;
+            z.write_all(&crate::gpsv::view(
+                &song.tracks[k].name,
+                &staves_of(k),
+                song.bar_count(),
+                4,
+            ))
+            .map_err(|e| e.to_string())?;
         }
         z.finish().map_err(e)?;
     }
@@ -754,7 +958,24 @@ mod tests {
             }
         }
         for (x, y) in song.master.iter().zip(back.master.iter()) {
-            assert_eq!((x.num, x.den, x.key, x.repeat_open, x.repeat_close, &x.marker), (y.num, y.den, y.key, y.repeat_open, y.repeat_close, &y.marker));
+            assert_eq!(
+                (
+                    x.num,
+                    x.den,
+                    x.key,
+                    x.repeat_open,
+                    x.repeat_close,
+                    &x.marker
+                ),
+                (
+                    y.num,
+                    y.den,
+                    y.key,
+                    y.repeat_open,
+                    y.repeat_close,
+                    &y.marker
+                )
+            );
         }
     }
 
@@ -774,9 +995,17 @@ mod tests {
         assert!((back.tracks[1].pan + 0.5).abs() < 0.001);
         assert!(back.tracks[1].solo);
         assert!(back.tracks[0].mute);
-        assert_eq!(back.tracks[0].bars[2].beats.len(), song.tracks[0].bars[2].beats.len());
+        assert_eq!(
+            back.tracks[0].bars[2].beats.len(),
+            song.tracks[0].bars[2].beats.len()
+        );
         let s0 = song.tracks[0].bars[2].beats[0].notes[0].string;
-        assert_eq!(back.tracks[0].bars[2].beats[0].note_on(s0).and_then(|n| n.grace), Some(5));
+        assert_eq!(
+            back.tracks[0].bars[2].beats[0]
+                .note_on(s0)
+                .and_then(|n| n.grace),
+            Some(5)
+        );
         assert!(back.tracks[0].bars[1].beats[0].fermata);
         assert_eq!(back.master[3].direction_jump, 7);
         // A hidden track stays hidden.
@@ -785,7 +1014,10 @@ mod tests {
         three.normalize();
         three.tracks[1].visible = false;
         let back = crate::gpif::import_gp(&export_gp(&three).unwrap()).unwrap();
-        assert_eq!(back.tracks.iter().map(|t| t.visible).collect::<Vec<_>>(), vec![true, false, true]);
+        assert_eq!(
+            back.tracks.iter().map(|t| t.visible).collect::<Vec<_>>(),
+            vec![true, false, true]
+        );
     }
 
     #[test]
@@ -795,8 +1027,17 @@ mod tests {
         let mut drums = Track::of_instrument(Instrument::Drums, "Drums");
         let mut voc = Track::of_instrument(Instrument::LeadVocals, "Voice");
         voc.lyrics = "la la la".into();
-        let chord = |ps: &[u8]| Beat { notes: ps.iter().enumerate().map(|(k, &p)| Note::new(k as u8, p)).collect(), ..Beat::rest(Dur::Whole) };
-        piano.bars = (0..4).map(|_| Bar::new(vec![chord(&[48, 60, 64, 67])])).collect();
+        let chord = |ps: &[u8]| Beat {
+            notes: ps
+                .iter()
+                .enumerate()
+                .map(|(k, &p)| Note::new(k as u8, p))
+                .collect(),
+            ..Beat::rest(Dur::Whole)
+        };
+        piano.bars = (0..4)
+            .map(|_| Bar::new(vec![chord(&[48, 60, 64, 67])]))
+            .collect();
         drums.bars = (0..4).map(|_| Bar::new(vec![chord(&[36, 42])])).collect();
         voc.bars = (0..4).map(|_| Bar::new(vec![chord(&[72])])).collect();
         song.tracks = vec![voc, piano, drums];
@@ -805,14 +1046,22 @@ mod tests {
         assert_eq!(back.tracks[0].kind(), InstrumentType::Vocal);
         assert_eq!(back.tracks[0].lyrics, "la la la");
         assert!(back.tracks[1].grand());
-        assert_eq!(pitches(&back.tracks[1], &back.tracks[1].bars[0].beats[0]), vec![48, 60, 64, 67]);
+        assert_eq!(
+            pitches(&back.tracks[1], &back.tracks[1].bars[0].beats[0]),
+            vec![48, 60, 64, 67]
+        );
         assert_eq!(back.tracks[2].instrument, Instrument::Drums);
-        assert_eq!(pitches(&back.tracks[2], &back.tracks[2].bars[0].beats[0]), vec![36, 42]);
+        assert_eq!(
+            pitches(&back.tracks[2], &back.tracks[2].bars[0].beats[0]),
+            vec![36, 42]
+        );
     }
 
     #[test]
     fn opens_sample_saved_by_guitar_pro() {
-        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("samples").join("Empty.gp");
+        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("samples")
+            .join("Empty.gp");
         let Ok(data) = std::fs::read(&p) else { return };
         let song = crate::gpif::import_gp(&data).expect("opens the sample");
         assert_eq!(song.tracks.len(), 2);
@@ -830,7 +1079,11 @@ mod tests {
         let ours = part_configuration(&song);
         let mut z = zip::ZipArchive::new(std::io::Cursor::new(&data[..])).unwrap();
         let mut theirs = vec![];
-        std::io::Read::read_to_end(&mut z.by_name("Content/PartConfiguration").unwrap(), &mut theirs).unwrap();
+        std::io::Read::read_to_end(
+            &mut z.by_name("Content/PartConfiguration").unwrap(),
+            &mut theirs,
+        )
+        .unwrap();
         assert_eq!(ours.len(), theirs.len());
     }
 }

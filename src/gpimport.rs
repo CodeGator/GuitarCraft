@@ -34,7 +34,12 @@ impl<'a> R<'a> {
     }
     fn i32(&mut self) -> Res<i32> {
         self.need(4)?;
-        let v = i32::from_le_bytes([self.d[self.p], self.d[self.p + 1], self.d[self.p + 2], self.d[self.p + 3]]);
+        let v = i32::from_le_bytes([
+            self.d[self.p],
+            self.d[self.p + 1],
+            self.d[self.p + 2],
+            self.d[self.p + 3],
+        ]);
         self.p += 4;
         Ok(v)
     }
@@ -45,7 +50,10 @@ impl<'a> R<'a> {
     }
     fn chars(&mut self, n: usize, keep: usize) -> Res<String> {
         self.need(n)?;
-        let s: String = self.d[self.p..self.p + keep.min(n)].iter().map(|&b| b as char).collect();
+        let s: String = self.d[self.p..self.p + keep.min(n)]
+            .iter()
+            .map(|&b| b as char)
+            .collect();
         self.p += n;
         Ok(s)
     }
@@ -87,7 +95,9 @@ pub fn import(data: &[u8]) -> Result<Song, String> {
     } else if ver.contains("5.") {
         V::Gp51
     } else {
-        return Err(format!("Unrecognised file version \"{ver}\". Only Guitar Pro 3, 4 and 5 files can be opened."));
+        return Err(format!(
+            "Unrecognised file version \"{ver}\". Only Guitar Pro 3, 4 and 5 files can be opened."
+        ));
     };
     let mut song = Song::new_blank();
     song.title = r.int_byte_str()?;
@@ -301,7 +311,11 @@ pub fn import(data: &[u8]) -> Result<Song, String> {
         drums.push(is_drum);
         let instrument = Instrument::from_midi_program(inst.clamp(0, 127) as u8);
         let mut t = Track {
-            name: if name.trim().is_empty() { format!("Track {}", i + 1) } else { name },
+            name: if name.trim().is_empty() {
+                format!("Track {}", i + 1)
+            } else {
+                name
+            },
             instrument,
             tuning,
             capo: capo.clamp(0, 24) as u8,
@@ -333,7 +347,10 @@ pub fn import(data: &[u8]) -> Result<Song, String> {
             t.frets = 127;
             t.capo = 0;
         } else if !t.has_strings() {
-            t.grand_staff = matches!(t.instrument, Instrument::Piano | Instrument::ElectricPiano | Instrument::Organ);
+            t.grand_staff = matches!(
+                t.instrument,
+                Instrument::Piano | Instrument::ElectricPiano | Instrument::Organ
+            );
         }
         tracks.push(t);
     }
@@ -353,7 +370,8 @@ pub fn import(data: &[u8]) -> Result<Song, String> {
                     return Err("This file has an unexpected layout.".into());
                 }
                 for _ in 0..nb {
-                    let beat = read_beat(&mut r, v, &tracks[ti], &mut last_fret[ti], &mut master[mi])?;
+                    let beat =
+                        read_beat(&mut r, v, &tracks[ti], &mut last_fret[ti], &mut master[mi])?;
                     if voice == 0 {
                         bar.beats.push(beat);
                     } else {
@@ -371,7 +389,12 @@ pub fn import(data: &[u8]) -> Result<Song, String> {
                 bar.beats = vec![Beat::rest(Dur::Whole)];
             }
             // A second voice with nothing in it is left out.
-            if bar.voices.first().map(|v| v.iter().all(|b| b.is_rest())).unwrap_or(false) {
+            if bar
+                .voices
+                .first()
+                .map(|v| v.iter().all(|b| b.is_rest()))
+                .unwrap_or(false)
+            {
                 bar.voices.clear();
             }
             tracks[ti].bars.push(bar);
@@ -474,7 +497,13 @@ fn read_beat(r: &mut R, v: V, track: &Track, last: &mut [u8; 8], mb: &mut Master
             if f1 & 0x40 != 0 {
                 let down = r.u8()?;
                 let up = r.u8()?;
-                beat.stroke = if down > 0 { Stroke::Down } else if up > 0 { Stroke::Up } else { Stroke::None };
+                beat.stroke = if down > 0 {
+                    Stroke::Down
+                } else if up > 0 {
+                    Stroke::Up
+                } else {
+                    Stroke::None
+                };
             }
         } else {
             let f1 = r.u8()?;
@@ -493,7 +522,13 @@ fn read_beat(r: &mut R, v: V, track: &Track, last: &mut [u8; 8], mb: &mut Master
             if f1 & 0x40 != 0 {
                 let down = r.u8()?;
                 let up = r.u8()?;
-                beat.stroke = if down > 0 { Stroke::Down } else if up > 0 { Stroke::Up } else { Stroke::None };
+                beat.stroke = if down > 0 {
+                    Stroke::Down
+                } else if up > 0 {
+                    Stroke::Up
+                } else {
+                    Stroke::None
+                };
             }
             if f2 & 0x02 != 0 {
                 let ps = r.u8()?;
@@ -572,7 +607,12 @@ fn read_beat(r: &mut R, v: V, track: &Track, last: &mut [u8; 8], mb: &mut Master
     Ok(beat)
 }
 
-fn read_note(r: &mut R, v: V, s: usize, last: &mut [u8; 8]) -> Res<Option<(Note, Option<Dynamic>)>> {
+fn read_note(
+    r: &mut R,
+    v: V,
+    s: usize,
+    last: &mut [u8; 8],
+) -> Res<Option<(Note, Option<Dynamic>)>> {
     let mut dynv = None;
     let flags = r.u8()?;
     let mut n = Note::new(s as u8, 0);
@@ -645,8 +685,16 @@ fn read_note(r: &mut R, v: V, s: usize, last: &mut [u8; 8]) -> Res<Option<(Note,
             }
             if f2 & 0x08 != 0 {
                 let st = r.i8()?;
-                n.slide = if v >= V::Gp50 { st & 0x03 != 0 } else { st == 1 || st == 2 };
-                n.slide_out = if v >= V::Gp50 { st & 0x0C != 0 } else { st == 3 || st == 4 };
+                n.slide = if v >= V::Gp50 {
+                    st & 0x03 != 0
+                } else {
+                    st == 1 || st == 2
+                };
+                n.slide_out = if v >= V::Gp50 {
+                    st & 0x0C != 0
+                } else {
+                    st == 3 || st == 4
+                };
                 n.slide_in = if v >= V::Gp50 { st & 0x30 != 0 } else { st < 0 };
             }
             if f2 & 0x10 != 0 {

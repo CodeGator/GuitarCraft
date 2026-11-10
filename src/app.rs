@@ -178,7 +178,11 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(cc: &eframe::CreationContext<'_>, screenshot: Option<PathBuf>, open: Option<PathBuf>) -> App {
+    pub fn new(
+        cc: &eframe::CreationContext<'_>,
+        screenshot: Option<PathBuf>,
+        open: Option<PathBuf>,
+    ) -> App {
         let music_font = crate::setup_fonts(&cc.egui_ctx);
         crate::setup_style(&cc.egui_ctx);
         let mut app = App {
@@ -237,7 +241,7 @@ impl App {
             home_search: String::new(),
             preview: None,
             show_keyboard: false,
-                    kb_octave: 1,
+            kb_octave: 1,
             play_while_editing: true,
             view_mode: 0,
             dir_open: false,
@@ -315,7 +319,10 @@ impl App {
         if let Some(p) = open {
             app.open_path(p);
         }
-        if let Some(b) = std::env::var("GUITARCRAFT_BAR").ok().and_then(|t| t.parse::<usize>().ok()) {
+        if let Some(b) = std::env::var("GUITARCRAFT_BAR")
+            .ok()
+            .and_then(|t| t.parse::<usize>().ok())
+        {
             app.bar = b.saturating_sub(1);
             app.clamp_cursor();
             app.scroll_to_cursor = true;
@@ -398,7 +405,13 @@ impl App {
                     "addtrack" => app.addtrack_open = true,
                     "std" => {
                         // Cursor on the lowest note of the beat, in the notation.
-                        if let Some(n) = app.cur_beat().notes.iter().max_by_key(|n| n.string).cloned() {
+                        if let Some(n) = app
+                            .cur_beat()
+                            .notes
+                            .iter()
+                            .max_by_key(|n| n.string)
+                            .cloned()
+                        {
                             app.string = n.string as usize;
                         }
                         app.enter_std();
@@ -422,18 +435,31 @@ impl App {
                         let b = &mut app.song.tracks[0].bars[0];
                         b.pad_voices();
                         b.voices[0] = vec![
-                            Beat { notes: vec![Note::new(5, 3)], ..Beat::rest(Dur::Half) },
-                            Beat { notes: vec![Note::new(4, 2)], ..Beat::rest(Dur::Half) },
+                            Beat {
+                                notes: vec![Note::new(5, 3)],
+                                ..Beat::rest(Dur::Half)
+                            },
+                            Beat {
+                                notes: vec![Note::new(4, 2)],
+                                ..Beat::rest(Dur::Half)
+                            },
                         ];
                         app.voice = 1;
                         app.string = 5;
                     }
                     "help" => app.show_help = true,
                     // The Stylesheet window on one of its tabs, for checking pictures.
-                    "stylesheet" | "stylesheet1" | "stylesheet2" | "stylesheet3" | "stylesheet4" | "stylesheet5" => {
+                    "stylesheet" | "stylesheet1" | "stylesheet2" | "stylesheet3"
+                    | "stylesheet4" | "stylesheet5" => {
                         app.open_stylesheet();
                         if let Some(d) = app.style_dlg.as_mut() {
-                            d.tab = part.trim().trim_start_matches("stylesheet").parse::<usize>().unwrap_or(1).clamp(1, 5) - 1;
+                            d.tab = part
+                                .trim()
+                                .trim_start_matches("stylesheet")
+                                .parse::<usize>()
+                                .unwrap_or(1)
+                                .clamp(1, 5)
+                                - 1;
                         }
                     }
                     "style-rock" => app.song.style = crate::style::Stylesheet::rock(),
@@ -446,10 +472,16 @@ impl App {
         if std::env::var("GUITARCRAFT_HOME").is_ok() {
             app.show_home = true;
         }
-        if let Some(z) = std::env::var("GUITARCRAFT_ZOOM").ok().and_then(|z| z.parse::<f32>().ok()) {
+        if let Some(z) = std::env::var("GUITARCRAFT_ZOOM")
+            .ok()
+            .and_then(|z| z.parse::<f32>().ok())
+        {
             app.zoom = z.clamp(0.3, 3.0);
         }
-        if let Some(t) = std::env::var("GUITARCRAFT_TRACK").ok().and_then(|t| t.parse::<usize>().ok()) {
+        if let Some(t) = std::env::var("GUITARCRAFT_TRACK")
+            .ok()
+            .and_then(|t| t.parse::<usize>().ok())
+        {
             app.track = t.saturating_sub(1);
             app.clamp_cursor();
         }
@@ -468,7 +500,9 @@ impl App {
     fn clamp_cursor(&mut self) {
         self.track = self.track.min(self.song.tracks.len() - 1);
         self.bar = self.bar.min(self.song.bar_count() - 1);
-        let nb = self.song.tracks[self.track].bars[self.bar].voice(self.voice).len();
+        let nb = self.song.tracks[self.track].bars[self.bar]
+            .voice(self.voice)
+            .len();
         self.beat = self.beat.min(nb.saturating_sub(1));
         self.string = self.string.min(self.tr().strings() - 1);
     }
@@ -524,7 +558,8 @@ impl App {
     fn song_seconds(&self) -> f32 {
         let mut t = 0.0;
         for bi in self.song.play_order() {
-            t += self.song.master[bi].ticks() as f32 / QUARTER as f32 * 60.0 / self.song.tempo_at(bi) as f32;
+            t += self.song.master[bi].ticks() as f32 / QUARTER as f32 * 60.0
+                / self.song.tempo_at(bi) as f32;
         }
         t / (self.speed / 100.0)
     }
@@ -547,7 +582,11 @@ impl App {
 
     fn ensure_audio(&mut self) {
         if self.audio.is_none() {
-            self.audio = Some(if self.sound_allowed { Audio::new() } else { Audio::silent() });
+            self.audio = Some(if self.sound_allowed {
+                Audio::new()
+            } else {
+                Audio::silent()
+            });
             if let Some(e) = self.audio.as_ref().and_then(|a| a.error.clone()) {
                 self.status = format!("Sound unavailable: {e}");
             }
@@ -559,12 +598,15 @@ impl App {
     fn bar_full(&self, bar: usize) -> bool {
         let b = &self.song.tracks[self.track].bars[bar];
         let v = b.voice(self.voice);
-        v.iter().map(|x| x.ticks()).sum::<u32>() >= self.song.master[bar].ticks() || (v.len() == 1 && v[0].is_rest() && v[0].dur == Dur::Whole)
+        v.iter().map(|x| x.ticks()).sum::<u32>() >= self.song.master[bar].ticks()
+            || (v.len() == 1 && v[0].is_rest() && v[0].dur == Dur::Whole)
     }
 
     fn move_right(&mut self, extend: bool) {
         self.update_anchor(extend);
-        let nb = self.song.tracks[self.track].bars[self.bar].voice(self.voice).len();
+        let nb = self.song.tracks[self.track].bars[self.bar]
+            .voice(self.voice)
+            .len();
         if self.beat + 1 < nb {
             self.beat += 1;
         } else if !extend && !self.bar_full(self.bar) {
@@ -603,7 +645,10 @@ impl App {
             self.beat -= 1;
         } else if self.bar > 0 {
             self.bar -= 1;
-            self.beat = self.song.tracks[self.track].bars[self.bar].voice(self.voice).len() - 1;
+            self.beat = self.song.tracks[self.track].bars[self.bar]
+                .voice(self.voice)
+                .len()
+                - 1;
         }
         self.scroll_to_cursor = true;
     }
@@ -639,7 +684,8 @@ impl App {
         let cur_dur = self.cur_dur;
         self.edit(|s, t, b, j, _| {
             let bar = &mut s.tracks[t].bars[b];
-            let placeholder = bar.beats.len() == 1 && bar.beats[0].is_rest() && bar.beats[0].dur == Dur::Whole;
+            let placeholder =
+                bar.beats.len() == 1 && bar.beats[0].is_rest() && bar.beats[0].dur == Dur::Whole;
             let beat = &mut bar.beats[j];
             if placeholder {
                 beat.dur = cur_dur;
@@ -660,7 +706,12 @@ impl App {
             }
         }
         self.preview(&n);
-        self.status = format!("String {}, fret {} ({})", string + 1, fret, note_name_oct(self.tr().pitch(&n)));
+        self.status = format!(
+            "String {}, fret {} ({})",
+            string + 1,
+            fret,
+            note_name_oct(self.tr().pitch(&n))
+        );
     }
 
     fn type_digit(&mut self, d: u8, now: f64) {
@@ -704,8 +755,17 @@ impl App {
         }
         let has_note = self.cur_beat().note_on(self.string as u8).is_some();
         if has_note {
-            self.edit(|s, t, b, j, st| s.tracks[t].bars[b].beats[j].notes.retain(|n| n.string != st as u8));
-        } else if self.cur_beat().is_rest() && self.song.tracks[self.track].bars[self.bar].voice(self.voice).len() > 1 {
+            self.edit(|s, t, b, j, st| {
+                s.tracks[t].bars[b].beats[j]
+                    .notes
+                    .retain(|n| n.string != st as u8)
+            });
+        } else if self.cur_beat().is_rest()
+            && self.song.tracks[self.track].bars[self.bar]
+                .voice(self.voice)
+                .len()
+                > 1
+        {
             self.edit(|s, t, b, j, _| {
                 s.tracks[t].bars[b].beats.remove(j);
             });
@@ -733,7 +793,11 @@ impl App {
             for bi in sa.0..=sb.0 {
                 let beats = self.song.tracks[self.track].bars[bi].voice(self.voice);
                 let from = if bi == sa.0 { sa.1 } else { 0 };
-                let to = if bi == sb.0 { sb.1 } else { beats.len().saturating_sub(1) };
+                let to = if bi == sb.0 {
+                    sb.1
+                } else {
+                    beats.len().saturating_sub(1)
+                };
                 for beat in beats.iter().take(to + 1).skip(from) {
                     for n in &beat.notes {
                         any = true;
@@ -751,7 +815,11 @@ impl App {
                 for bi in sa.0..=sb.0 {
                     let beats = &mut s.tracks[t].bars[bi].beats;
                     let from = if bi == sa.0 { sa.1 } else { 0 };
-                    let to = if bi == sb.0 { sb.1 } else { beats.len().saturating_sub(1) };
+                    let to = if bi == sb.0 {
+                        sb.1
+                    } else {
+                        beats.len().saturating_sub(1)
+                    };
                     for beat in beats.iter_mut().take(to + 1).skip(from) {
                         for n in &mut beat.notes {
                             *f(n) = on;
@@ -759,14 +827,18 @@ impl App {
                     }
                 }
             });
-            self.status = format!("{name} {} for the selected notes.", if on { "on" } else { "off" });
+            self.status = format!(
+                "{name} {} for the selected notes.",
+                if on { "on" } else { "off" }
+            );
             return;
         }
         if self.cur_beat().is_rest() {
             self.status = "Put a note on this beat first.".into();
             return;
         }
-        let on_string = self.cur_beat().note_on(self.string as u8).is_some() && (self.std_cursor.is_none() || self.note_at_std().is_some());
+        let on_string = self.cur_beat().note_on(self.string as u8).is_some()
+            && (self.std_cursor.is_none() || self.note_at_std().is_some());
         self.edit(|s, t, b, j, st| {
             let beat = &mut s.tracks[t].bars[b].beats[j];
             if on_string {
@@ -800,7 +872,11 @@ impl App {
         }
         self.edit(|s, t, b, j, st| {
             let beat = &mut s.tracks[t].bars[b].beats[j];
-            let idx = beat.notes.iter().position(|n| n.string == st as u8).unwrap_or(0);
+            let idx = beat
+                .notes
+                .iter()
+                .position(|n| n.string == st as u8)
+                .unwrap_or(0);
             let n = &mut beat.notes[idx];
             n.bend = match n.bend {
                 0 => 4,
@@ -867,7 +943,8 @@ impl App {
         let n = clip.len();
         self.edit(|s, t, b, j, _| {
             let bar = &mut s.tracks[t].bars[b];
-            let placeholder = bar.beats.len() == 1 && bar.beats[0].is_rest() && bar.beats[0].dur == Dur::Whole;
+            let placeholder =
+                bar.beats.len() == 1 && bar.beats[0].is_rest() && bar.beats[0].dur == Dur::Whole;
             if placeholder {
                 bar.beats.clear();
                 bar.beats.extend(clip);
@@ -897,7 +974,10 @@ impl App {
                 }
             }
         });
-        self.status = format!("Moved notes {} a half step.", if delta > 0 { "up" } else { "down" });
+        self.status = format!(
+            "Moved notes {} a half step.",
+            if delta > 0 { "up" } else { "down" }
+        );
     }
 
     fn add_track(&mut self, bass: bool) {
@@ -977,14 +1057,27 @@ impl App {
                 self.song = song;
                 // Files saved straight back: Guitar Pro 5 and this app's own. Other
                 // Guitar Pro files are saved next to the original as .gp5.
-                let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+                let ext = p
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("")
+                    .to_ascii_lowercase();
                 let native = [fileio::GP_EXT, fileio::GP5_EXT].contains(&ext.as_str());
                 self.path = if native { Some(p.clone()) } else { None };
-                self.save_hint = if native { None } else { Some(p.with_extension(fileio::GP_EXT)) };
+                self.save_hint = if native {
+                    None
+                } else {
+                    Some(p.with_extension(fileio::GP_EXT))
+                };
                 self.reset_after_load();
                 self.add_recent(&p);
                 self.show_home = false;
-                self.status = format!("Opened {}.", p.file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default());
+                self.status = format!(
+                    "Opened {}.",
+                    p.file_name()
+                        .map(|f| f.to_string_lossy().to_string())
+                        .unwrap_or_default()
+                );
             }
             Err(e) => self.status = format!("Couldn't open the file: {e}"),
         }
@@ -1003,10 +1096,19 @@ impl App {
                     if let Some(dir) = p.parent() {
                         d = d.set_directory(dir);
                     }
-                    let stem = p.file_stem().map(|x| x.to_string_lossy().to_string()).unwrap_or_else(|| sanitize(&self.song.title));
+                    let stem = p
+                        .file_stem()
+                        .map(|x| x.to_string_lossy().to_string())
+                        .unwrap_or_else(|| sanitize(&self.song.title));
                     d = d.set_file_name(format!("{stem}.{}", fileio::GP_EXT));
                 }
-                _ => d = d.set_file_name(format!("{}.{}", sanitize(&self.song.title), fileio::GP_EXT)),
+                _ => {
+                    d = d.set_file_name(format!(
+                        "{}.{}",
+                        sanitize(&self.song.title),
+                        fileio::GP_EXT
+                    ))
+                }
             }
             d.save_file()
         } else {
@@ -1016,12 +1118,23 @@ impl App {
             match fileio::save_song(&self.song, &p) {
                 Ok(()) => {
                     self.dirty = false;
-                    let gp = p.extension().map(|e| e.eq_ignore_ascii_case(fileio::GP5_EXT)).unwrap_or(false);
-                    let lost = if gp { fileio::gp5_losses(&self.song) } else { vec![] };
+                    let gp = p
+                        .extension()
+                        .map(|e| e.eq_ignore_ascii_case(fileio::GP5_EXT))
+                        .unwrap_or(false);
+                    let lost = if gp {
+                        fileio::gp5_losses(&self.song)
+                    } else {
+                        vec![]
+                    };
                     self.status = if lost.is_empty() {
                         format!("Saved {}.", p.display())
                     } else {
-                        format!("Saved {} (Guitar Pro 5 can't keep: {}).", p.display(), lost.join(", "))
+                        format!(
+                            "Saved {} (Guitar Pro 5 can't keep: {}).",
+                            p.display(),
+                            lost.join(", ")
+                        )
                     };
                     self.save_hint = None;
                     self.add_recent(&p);
@@ -1033,7 +1146,11 @@ impl App {
     }
 
     fn export_midi(&mut self) {
-        if let Some(p) = rfd::FileDialog::new().add_filter("MIDI file", &["mid"]).set_file_name(format!("{}.mid", sanitize(&self.song.title))).save_file() {
+        if let Some(p) = rfd::FileDialog::new()
+            .add_filter("MIDI file", &["mid"])
+            .set_file_name(format!("{}.mid", sanitize(&self.song.title)))
+            .save_file()
+        {
             match std::fs::write(&p, fileio::export_midi(&self.song)) {
                 Ok(()) => self.status = format!("Exported {}.", p.display()),
                 Err(e) => self.status = format!("Couldn't export: {e}"),
@@ -1042,7 +1159,11 @@ impl App {
     }
 
     fn export_ascii(&mut self) {
-        if let Some(p) = rfd::FileDialog::new().add_filter("Text file", &["txt"]).set_file_name(format!("{}.txt", sanitize(&self.song.title))).save_file() {
+        if let Some(p) = rfd::FileDialog::new()
+            .add_filter("Text file", &["txt"])
+            .set_file_name(format!("{}.txt", sanitize(&self.song.title)))
+            .save_file()
+        {
             match std::fs::write(&p, fileio::export_ascii(&self.song, self.track)) {
                 Ok(()) => self.status = format!("Exported {}.", p.display()),
                 Err(e) => self.status = format!("Couldn't export: {e}"),
@@ -1066,7 +1187,9 @@ impl App {
         if self.single_track {
             return vec![self.track];
         }
-        (0..self.song.tracks.len()).filter(|&i| self.song.tracks[i].visible || i == self.track).collect()
+        (0..self.song.tracks.len())
+            .filter(|&i| self.song.tracks[i].visible || i == self.track)
+            .collect()
     }
 
     fn request(&mut self, what: Pending) {
@@ -1136,15 +1259,25 @@ impl App {
             only_bars: sel.map(|(x, y)| (x.0, y.0)),
         };
         let mut sch = audio::build_schedule(&self.song, sr, &opt);
-        let at_tick = |t: &audio::TimelineBar, tick: u32| t.start + (tick as f64 * t.samples_per_tick) as u64;
-        let song_end = sch.timeline.last().map(|t| at_tick(t, t.ticks)).unwrap_or(sch.end);
+        let at_tick =
+            |t: &audio::TimelineBar, tick: u32| t.start + (tick as f64 * t.samples_per_tick) as u64;
+        let song_end = sch
+            .timeline
+            .last()
+            .map(|t| at_tick(t, t.ticks))
+            .unwrap_or(sch.end);
         let mut start_pos = 0u64;
         let loop_range = match (sel, self.looping) {
             (Some((a0, b0)), true) => {
                 // Exactly the highlighted beats: from the first one's start to the last one's end.
                 let bars = &self.song.tracks[self.track].bars;
                 let start_tick = bars[a0.0].beat_start(self.voice, a0.1);
-                let end_tick = bars[b0.0].beat_start(self.voice, b0.1) + bars[b0.0].voice(self.voice).get(b0.1).map(|x| x.ticks()).unwrap_or(0);
+                let end_tick = bars[b0.0].beat_start(self.voice, b0.1)
+                    + bars[b0.0]
+                        .voice(self.voice)
+                        .get(b0.1)
+                        .map(|x| x.ticks())
+                        .unwrap_or(0);
                 let first = sch.timeline.first().cloned();
                 let last = sch.timeline.last().cloned();
                 match (first, last) {
@@ -1153,7 +1286,8 @@ impl App {
                         let le = at_tick(&l, end_tick.min(l.ticks)).max(ls + 1);
                         // Notes of the first bar before the selection aren't played.
                         let off = sch.start_offset;
-                        sch.events.retain(|e| e.start >= ls || e.start < off || e.track == usize::MAX);
+                        sch.events
+                            .retain(|e| e.start >= ls || e.start < off || e.track == usize::MAX);
                         if off == 0 {
                             start_pos = ls;
                         }
@@ -1163,7 +1297,12 @@ impl App {
                 }
             }
             (None, true) => {
-                let from = sch.timeline.iter().find(|t| t.bar == self.bar).map(|t| t.start).unwrap_or(sch.start_offset);
+                let from = sch
+                    .timeline
+                    .iter()
+                    .find(|t| t.bar == self.bar)
+                    .map(|t| t.start)
+                    .unwrap_or(sch.start_offset);
                 if from > sch.start_offset {
                     start_pos = from;
                 }
@@ -1232,7 +1371,9 @@ impl App {
             }
             return sounding;
         }
-        let Some(a) = &self.audio else { return sounding };
+        let Some(a) = &self.audio else {
+            return sounding;
+        };
         let (pos, still, sr) = match a.state.lock() {
             Ok(st) => {
                 sounding = st.sounding.clone();
@@ -1248,7 +1389,11 @@ impl App {
             return sounding;
         }
         // The loop came round again: the speed trainer raises the speed.
-        if pos < self.last_play_pos && self.looping && self.trainer_on && self.speed < self.trainer_end {
+        if pos < self.last_play_pos
+            && self.looping
+            && self.trainer_on
+            && self.speed < self.trainer_end
+        {
             self.speed = (self.speed + self.trainer_step).min(self.trainer_end);
             self.last_play_pos = 0;
             let keep = (self.bar, self.beat);
@@ -1299,7 +1444,13 @@ impl App {
         }
         let events = ctx.input(|i| i.events.clone());
         for ev in events {
-            if let egui::Event::Key { key, pressed: true, modifiers, .. } = ev {
+            if let egui::Event::Key {
+                key,
+                pressed: true,
+                modifiers,
+                ..
+            } = ev
+            {
                 if modifiers.command {
                     match key {
                         Key::O => self.request(Pending::Open),
@@ -1316,7 +1467,9 @@ impl App {
     }
 
     fn handle_screenshot(&mut self, ctx: &egui::Context) {
-        let Some(path) = self.screenshot.clone() else { return };
+        let Some(path) = self.screenshot.clone() else {
+            return;
+        };
         self.frame += 1;
         ctx.request_repaint();
         if self.frame >= 120 && !self.shot_requested {
