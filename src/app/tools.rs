@@ -249,6 +249,7 @@ impl App {
         self.command_palette(ctx);
         self.trainer_window(ctx);
         self.guide_window(ctx);
+        self.stylesheet_window(ctx);
     }
 
     fn directions_window(&mut self, ctx: &egui::Context) {

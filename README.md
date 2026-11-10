@@ -20,6 +20,7 @@ What works today:
 - **Tracks:** guitars, basses, ukulele and banjo with any tuning and capo (including a partial capo); keyboards, vocals, orchestral instruments and drums, which never show tablature; an icon, colour, playing style and interpretation settings for each.
 - **Editing:** entering notes on the tab or the staff, four voices per bar, selections, copy and paste, undo, transposing, and the editing palette: durations, dots, tuplets, rests, dynamics, crescendos, bends, slides, hammer-ons, let ring, palm mute, harmonics, vibrato, trills, grace notes, accents, strokes and more; repeats, alternate endings, Segno/Coda directions, sections, key and time signatures, tempo changes and lyrics. Bars with too many or too few beats turn red and say how much to add or remove.
 - **Playback:** a built-in synthesizer for every instrument (no sound files needed), a mixer with volume, pan, mute and solo, looping a selection, a metronome and count-in, slower or faster practice speed with a speed trainer, and a cursor that follows each note as you hear it.
+- **Stylesheet (File > Stylesheet, F7):** page size, orientation and margins; music size and note spacing; tunings and chord diagrams on top of the score; staff lines, brackets, track names, clefs and time signatures on each line; header and footer lines filled in from the song's details; fonts for every kind of text; notation choices such as rhythm in the tablature; ready-made Rock, Classic and Jazz styles; saving and loading your own styles. Each song keeps its own stylesheet.
 - **Tools:** a tuning window, chord and scale views, a fretboard and a keyboard view, an add-track window, a command palette, and MIDI, text tab and WAV export.
 
 Not there yet: slash and numbered (jianpu) notation, printing and PDF export, and some of the less common symbols. Expect rough edges and differences from the original.
@@ -89,6 +90,7 @@ A few command-line options help with checking and converting:
 
 ## How it is put together
 
+- `src/style.rs`: the stylesheet (its settings, the Rock, Classic and Jazz styles, and the fonts it can use)
 - `src/model.rs`: songs, tracks, bars, voices, beats and notes, plus instrument types, clefs and tunings
 - `src/score.rs`, `src/score/draw.rs`: laying out pages and lines and drawing notation, tablature and symbols
 - `src/audio.rs`: the synthesizer (plucked strings, keys, voices, winds, drums) and playback through `cpal`

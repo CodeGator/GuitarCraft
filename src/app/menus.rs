@@ -117,6 +117,11 @@ impl App {
             ui.close();
         }
         ui.separator();
+        if item(ui, "Stylesheet...", "F7").clicked() {
+            self.open_stylesheet();
+            ui.close();
+        }
+        ui.separator();
         ui.menu_button("Import", |ui| {
             if ui.button("Guitar Pro file (.gp, .gpx, .gp3\u{2013}.gp5)...").clicked() {
                 self.request(Pending::Open);

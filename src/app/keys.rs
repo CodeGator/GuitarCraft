@@ -90,6 +90,7 @@ impl App {
             Key::F2 => self.show_palette = !self.show_palette,
             Key::F3 => self.single_track = !self.single_track,
             Key::F4 => self.check_bar_duration(),
+            Key::F7 => self.open_stylesheet(),
             Key::F8 => self.show_tracks = !self.show_tracks,
             Key::F9 => self.looping = !self.looping,
             Key::F10 => self.open_automations(self.bar),

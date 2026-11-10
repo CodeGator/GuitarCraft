@@ -392,6 +392,13 @@ impl App {
                         }
                     });
                 });
+                heading(ui, "MUSICAL NOTATION");
+                ui.horizontal(|ui| {
+                    field_label(ui, "Stylesheet:");
+                    if ui.add(egui::Button::new("Open...").fill(Color32::from_rgb(70, 74, 84))).on_hover_text("How the score looks: page, staves, header and footer, fonts (F7)").clicked() {
+                        self.open_stylesheet();
+                    }
+                });
             }
             InspectorTab::Track => {
                 let ti = self.track;

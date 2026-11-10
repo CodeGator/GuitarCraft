@@ -7,14 +7,21 @@ pub use draw::{key_positions, note_staff_pos, set_ink, staff_pos_name, staff_pos
 use crate::model::*;
 use draw::*;
 use egui::{epaint::TextShape, Align2, Color32, FontFamily, FontId, Painter, Pos2, Rect, Stroke as PStroke, Vec2};
+
+/// Rhythm drawn with the tablature for a voice: 0 above it, 1 below it, 2 not at all.
+pub fn tab_rhythm_pos(st: &Stylesheet, v: usize, has_std: bool) -> u8 {
+    if st.rhythm_hide_with_std && has_std {
+        2
+    } else {
+        st.rhythm_voice.get(v).copied().unwrap_or(2).min(2)
+    }
+}
 use std::collections::BTreeMap;
 
 pub const PAGE_W: f32 = 820.0;
 pub const PAGE_H: f32 = 1160.0;
 pub const PAGE_GAP: f32 = 24.0;
-const MARGIN_X: f32 = 56.0;
-const MARGIN_TOP: f32 = 44.0;
-const MARGIN_BOTTOM: f32 = 56.0;
+use crate::style::{FontSpec, HeaderItem, Stylesheet, Tokens, MM};
 
 pub const INK: Color32 = Color32::from_rgb(20, 20, 24);
 pub const PLAY: Color32 = Color32::from_rgb(240, 130, 20);
@@ -60,14 +67,17 @@ pub fn staves(t: &Track, notation: Notation) -> (bool, bool) {
 }
 
 impl Geom {
-    fn new(z: f32, notation: Notation, track: &Track, top: f32, first: bool, lyrics: bool, diagrams: bool) -> Geom {
+    #[allow(clippy::too_many_arguments)]
+    fn new(z: f32, notation: Notation, track: &Track, top: f32, first: bool, lyrics: bool, diagrams: f32, st: &Stylesheet) -> Geom {
         let strings = track.strings();
         let ls = 7.5 * z;
         let ts = 12.5 * z;
         let (std, tab) = staves(track, notation);
         let grand = std && track.grand();
-        let chord_y = top + if first { 40.0 } else { 16.0 } * z + if diagrams { 52.0 * z } else { 0.0 };
-        let mut y = chord_y + 2.0 * z;
+        let chord_y = top + if first { 40.0 } else { 16.0 } * z + 52.0 * z * diagrams;
+        let lyrics_above = lyrics && st.lyrics_pos == 1;
+        let lyrics_below = lyrics && st.lyrics_pos == 0;
+        let mut y = chord_y + 2.0 * z + if lyrics_above { 14.0 * z } else { 0.0 };
         let std_top = y + 16.0 * z;
         let mut std2_top = std_top;
         if std {
@@ -82,7 +92,8 @@ impl Geom {
         let mut rhythm_top = tab_top;
         if tab {
             rhythm_top = tab_top + (strings as f32 - 1.0) * ts + 4.0 * z;
-            y = rhythm_top + 26.0 * z;
+            let below = (0..VOICES).any(|v| tab_rhythm_pos(st, v, std) == 1);
+            y = rhythm_top + if below { 26.0 } else { 10.0 } * z;
         }
         Geom {
             z,
@@ -97,7 +108,7 @@ impl Geom {
             lane_top,
             tab_top,
             rhythm_top,
-            bottom: y + if lyrics { 20.0 } else { 4.0 } * z,
+            bottom: y + if lyrics_below { 20.0 } else { 4.0 } * z,
             grand,
             std2_top,
             clef: track.clef(),
@@ -187,7 +198,19 @@ pub struct SysLay {
 }
 
 pub struct Layout {
+    /// Zoom of the music (the screen zoom times the stylesheet's proportion).
     pub z: f32,
+    /// Zoom of the page itself (margins, header and footer).
+    pub pz: f32,
+    /// Zoom of the texts inside the systems.
+    pub fz: f32,
+    /// Page margins in page units.
+    pub ml: f32,
+    pub mr: f32,
+    pub mt: f32,
+    /// Where the first page's header parts end (page units from the page top):
+    /// the title lines, the tunings and chord diagrams, the tempo.
+    pub head: HeaderGeom,
     pub blocks: Vec<Block>,
     pub cur_block: usize,
     pub sys_h: f32,
@@ -203,10 +226,10 @@ pub struct Layout {
 
 impl Layout {
     pub fn page_w(&self) -> f32 {
-        self.pw * self.z
+        self.pw * self.pz
     }
     pub fn page_h(&self) -> f32 {
-        self.ph * self.z
+        self.ph * self.pz
     }
     pub fn total_h(&self) -> f32 {
         let rows = self.pages.div_ceil(self.cols.max(1));
@@ -234,13 +257,16 @@ impl Layout {
     }
 }
 
-fn col_width(eff_ticks: u32, extra: f32, z: f32) -> f32 {
+fn col_width(eff_ticks: u32, extra: f32, z: f32, spacing: f32) -> f32 {
     let r = eff_ticks as f32 / QUARTER as f32;
-    (15.0 + 30.0 * r.powf(0.55) + extra) * z
+    // The stylesheet's rhythm proportion: 0.5 is the usual spacing.
+    let k = (0.5 + spacing).clamp(0.3, 2.0);
+    (15.0 + 30.0 * k * r.powf(0.55) + extra) * z
 }
 
 /// Shared time grid of one bar over all shown tracks: onset ticks and widths.
 fn bar_columns(song: &Song, tis: &[usize], bi: usize, z: f32) -> (Vec<u32>, Vec<f32>) {
+    let spacing = song.style.rhythm_spacing;
     let mut onsets: BTreeMap<u32, (u32, f32)> = BTreeMap::new();
     for (&ti, v) in tis.iter().flat_map(|ti| (0..VOICES).map(move |v| (ti, v))) {
         let bar = &song.tracks[ti].bars[bi];
@@ -270,7 +296,7 @@ fn bar_columns(song: &Song, tis: &[usize], bi: usize, z: f32) -> (Vec<u32>, Vec<
             Some(&n) => d.min(n - t),
             None => d,
         };
-        widths.push(col_width(eff, extra, z));
+        widths.push(col_width(eff, extra, z, spacing));
     }
     (keys, widths)
 }
@@ -281,23 +307,310 @@ pub fn layout(song: &Song, shown: &[usize], cur: usize, z: f32, notation: Notati
 
 /// What part of the page header a click is on: 0 title, 1 tracks and tunings, 2 tempo.
 pub fn header_zone(lay: &Layout, page: usize, rel: Pos2) -> Option<u8> {
-    if page != 0 || lay.systems.first().map(|s| rel.y >= s.y).unwrap_or(true) || rel.y < MARGIN_TOP * lay.z {
+    if page != 0 || lay.systems.first().map(|s| rel.y >= s.y).unwrap_or(true) || rel.y < lay.mt * lay.pz {
         return None;
     }
-    let y = rel.y / lay.z - MARGIN_TOP;
-    Some(if y < 96.0 {
+    let y = rel.y / lay.pz;
+    Some(if y < lay.head.rows_end {
         0
-    } else if y < 132.0 {
+    } else if y < lay.head.tempo_y - 8.0 {
         1
     } else {
         2
     })
 }
 
+/// One row of header or footer text: each item with its alignment (0 left, 1 centre, 2 right).
+#[derive(Clone, Default)]
+pub struct HeaderRow {
+    pub y: f32,
+    pub h: f32,
+    pub items: Vec<(String, u8, FontSpec)>,
+}
+
+/// Where the parts of the page header and footer go, in page units.
+#[derive(Clone, Default)]
+pub struct HeaderGeom {
+    /// The title lines of the first page (y from the page top).
+    pub rows: Vec<HeaderRow>,
+    pub rows_end: f32,
+    /// Track names and tunings on top of the score (height 0 when not shown).
+    pub tuning_y: f32,
+    pub tuning_h: f32,
+    /// Chord diagrams on top of the score: track, bar and beat of each, and their rows.
+    pub chords: Vec<(usize, usize, usize)>,
+    pub chords_y: f32,
+    pub chords_h: f32,
+    /// The tempo marking's centre.
+    pub tempo_y: f32,
+    /// Where the first system may start on the first page and on the others.
+    pub end: f32,
+    pub other_end: f32,
+    /// How far up from the page bottom the footer reaches (first page, others).
+    pub foot_first: f32,
+    pub foot_other: f32,
+}
+
+pub fn song_tokens(song: &Song, page: usize, pages: usize) -> Tokens<'_> {
+    Tokens {
+        title: &song.title,
+        subtitle: &song.subtitle,
+        artist: &song.artist,
+        album: &song.album,
+        words: &song.words,
+        music: &song.music_by,
+        tabber: &song.tabbed_by,
+        copyright: &song.copyright,
+        page: page + 1,
+        pages,
+    }
+}
+
+fn row_h(f: &FontSpec) -> f32 {
+    f.size * crate::style::PT * 1.25
+}
+
+/// Lays out header or footer items in rows (y from 0). Lines whose tokens are
+/// empty are left out; "Words & Music" replaces the two lines when they are the
+/// same person. In a header, a left and a right item can share a row; in a
+/// footer any items with different alignments share one.
+pub fn text_rows(items: &[HeaderItem], tok: &Tokens, footer: bool) -> Vec<HeaderRow> {
+    let same = !tok.words.trim().is_empty() && tok.words.trim() == tok.music.trim();
+    let mut rows: Vec<HeaderRow> = vec![];
+    let mut y = 0.0;
+    let mut prev_align: Option<u8> = None;
+    for it in items {
+        if !it.on {
+            continue;
+        }
+        match it.name.as_str() {
+            "Words" | "Music" if same => continue,
+            "Words & Music" if !same => continue,
+            // The second copyright line goes with a copyright notice only.
+            "Copyright (second line)" if tok.copyright.trim().is_empty() => continue,
+            _ => {}
+        }
+        let Some(text) = tok.fill(&it.text) else { continue };
+        let h = row_h(&it.font);
+        let join = match (rows.last(), prev_align) {
+            (Some(r), Some(pa)) => {
+                let used = r.items.iter().any(|x| x.1 == it.align);
+                if footer {
+                    !used
+                } else {
+                    !used && pa != 1 && it.align != 1
+                }
+            }
+            _ => false,
+        };
+        if join {
+            let r = rows.last_mut().unwrap();
+            if h > r.h {
+                y += h - r.h;
+                r.h = h;
+            }
+            r.items.push((text, it.align, it.font.clone()));
+        } else {
+            rows.push(HeaderRow { y, h, items: vec![(text, it.align, it.font.clone())] });
+            y += h;
+        }
+        prev_align = Some(it.align);
+    }
+    rows
+}
+
+/// The tuning lines shown for a track on top of the score (empty for tracks without strings).
+pub fn tuning_lines(st: &Stylesheet, t: &Track) -> Vec<String> {
+    if !t.has_strings() {
+        return vec![];
+    }
+    let name_line = || {
+        let mut n = tuning_name(&t.tuning);
+        if n.contains('(') {
+            n = "Standard tuning".into();
+        }
+        if !t.tuning_label.trim().is_empty() {
+            n = t.tuning_label.clone();
+        }
+        n
+    };
+    if !t.tuning_label_visible {
+        return vec![String::new()];
+    }
+    let standard = {
+        let d = t.instrument.default_tuning();
+        if d.len() == t.tuning.len() {
+            d
+        } else {
+            tuning_presets(t.tuning.len()).first().map(|x| x.1.clone()).unwrap_or_default()
+        }
+    };
+    let strings: Vec<usize> = match st.tuning_mode {
+        0 => return vec![name_line()],
+        1 => (0..t.tuning.len()).collect(),
+        _ => (0..t.tuning.len()).filter(|&s| standard.get(s) != Some(&t.tuning[s])).collect(),
+    };
+    if strings.is_empty() {
+        return vec![name_line()];
+    }
+    let circled = |s: usize| char::from_u32(0x2460 + s as u32).unwrap_or('?');
+    let cell = |s: usize| {
+        let n = note_name(t.tuning[s]);
+        let n = if t.tuning_flat { sharp_to_flat(&n) } else { n };
+        format!("{}={}", circled(s), n)
+    };
+    let mut out = vec![];
+    if st.tuning_mode == 1 {
+        out.push(name_line());
+    }
+    if st.tuning_cols == 1 {
+        out.push(strings.iter().map(|&s| cell(s)).collect::<Vec<_>>().join("  "));
+    } else {
+        let half = strings.len().div_ceil(2);
+        for r in 0..half {
+            let mut line = cell(strings[r]);
+            if let Some(&s2) = strings.get(r + half) {
+                line = format!("{line}    {}", cell(s2));
+            }
+            out.push(line);
+        }
+    }
+    out
+}
+
+fn sharp_to_flat(n: &str) -> String {
+    match n {
+        "C#" => "Db",
+        "D#" => "Eb",
+        "F#" => "Gb",
+        "G#" => "Ab",
+        "A#" => "Bb",
+        x => x,
+    }
+    .to_string()
+}
+
+/// Chord diagrams for the top of the score: one of each different chord, in order.
+fn top_chords(song: &Song, tis: &[usize]) -> Vec<(usize, usize, usize)> {
+    let mut seen: Vec<(Option<String>, Vec<(u8, u8)>)> = vec![];
+    let mut out = vec![];
+    for &ti in tis {
+        let t = &song.tracks[ti];
+        if !t.has_strings() {
+            continue;
+        }
+        for (bi, bar) in t.bars.iter().enumerate() {
+            for (j, b) in bar.beats.iter().enumerate() {
+                if !b.chord_diagram || b.is_rest() {
+                    continue;
+                }
+                let mut shape: Vec<(u8, u8)> = b.notes.iter().map(|n| (n.string, n.fret)).collect();
+                shape.sort();
+                let key = (b.chord.clone(), shape);
+                if !seen.contains(&key) {
+                    seen.push(key);
+                    out.push((ti, bi, j));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Height of a chord diagram on top of the score, and the width each one takes.
+pub fn top_chord_cell(st: &Stylesheet, strings: usize) -> (f32, f32) {
+    let k = st.chords_top_size / 10.0;
+    let w = 6.0 * k * (strings.max(2) as f32 - 1.0) + st.chords_top_spacing * MM + 22.0 * k;
+    (72.0 * k, w)
+}
+
+fn header_geom(song: &Song, tis: &[usize], content_w: f32, mt: f32) -> HeaderGeom {
+    let st = &song.style;
+    let mut h = HeaderGeom::default();
+    let tok = song_tokens(song, 0, 1);
+    let mut rows = text_rows(&st.first_header, &tok, false);
+    for r in &mut rows {
+        r.y += mt;
+    }
+    h.rows_end = rows.last().map(|r| r.y + r.h).unwrap_or(mt);
+    h.rows = rows;
+    let mut y = h.rows_end;
+    h.tuning_y = y;
+    if st.tuning_show && st.tuning_pos == 0 {
+        let lh = st.font_tuning.size * crate::style::PT * 1.3;
+        let lines = tis
+            .iter()
+            .map(|&ti| {
+                let t = &song.tracks[ti];
+                1 + tuning_lines(st, t).len().max(1) + usize::from(t.capo > 0)
+            })
+            .max()
+            .unwrap_or(2);
+        h.tuning_h = lines as f32 * lh + 4.0 + if st.tuning_framed { 6.0 } else { 0.0 };
+        y += h.tuning_h;
+    }
+    h.chords_y = y;
+    if st.chords_top {
+        h.chords = top_chords(song, tis);
+        if !h.chords.is_empty() {
+            let mut x = 0.0;
+            let mut rows = 1;
+            for &(ti, _, _) in &h.chords {
+                let (_, w) = top_chord_cell(st, song.tracks[ti].strings());
+                if x + w > content_w && x > 0.0 {
+                    rows += 1;
+                    x = 0.0;
+                }
+                x += w;
+            }
+            let (ch, _) = top_chord_cell(st, 6);
+            h.chords_h = rows as f32 * ch + 4.0;
+            y += h.chords_h;
+        }
+    }
+    h.tempo_y = y + 10.0;
+    h.end = h.tempo_y + 6.0;
+    let mut other = text_rows(&st.other_header, &song_tokens(song, 1, 2), false);
+    for r in &mut other {
+        r.y += mt;
+    }
+    h.other_end = other.last().map(|r| r.y + r.h + 6.0).unwrap_or(mt);
+    let foot = |items: &[HeaderItem], page: usize| -> f32 { text_rows(items, &song_tokens(song, page, page + 2), true).iter().map(|r| r.h).sum() };
+    let mb = st.margin_bottom * MM;
+    h.foot_first = foot(&st.first_footer, 0) + (mb * 0.6).max(10.0);
+    h.foot_other = foot(&st.other_footer, 1) + (mb * 0.6).max(10.0);
+    h
+}
+
+/// Width of the longest track name in page units (estimated), for horizontal names.
+fn names_width(song: &Song, tis: &[usize]) -> f32 {
+    let st = &song.style;
+    let longest = tis
+        .iter()
+        .map(|&ti| {
+            let t = &song.tracks[ti];
+            if st.name_first_mode == 0 {
+                t.name.chars().count()
+            } else {
+                track_short_name(t).chars().count()
+            }
+        })
+        .max()
+        .unwrap_or(0);
+    longest as f32 * st.font_track_h.size * crate::style::PT * 0.5 + 12.0
+}
+
 /// With `screen_w` (in screen pixels) the music runs on one continuous sheet
 /// as wide as the window instead of separate pages.
-pub fn layout_ex(song: &Song, shown: &[usize], cur: usize, z: f32, notation: Notation, screen_w: Option<f32>, horizontal: bool) -> Layout {
-    let mut pw = screen_w.map(|w| (w / z).max(560.0)).unwrap_or(PAGE_W);
+pub fn layout_ex(song: &Song, shown: &[usize], cur: usize, zoom: f32, notation: Notation, screen_w: Option<f32>, horizontal: bool) -> Layout {
+    let st = &song.style;
+    let pz = zoom;
+    let z = zoom * st.music_scale();
+    let fz = if st.scale_fonts { z } else { pz };
+    let (pw_mm, ph_mm) = st.page_mm();
+    let (ml, mr, mt, mb) = (st.margin_left * MM, st.margin_right * MM, st.margin_top * MM, st.margin_bottom * MM);
+    let mut pw = screen_w.map(|w| (w / pz).max(560.0)).unwrap_or(pw_mm * MM);
+    let page_h = ph_mm * MM;
     let continuous = screen_w.is_some();
     let mut tis: Vec<usize> = shown.iter().copied().filter(|&t| t < song.tracks.len()).collect();
     if !tis.contains(&cur) {
@@ -308,16 +621,25 @@ pub fn layout_ex(song: &Song, shown: &[usize], cur: usize, z: f32, notation: Not
     let mut top = 0.0;
     for (k, &ti) in tis.iter().enumerate() {
         let t = &song.tracks[ti];
-        let lyrics = !t.lyrics.trim().is_empty() || t.bars.iter().any(|b| b.beats.iter().any(|x| x.lyric.is_some()));
-        let diagrams = t.bars.iter().any(|b| b.beats.iter().any(|x| x.chord_diagram && !x.is_rest()));
-        let g = Geom::new(z, notation, t, top, k == 0, lyrics, diagrams);
+        let lyrics = st.lyrics_pos != 2 && (!t.lyrics.trim().is_empty() || t.bars.iter().any(|b| b.beats.iter().any(|x| x.lyric.is_some())));
+        let diagrams = st.chords_in_score && t.bars.iter().any(|b| b.beats.iter().any(|x| x.chord_diagram && !x.is_rest()));
+        let dk = if diagrams { st.chords_in_score_size / 9.0 } else { 0.0 };
+        let g = Geom::new(z, notation, t, top, k == 0, lyrics, dk, st);
         top = g.bottom;
         blocks.push(Block { ti, g });
     }
     let cur_block = tis.iter().position(|&t| t == cur).unwrap_or(0);
-    let sys_h = top + 16.0 * z;
-    let content_w = (pw - 2.0 * MARGIN_X) * z;
-    let header_h = (150.0 + 0.0) * z;
+    let sys_h = (top + 16.0 * z + (st.system_gap - 4.0) * MM * pz).max(top + 2.0 * z);
+    let content_w = (pw - ml - mr) * pz;
+    let head = header_geom(song, &tis, pw - ml - mr, mt);
+    // The first system can be indented (and is, to make room for horizontal track names).
+    let single = tis.len() == 1;
+    let names_on = if single { st.name_single } else { st.name_multi };
+    let mut indent = if st.indent_on { st.indent * MM } else { 0.0 };
+    if names_on && st.name_first_orient == 1 {
+        indent = indent.max(names_width(song, &tis));
+    }
+    let indent_px = indent * pz;
 
     struct Pre {
         bi: usize,
@@ -352,24 +674,32 @@ pub fn layout_ex(song: &Song, shown: &[usize], cur: usize, z: f32, notation: Not
     let mut prev_key = 0i8;
     for bi in 0..song.bar_count() {
         let mb = &song.master[bi];
-        let time = (mb.num, mb.den) != prev_sig;
+        let sig_changed = (mb.num, mb.den) != prev_sig;
+        let section = st.time_each_section && mb.marker.is_some();
+        let time = sig_changed || section;
         prev_sig = (mb.num, mb.den);
         let key_changed = mb.key != prev_key;
         prev_key = mb.key;
         let kn = mb.key.unsigned_abs() as usize;
         let (onsets, widths) = bar_columns(song, &tis, bi, z);
         let sum: f32 = widths.iter().sum();
-        let clef = cur_g.is_empty();
-        let keys_here = if clef || key_changed { kn } else { 0 };
-        let w = head_w(clef, time, mb.repeat_open, keys_here) + sum + 8.0 * z;
-        if !cur_g.is_empty() && used + w > content_w {
+        let sys_start = cur_g.is_empty();
+        let first_system = groups.is_empty();
+        let clef = sys_start && (st.clef_each_system || first_system);
+        let time_here = time || (sys_start && st.time_each_system);
+        let keys_here = if sys_start || key_changed { kn } else { 0 };
+        let w = head_w(clef, time_here, mb.repeat_open, keys_here) + sum + 8.0 * z;
+        let room = if first_system { content_w - indent_px } else { content_w };
+        if !cur_g.is_empty() && used + w > room {
             groups.push(std::mem::take(&mut cur_g));
-            let head = head_w(true, time, mb.repeat_open, kn);
+            let clef = st.clef_each_system;
+            let time = time || st.time_each_system;
+            let head = head_w(clef, time, mb.repeat_open, kn);
             used = head + sum + 8.0 * z;
-            cur_g.push(Pre { bi, head, onsets, widths, clef: true, time, key_shown: kn > 0 });
+            cur_g.push(Pre { bi, head, onsets, widths, clef, time, key_shown: kn > 0 });
         } else {
             used += w;
-            cur_g.push(Pre { bi, head: head_w(clef, time, mb.repeat_open, keys_here), onsets, widths, clef, time, key_shown: keys_here > 0 });
+            cur_g.push(Pre { bi, head: head_w(clef, time_here, mb.repeat_open, keys_here), onsets, widths, clef, time: time_here, key_shown: keys_here > 0 });
         }
         if mb.line_break && !cur_g.is_empty() {
             groups.push(std::mem::take(&mut cur_g));
@@ -383,19 +713,22 @@ pub fn layout_ex(song: &Song, shown: &[usize], cur: usize, z: f32, notation: Not
     let mut systems = vec![];
     let mut bar_pos = vec![(0usize, 0usize); song.bar_count()];
     let mut page = 0usize;
-    let mut y = MARGIN_TOP * z + header_h + tis.len().saturating_sub(1) as f32 * 0.0;
+    let mut y = head.end * pz;
     let ng = groups.len();
     for (gi, g) in groups.into_iter().enumerate() {
+        let first_system = gi == 0;
+        let room = if first_system { content_w - indent_px } else { content_w };
         let fixed: f32 = g.iter().map(|p| p.widths.iter().sum::<f32>()).sum();
         let heads: f32 = g.iter().map(|p| p.head + 8.0 * z).sum();
         let last = gi + 1 == ng;
         let natural = fixed + heads;
-        let k = if last && natural < content_w * 0.75 { 1.0 } else { ((content_w - heads) / fixed.max(1.0)).max(0.3) };
-        if !continuous && y + sys_h > (PAGE_H - MARGIN_BOTTOM) * z && !systems.is_empty() {
+        let k = if last && natural < room * 0.75 { 1.0 } else { ((room - heads) / fixed.max(1.0)).max(0.3) };
+        let limit = page_h - mb.max(if page == 0 { head.foot_first } else { head.foot_other } + 4.0);
+        if !continuous && y + sys_h > limit * pz && !systems.is_empty() {
             page += 1;
-            y = MARGIN_TOP * z;
+            y = head.other_end * pz;
         }
-        let mut x = MARGIN_X * z;
+        let mut x = ml * pz + if first_system { indent_px } else { 0.0 };
         let mut bars = vec![];
         for p in g {
             // Column x positions.
@@ -437,23 +770,27 @@ pub fn layout_ex(song: &Song, shown: &[usize], cur: usize, z: f32, notation: Not
         systems.push(SysLay { page, y, bars });
         y += sys_h;
     }
+    if horizontal {
+        // One long line: the sheet is as wide as the music.
+        pw = systems.iter().flat_map(|s| s.bars.last().map(|b| (b.x + b.w) / pz)).fold(560.0, f32::max) + mr;
+    }
     Layout {
         z,
+        pz,
+        fz,
+        ml,
+        mr,
+        mt,
+        head,
         blocks,
         cur_block,
         sys_h,
         pages: page + 1,
         cols: 1,
         bar_pos,
-        pw: {
-            if horizontal {
-                // One long line: the sheet is as wide as the music.
-                pw = systems.iter().flat_map(|s| s.bars.last().map(|b| (b.x + b.w) / z)).fold(560.0, f32::max) + MARGIN_X;
-            }
-            pw
-        },
+        pw,
         systems,
-        ph: if continuous { (y / z + MARGIN_BOTTOM + 20.0).max(400.0) } else { PAGE_H },
+        ph: if continuous { (y / pz + mb + 20.0).max(400.0) } else { page_h },
     }
 }
 
@@ -497,9 +834,6 @@ pub(crate) fn italic(size: f32) -> FontId {
 pub(crate) fn serif(size: f32) -> FontId {
     FontId::new(size, FontFamily::Name("serif".into()))
 }
-pub(crate) fn serif_bold(size: f32) -> FontId {
-    FontId::new(size, FontFamily::Name("serif-bold".into()))
-}
 pub(crate) fn serif_bi(size: f32) -> FontId {
     FontId::new(size, FontFamily::Name("serif-bi".into()))
 }
@@ -520,62 +854,119 @@ pub fn short_name(name: &str) -> String {
     format!("{n}.")
 }
 
+/// Draws rows of header or footer text; `dy` moves them down (page units).
+fn draw_rows(p: &Painter, lay: &Layout, rows: &[HeaderRow], origin: Pos2, dy: f32) {
+    let pz = lay.pz;
+    let left = origin.x + lay.ml * pz;
+    let right = origin.x + (lay.pw - lay.mr) * pz;
+    for r in rows {
+        let y = origin.y + (r.y + dy) * pz;
+        for (text, al, f) in &r.items {
+            let (x, a) = match al {
+                0 => (left, Align2::LEFT_TOP),
+                2 => (right, Align2::RIGHT_TOP),
+                _ => ((left + right) * 0.5, Align2::CENTER_TOP),
+            };
+            p.text(Pos2::new(x, y), a, text, f.id(pz), INK);
+        }
+    }
+}
+
 pub fn draw_page(p: &Painter, lay: &Layout, dc: &DrawCtx, page: usize, origin: Pos2) {
-    let z = lay.z;
+    let pz = lay.pz;
+    let song = dc.song;
+    let st = &song.style;
+    draw::set_capo_std(st.capo_affects_std);
     let page_rect = Rect::from_min_size(origin, Vec2::new(lay.page_w(), lay.page_h()));
     p.rect_filled(page_rect.translate(Vec2::new(2.0, 3.0)), 1.0, Color32::from_black_alpha(30));
     p.rect_filled(page_rect, 0.0, Color32::WHITE);
-    let song = dc.song;
-    let cx = origin.x + lay.page_w() * 0.5;
+    let left = origin.x + lay.ml * pz;
+    let right = origin.x + (lay.pw - lay.mr) * pz;
     if page == 0 {
-        let mut y = origin.y + MARGIN_TOP * z;
-        p.text(Pos2::new(cx, y), Align2::CENTER_TOP, &song.title, serif(34.0 * z), INK);
-        y += 42.0 * z;
-        if !song.subtitle.is_empty() {
-            p.text(Pos2::new(cx, y), Align2::CENTER_TOP, &song.subtitle, serif_bold(17.0 * z), INK);
-            y += 21.0 * z;
-        }
-        if !song.artist.is_empty() {
-            p.text(Pos2::new(cx, y), Align2::CENTER_TOP, &song.artist, serif(15.0 * z), INK);
-            y += 19.0 * z;
-        }
-        if !song.music_by.is_empty() {
-            p.text(Pos2::new(cx, y), Align2::CENTER_TOP, format!("Music by {}", song.music_by), serif(12.0 * z), INK);
-        }
+        draw_rows(p, lay, &lay.head.rows, origin, 0.0);
         // Track names and tunings.
-        let mut lx = origin.x + MARGIN_X * z;
-        let ty = origin.y + (MARGIN_TOP + 98.0) * z;
-        for blk in &lay.blocks {
-            let tr = &song.tracks[blk.ti];
-            let a = p.text(Pos2::new(lx, ty), Align2::LEFT_TOP, &tr.name, serif(12.0 * z), INK);
-            // Only stringed instruments have a tuning to show.
-            let mut t2 = if tr.has_strings() && tr.tuning_label_visible { tuning_name(&tr.tuning) } else { String::new() };
-            if t2.contains('(') {
-                t2 = "Standard tuning".into();
+        if st.tuning_show && st.tuning_pos == 0 {
+            let lh = st.font_tuning.size * crate::style::PT * 1.3 * pz;
+            let pad = if st.tuning_framed { 3.0 * pz } else { 0.0 };
+            let ty = origin.y + lay.head.tuning_y * pz + pad;
+            let mut lx = left + pad;
+            for blk in &lay.blocks {
+                let tr = &song.tracks[blk.ti];
+                let f = st.font_tuning.id(pz);
+                let mut yy = ty;
+                let mut w = p.text(Pos2::new(lx, yy), Align2::LEFT_TOP, &tr.name, f.clone(), INK).width();
+                yy += lh;
+                for line in tuning_lines(st, tr) {
+                    w = w.max(p.text(Pos2::new(lx, yy), Align2::LEFT_TOP, line, f.clone(), INK).width());
+                    yy += lh;
+                }
+                if tr.capo > 0 {
+                    w = w.max(p.text(Pos2::new(lx, yy), Align2::LEFT_TOP, format!("Capo fret {}", tr.capo), st.font_capo.id(pz), INK).width());
+                    yy += lh;
+                }
+                if st.tuning_framed && tr.has_strings() {
+                    let r = Rect::from_min_max(Pos2::new(lx - pad, ty - pad), Pos2::new(lx + w + pad, yy));
+                    p.rect_stroke(r, 0.0, PStroke::new(0.8 * pz, INK), egui::StrokeKind::Outside);
+                }
+                lx += w + 22.0 * pz + 2.0 * pad;
             }
-            if tr.has_strings() && tr.tuning_label_visible && !tr.tuning_label.trim().is_empty() {
-                t2 = tr.tuning_label.clone();
-            }
-            if tr.capo > 0 {
-                t2 = format!("{t2}, capo {}", tr.capo);
-            }
-            let b = p.text(Pos2::new(lx, ty + 16.0 * z), Align2::LEFT_TOP, t2, serif(12.0 * z), INK);
-            lx += a.width().max(b.width()) + 22.0 * z;
         }
-        let tp = Pos2::new(origin.x + (MARGIN_X + 30.0) * z, ty + 46.0 * z);
-        draw_small_note(p, tp, z);
-        let r = p.text(Pos2::new(tp.x + 9.0 * z, tp.y), Align2::LEFT_CENTER, format!("= {}", song.tempo), serif(14.0 * z), INK);
+        // Chord diagrams on top of the score.
+        if !lay.head.chords.is_empty() {
+            let k = st.chords_top_size / 10.0;
+            let mut x = left;
+            let mut y = origin.y + lay.head.chords_y * pz;
+            for &(ti, bi, j) in &lay.head.chords {
+                let t = &song.tracks[ti];
+                let Some(beat) = t.bars.get(bi).and_then(|b| b.beats.get(j)) else { continue };
+                let (ch, w) = top_chord_cell(st, t.strings());
+                if x + w * pz > right && x > left {
+                    x = left;
+                    y += ch * pz;
+                }
+                let top = Pos2::new(x + w * pz * 0.5, y + 18.0 * k * pz);
+                if let Some(name) = &beat.chord {
+                    let mut f = st.font_chord.id(pz * k.max(0.5));
+                    if st.chord_style == 1 {
+                        f = FontSpec::new("Ink Free", st.font_chord.size, true, false).id(pz * k.max(0.5));
+                    }
+                    p.text(Pos2::new(top.x, top.y - 2.0 * pz), Align2::CENTER_BOTTOM, name, f, INK);
+                }
+                draw::draw_diagram(p, t, beat, top, pz * k, st.chord_style);
+                x += w * pz;
+            }
+        }
+        let tp = Pos2::new(left + 30.0 * pz, origin.y + lay.head.tempo_y * pz);
+        draw_small_note(p, tp, pz);
+        let r = p.text(Pos2::new(tp.x + 9.0 * pz, tp.y), Align2::LEFT_CENTER, tempo_label(st, song.tempo), st.font_tempo.id(pz), INK);
         if song.master[0].tempo_ramp {
             let next = song.tempo_points().get(1).map(|q| q.1).unwrap_or(song.tempo);
             let word = if next > song.tempo { "accel." } else if next < song.tempo { "rit." } else { "" };
-            p.text(Pos2::new(r.right() + 6.0 * z, tp.y), Align2::LEFT_CENTER, word, serif_bi(12.0 * z), INK);
+            p.text(Pos2::new(r.right() + 6.0 * pz, tp.y), Align2::LEFT_CENTER, word, serif_bi(12.0 * pz), INK);
         }
+    } else {
+        let rows = text_rows(&st.other_header, &song_tokens(song, page, lay.pages), false);
+        draw_rows(p, lay, &rows, origin, lay.mt);
     }
-    p.text(Pos2::new(origin.x + lay.page_w() - MARGIN_X * z, origin.y + lay.page_h() - 28.0 * z), Align2::RIGHT_CENTER, format!("{}/{}", page + 1, lay.pages), serif(10.0 * z), INK);
+    // Footer: its last line sits a little above the page's bottom edge.
+    let items = if page == 0 { &st.first_footer } else { &st.other_footer };
+    let rows = text_rows(items, &song_tokens(song, page, lay.pages), true);
+    let total: f32 = rows.iter().map(|r| r.h).sum();
+    let bottom = lay.ph - (st.margin_bottom * MM * 0.6).max(10.0);
+    draw_rows(p, lay, &rows, origin, bottom - total);
     for (si, sys) in lay.systems.iter().enumerate() {
         if sys.page == page {
             draw_system(p, lay, dc, si, origin);
         }
+    }
+}
+
+/// "= 120" (or "= 120.0" when the stylesheet shows the decimal).
+fn tempo_label(st: &Stylesheet, bpm: u32) -> String {
+    if st.tempo_decimal {
+        format!("= {bpm}.0")
+    } else {
+        format!("= {bpm}")
     }
 }
 
@@ -587,7 +978,9 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
     let x_start = o.x + sys.bars[0].x;
     let last = sys.bars.last().unwrap();
     let x_end = o.x + last.x + last.w;
-    let line = PStroke::new(0.8 * z.max(0.8), Color32::from_gray(70));
+    let st = &song.style;
+    let fz = lay.fz;
+    let line = PStroke::new((st.staff_line / 0.13 * 0.8 * z.max(0.8)).clamp(0.3, 6.0), Color32::from_gray(70));
     let thick = PStroke::new(1.0 * z.max(1.0), INK);
     let cb = lay.cur_block;
     let cg = lay.blocks[cb].g;
@@ -630,15 +1023,68 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
 
     let first_top = lay.blocks[0].g.staff_span().0;
     let last_bottom = lay.blocks.last().unwrap().g.staff_span().1;
-    // System bracket across all tracks.
+    // The line joining all the staves at the start of the system.
     p.line_segment([Pos2::new(x_start, y0 + first_top), Pos2::new(x_start, y0 + last_bottom)], thick);
-
-    for (k, blk) in lay.blocks.iter().enumerate() {
+    // "//" between systems of a full score.
+    if st.separator && lay.blocks.len() > 1 && si > 0 && lay.systems[si - 1].page == sys.page {
+        let sy = y0 + first_top - 26.0 * z;
+        for dx in [0.0, 5.0] {
+            p.line_segment([Pos2::new(x_start - 14.0 * z + dx * z, sy + 5.0 * z), Pos2::new(x_start - 8.0 * z + dx * z, sy - 5.0 * z)], PStroke::new(2.2 * z, INK));
+        }
+    }
+    // Brackets: per track (notation with its tablature) or per group of similar instruments.
+    let bracket = |a: f32, b: f32| {
+        let bx = x_start - 6.0 * z;
+        p.line_segment([Pos2::new(bx, a - 3.0 * z), Pos2::new(bx, b + 3.0 * z)], PStroke::new(2.6 * z, INK));
+        p.line_segment([Pos2::new(bx - 1.0 * z, a - 3.0 * z), Pos2::new(bx + 6.0 * z, a - 7.0 * z)], PStroke::new(1.4 * z, INK));
+        p.line_segment([Pos2::new(bx - 1.0 * z, b + 3.0 * z), Pos2::new(bx + 6.0 * z, b + 7.0 * z)], PStroke::new(1.4 * z, INK));
+    };
+    let mut bracket_room = 0.0;
+    match st.brackets {
+        1 => {
+            for blk in &lay.blocks {
+                if blk.g.std && blk.g.tab {
+                    let (a, b) = blk.g.staff_span();
+                    bracket(y0 + a, y0 + b);
+                    bracket_room = 8.0 * z;
+                }
+            }
+        }
+        2 => {
+            let mut k = 0;
+            while k < lay.blocks.len() {
+                let kind = song.tracks[lay.blocks[k].ti].kind();
+                let mut e = k;
+                while e + 1 < lay.blocks.len() && song.tracks[lay.blocks[e + 1].ti].kind() == kind {
+                    e += 1;
+                }
+                if e > k {
+                    bracket(y0 + lay.blocks[k].g.staff_span().0, y0 + lay.blocks[e].g.staff_span().1);
+                    bracket_room = 8.0 * z;
+                }
+                k = e + 1;
+            }
+        }
+        _ => {}
+    }
+    // Track names: which systems show them, full or short, upright or across.
+    let single = lay.blocks.len() == 1;
+    let (names_on, policy) = if single { (st.name_single, st.name_single_policy) } else { (st.name_multi, st.name_multi_policy) };
+    let first_sys = si == 0;
+    let first_on_page = si == 0 || lay.systems[si - 1].page != sys.page;
+    let names_here = names_on && match policy {
+        0 => first_sys,
+        1 => first_on_page,
+        _ => true,
+    };
+    // Tunings before each track: the string notes beside the tablature on the first system.
+    let tuning_before = first_sys && st.tuning_show && st.tuning_pos == 1;
+    for blk in lay.blocks.iter() {
         let g = blk.g;
         let track = &song.tracks[blk.ti];
-        for (st, _) in g.std_staves() {
+        for (stf, _) in g.std_staves() {
             for i in 0..5 {
-                let y = y0 + st + i as f32 * g.ls;
+                let y = y0 + stf + i as f32 * g.ls;
                 p.line_segment([Pos2::new(x_start, y), Pos2::new(x_end, y)], line);
             }
         }
@@ -654,20 +1100,38 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
                 p.line_segment([Pos2::new(bx - 1.0 * z, to - (to - from).signum() * 2.0 * z), Pos2::new(bx - 4.0 * z, m)], PStroke::new(1.6 * z, INK));
             }
         }
+        let mut name_room = if g.grand { 24.0 } else { 18.0 } * z + bracket_room;
         if g.tab {
             for s in 0..g.strings {
                 let y = y0 + g.string_y(s);
                 p.line_segment([Pos2::new(x_start, y), Pos2::new(x_end, y)], line);
             }
+            if tuning_before && track.has_strings() {
+                let f = FontSpec { size: st.font_tuning.size * 0.85, ..st.font_tuning.clone() }.id(fz);
+                for s in 0..g.strings {
+                    let n = note_name(track.tuning[s]);
+                    let n = if track.tuning_flat { sharp_to_flat(&n) } else { n };
+                    p.text(Pos2::new(x_start - 3.0 * z - bracket_room, y0 + g.string_y(s)), Align2::RIGHT_CENTER, n, f.clone(), INK);
+                }
+                name_room += 12.0 * z;
+            }
         }
-        // Rotated short track name in the left margin.
+        if !names_here {
+            continue;
+        }
         let (t, b) = g.staff_span();
         let col = if blk.ti == dc.ti { INK } else { Color32::from_gray(90) };
-        let gal = p.layout_no_wrap(track_short_name(track), serif(11.0 * z), col);
-        let w = gal.size().x;
-        let pos = Pos2::new(x_start - if g.grand { 24.0 } else { 18.0 } * z, y0 + (t + b) * 0.5 + w * 0.5);
-        p.add(TextShape::new(pos, gal, col).with_angle(-std::f32::consts::FRAC_PI_2));
-        let _ = k;
+        let mode = if first_sys { st.name_first_mode } else { st.name_other_mode };
+        let name = if mode == 0 { track.name.clone() } else { track_short_name(track) };
+        if first_sys && st.name_first_orient == 1 {
+            p.text(Pos2::new(x_start - name_room + 10.0 * z, y0 + (t + b) * 0.5), Align2::RIGHT_CENTER, name, st.font_track_h.id(fz), col);
+        } else {
+            // Upright name in the left margin.
+            let gal = p.layout_no_wrap(name, st.font_track_v.id(fz), col);
+            let w = gal.size().x;
+            let pos = Pos2::new(x_start - name_room - gal.size().y * 0.5 + 6.0 * z, y0 + (t + b) * 0.5 + w * 0.5);
+            p.add(TextShape::new(pos, gal, col).with_angle(-std::f32::consts::FRAC_PI_2));
+        }
     }
 
     let lyric_maps: Vec<std::collections::HashMap<(usize, usize), String>> = lay.blocks.iter().map(|b| song.lyric_map(b.ti)).collect();
@@ -679,7 +1143,9 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
         let g0 = lay.blocks[0].g;
         let top0 = y0 + g0.staff_span().0;
         // Bar number, section name and tempo changes, above the first track.
-        p.text(Pos2::new(bx + 2.0 * z, top0 - 3.0 * z), Align2::LEFT_BOTTOM, format!("{}", bi + 1), fid(9.0 * z), Color32::from_gray(100));
+        if st.bar_numbers == 0 || (st.bar_numbers == 1 && kbar == 0) {
+            p.text(Pos2::new(bx + 2.0 * z, top0 - 3.0 * z), Align2::LEFT_BOTTOM, format!("{}", bi + 1), st.font_bar_number.id(fz), Color32::from_gray(100));
+        }
         if mb.endings != 0 {
             let ey = top0 - 13.0 * z;
             let first = bi == 0 || song.master[bi - 1].endings != mb.endings;
@@ -703,7 +1169,7 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
         if let Some(m) = &mb.marker {
             let framed = m.starts_with('[') && m.ends_with(']') && m.len() > 2;
             let label = if framed { &m[1..m.len() - 1] } else { m.as_str() };
-            let r = p.text(Pos2::new(bx + 2.0 * z + if framed { 3.0 * z } else { 0.0 }, y0 + 6.0 * z), Align2::LEFT_TOP, label, serif_bold(14.0 * z), INK);
+            let r = p.text(Pos2::new(bx + 2.0 * z + if framed { 3.0 * z } else { 0.0 }, y0 + 6.0 * z), Align2::LEFT_TOP, label, st.font_section.id(fz), INK);
             if framed {
                 p.rect_stroke(r.expand2(Vec2::new(3.0 * z, 1.0 * z)), 0.0, PStroke::new(1.0 * z, INK), egui::StrokeKind::Outside);
             }
@@ -741,7 +1207,7 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
             if bi != 0 {
                 let tp = Pos2::new(bx + 70.0 * z, y0 + 14.0 * z);
                 draw_small_note(p, tp, z);
-                let r = p.text(Pos2::new(tp.x + 9.0 * z, tp.y), Align2::LEFT_CENTER, format!("= {t}"), serif(13.0 * z), INK);
+                let r = p.text(Pos2::new(tp.x + 9.0 * z, tp.y), Align2::LEFT_CENTER, tempo_label(st, t), st.font_tempo.id(fz), INK);
                 if mb.tempo_ramp {
                     let next = song.tempo_points().into_iter().find(|q| q.0 > bi).map(|q| q.1).unwrap_or(t);
                     let word = if next > t { "accel." } else if next < t { "rit." } else { "" };
@@ -783,6 +1249,11 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
             } else if bi + 1 == song.bar_count() {
                 p.line_segment([Pos2::new(ex - 4.0 * z, top), Pos2::new(ex - 4.0 * z, bottom)], line);
                 p.line_segment([Pos2::new(ex, top), Pos2::new(ex, bottom)], PStroke::new(3.0 * z, INK));
+            } else if st.extended_barlines {
+                if k == 0 {
+                    let lb = y0 + lay.blocks.last().unwrap().g.staff_span().1;
+                    p.line_segment([Pos2::new(ex, top), Pos2::new(ex, lb)], line);
+                }
             } else {
                 if g.std {
                     let low = if g.grand { g.std2_top } else { g.std_top };
@@ -829,10 +1300,23 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
             }
             if bl.time {
                 let tx = hx + 8.0 * z;
-                for (st, _) in g.std_staves() {
+                let common = st.common_time_c && matches!((mb.num, mb.den), (4, 4) | (2, 2));
+                for (sy, _) in g.std_staves() {
+                    if common {
+                        let cut = mb.num == 2;
+                        if dc.music_font {
+                            p.text(Pos2::new(tx, y0 + sy + 2.0 * g.ls), Align2::CENTER_CENTER, if cut { "\u{1D135}" } else { "\u{1D134}" }, music(g.ls * 4.2), INK);
+                        } else {
+                            p.text(Pos2::new(tx, y0 + sy + 2.0 * g.ls), Align2::CENTER_CENTER, "C", bold(g.ls * 3.4), INK);
+                            if cut {
+                                p.line_segment([Pos2::new(tx, y0 + sy - 0.5 * g.ls), Pos2::new(tx, y0 + sy + 4.5 * g.ls)], PStroke::new(1.2 * z, INK));
+                            }
+                        }
+                        continue;
+                    }
                     let f = bold(g.ls * 2.6);
-                    p.text(Pos2::new(tx, y0 + st + g.ls), Align2::CENTER_CENTER, format!("{}", mb.num), f.clone(), INK);
-                    p.text(Pos2::new(tx, y0 + st + 3.0 * g.ls), Align2::CENTER_CENTER, format!("{}", mb.den), f, INK);
+                    p.text(Pos2::new(tx, y0 + sy + g.ls), Align2::CENTER_CENTER, format!("{}", mb.num), f.clone(), INK);
+                    p.text(Pos2::new(tx, y0 + sy + 3.0 * g.ls), Align2::CENTER_CENTER, format!("{}", mb.den), f, INK);
                 }
                 if g.tab {
                     let h = (g.strings as f32 - 1.0) * g.ts;
@@ -844,6 +1328,7 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
             // Every voice with notes, on the same staff. Voices not being edited are grey.
             let multi = (1..VOICES).any(|v| bar.voice_used(v));
             let rhythm_voice = (0..VOICES).find(|&v| bar.voice_used(v)).unwrap_or(0);
+            let rv_pos = tab_rhythm_pos(st, rhythm_voice, g.std);
             for v in 0..VOICES {
                 let editing = blk.ti == dc.ti && v == dc.voice;
                 if v > 0 && !bar.voice_used(v) && !editing {
@@ -873,7 +1358,10 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
                     voice: v,
                     vbar: &vbar,
                     multi,
-                    rhythm: v == rhythm_voice,
+                    rhythm: {
+                        let rp = tab_rhythm_pos(st, v, g.std);
+                        rp != 2 && (v == rhythm_voice || rp != rv_pos)
+                    },
                     vbar_main_used: bar.voice_used(0),
                     lower: false,
                 };

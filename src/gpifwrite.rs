@@ -665,6 +665,9 @@ fn part_configuration(song: &Song) -> Vec<u8> {
     b
 }
 
+/// Where the stylesheet is kept inside a .gp file.
+pub const STYLE_FILE: &str = "Content/GuitarCraftStylesheet.json";
+
 /// The whole .gp file.
 pub fn export_gp(song: &Song) -> Result<Vec<u8>, String> {
     export_gp_with(song, GpOptions::safe(song))
@@ -683,6 +686,13 @@ pub fn export_gp_with(song: &Song, o: GpOptions) -> Result<Vec<u8>, String> {
         z.write_all(xml.as_bytes()).map_err(|e| e.to_string())?;
         z.start_file("Content/PartConfiguration", opt).map_err(e)?;
         z.write_all(&part_configuration(song)).map_err(|e| e.to_string())?;
+        // This app's stylesheet, kept in its own file next to the score (other
+        // programs skip files they don't know). Left out when it's the standard one.
+        if song.style != crate::style::Stylesheet::standard() {
+            z.start_file(STYLE_FILE, opt).map_err(e)?;
+            let json = serde_json::to_string_pretty(&song.style).map_err(|e| e.to_string())?;
+            z.write_all(json.as_bytes()).map_err(|e| e.to_string())?;
+        }
         // Score views: the full score lists only the tracks that are shown.
         let staves_of = |k: usize| -> Vec<(usize, usize)> {
             let (std, tab) = crate::score::staves(&song.tracks[k], crate::score::Notation::Both);

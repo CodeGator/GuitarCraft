@@ -12,6 +12,7 @@ mod gpimport;
 mod model;
 mod textmidi;
 mod score;
+mod style;
 
 use egui::{FontData, FontDefinitions, FontFamily};
 use std::path::PathBuf;
@@ -68,13 +69,27 @@ fn main() -> eframe::Result {
             open = Some(PathBuf::from(a));
         }
     }
-    let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_title("GuitarCraft")
-            .with_inner_size([1440.0, 900.0])
-            .with_min_inner_size([900.0, 600.0]),
-        ..Default::default()
-    };
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_title("GuitarCraft")
+        .with_inner_size([1440.0, 900.0])
+        .with_min_inner_size([900.0, 600.0]);
+    if screenshot.is_some() {
+        // Taking a picture for a check: open without taking focus, behind other windows on Windows.
+        viewport = viewport.with_active(false);
+        #[cfg(target_os = "windows")]
+        {
+            viewport = viewport.with_window_level(egui::WindowLevel::AlwaysOnBottom);
+        }
+    }
+    #[allow(unused_mut)]
+    let mut options = eframe::NativeOptions { viewport, ..Default::default() };
+    #[cfg(target_os = "macos")]
+    if screenshot.is_some() {
+        use winit::platform::macos::EventLoopBuilderExtMacOS;
+        options.event_loop_builder = Some(Box::new(|b| {
+            b.with_activate_ignoring_other_apps(false);
+        }));
+    }
     eframe::run_native(
         "GuitarCraft",
         options,
@@ -138,6 +153,8 @@ pub fn setup_fonts(ctx: &egui::Context) -> bool {
         }
         fonts.families.insert(FontFamily::Name(fam.into()), v);
     }
+    // The fonts a stylesheet can choose.
+    style::register_fonts(&mut fonts, &prop, font_file);
     let mut m = vec![];
     if music {
         m.push("music".to_string());

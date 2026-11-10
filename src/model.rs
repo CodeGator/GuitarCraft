@@ -1037,6 +1037,8 @@ pub struct Song {
     pub tempo: u32,
     pub master: Vec<MasterBar>,
     pub tracks: Vec<Track>,
+    /// How the score looks: page, staves, header and footer, fonts, notation.
+    pub style: crate::style::Stylesheet,
 }
 
 impl Default for Song {
@@ -1065,6 +1067,7 @@ impl Song {
             tempo: 120,
             master: (0..bars).map(|_| MasterBar::default()).collect(),
             tracks: vec![t],
+            style: crate::style::Stylesheet::standard(),
         }
     }
 

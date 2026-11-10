@@ -12,6 +12,7 @@ mod menus;
 mod panels;
 mod popups;
 mod side;
+mod stylesheet;
 mod tools;
 pub mod trackicons;
 mod tuning;
@@ -172,6 +173,8 @@ pub struct App {
     fullscreen: bool,
     fullscreen_changed: bool,
     focus_request: Option<String>,
+    /// The Stylesheet window, while open.
+    style_dlg: Option<stylesheet::StyleDlg>,
 }
 
 impl App {
@@ -301,6 +304,7 @@ impl App {
             fullscreen: false,
             fullscreen_changed: false,
             focus_request: None,
+            style_dlg: None,
         };
         if app.screenshot.is_none() {
             app.recent = home::load_recent();
@@ -425,6 +429,16 @@ impl App {
                         app.string = 5;
                     }
                     "help" => app.show_help = true,
+                    // The Stylesheet window on one of its tabs, for checking pictures.
+                    "stylesheet" | "stylesheet1" | "stylesheet2" | "stylesheet3" | "stylesheet4" | "stylesheet5" => {
+                        app.open_stylesheet();
+                        if let Some(d) = app.style_dlg.as_mut() {
+                            d.tab = part.trim().trim_start_matches("stylesheet").parse::<usize>().unwrap_or(1).clamp(1, 5) - 1;
+                        }
+                    }
+                    "style-rock" => app.song.style = crate::style::Stylesheet::rock(),
+                    "style-classic" => app.song.style = crate::style::Stylesheet::classic(),
+                    "style-jazz" => app.song.style = crate::style::Stylesheet::jazz(),
                     _ => {}
                 }
             }
@@ -922,6 +936,7 @@ impl App {
     fn new_song(&mut self) {
         self.stop();
         self.song = Song::new_blank();
+        self.song.style = stylesheet::default_style();
         self.path = None;
         self.reset_after_load();
         self.show_home = false;

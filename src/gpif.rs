@@ -29,6 +29,15 @@ pub fn import_gp(data: &[u8]) -> Result<Song, String> {
             }
         }
     }
+    // The stylesheet this app saved with the song, if any.
+    if let Ok(mut f) = zip.by_name(crate::gpifwrite::STYLE_FILE) {
+        let mut json = String::new();
+        if f.read_to_string(&mut json).is_ok() {
+            if let Ok(st) = serde_json::from_str::<crate::style::Stylesheet>(&json) {
+                song.style = st.fixed();
+            }
+        }
+    }
     // Which staves each track shows (notation, tablature).
     let mut part = vec![];
     if let Ok(mut f) = zip.by_name("Content/PartConfiguration") {
