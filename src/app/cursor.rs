@@ -12,7 +12,13 @@ impl App {
 
     /// Staff position of a note of the current beat.
     pub(super) fn staff_pos_of(&self, n: &Note) -> i32 {
-        score::note_staff_pos(self.tr(), self.cur_beat(), self.key_here(), n)
+        score::note_staff_pos(
+            self.tr(),
+            self.cur_beat(),
+            self.key_here(),
+            n,
+            self.song.style.capo_affects_std,
+        )
     }
 
     /// The note of the current beat sitting on the notation cursor's line or space.

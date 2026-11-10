@@ -28,18 +28,20 @@ pub struct BarCtx<'a> {
     pub vbar_main_used: bool,
     /// Drawing the lower staff of a grand staff.
     pub lower: bool,
+    /// Colour of notes and symbols: black, or grey for a voice not being edited.
+    pub ink: Color32,
 }
 
 /// Splits a bar of a keyboard track into the notes for the upper staff (middle C
 /// and up) and the lower staff. A beat with no notes on a staff is a rest there.
-pub fn split_grand(track: &Track, bar: &Bar, key: i8) -> (Bar, Bar) {
+pub fn split_grand(track: &Track, bar: &Bar, key: i8, capo_std: bool) -> (Bar, Bar) {
     let mut up = bar.clone();
     let mut low = bar.clone();
     for (j, beat) in bar.beats.iter().enumerate() {
         let lows: Vec<bool> = beat
             .notes
             .iter()
-            .map(|n| note_staff_pos(track, beat, key, n) <= -3)
+            .map(|n| note_staff_pos(track, beat, key, n, capo_std) <= -3)
             .collect();
         let mut k = 0;
         up.beats[j].notes.retain(|_| {
@@ -80,28 +82,19 @@ pub fn draw_lower_staff(p: &Painter, c: &BarCtx) {
                 beat.dur,
                 g.ls,
                 c.music_font,
+                c.ink,
             );
             if beat.dotted || beat.double_dot {
                 p.circle_filled(
                     Pos2::new(x + 8.0 * z, c.y0 + g.std_top + 1.5 * g.ls),
                     1.5 * z,
-                    ink(),
+                    c.ink,
                 );
             }
             continue;
         }
         draw_std_beat(p, c, beat, bj, x, &groups);
     }
-}
-
-thread_local! {
-    static INK_NOW: std::cell::Cell<Color32> = const { std::cell::Cell::new(super::INK) };
-    static CAPO_STD: std::cell::Cell<bool> = const { std::cell::Cell::new(true) };
-}
-
-/// Whether a capo changes the notes written in standard notation (a stylesheet choice).
-pub fn set_capo_std(on: bool) {
-    CAPO_STD.with(|x| x.set(on));
 }
 
 /// Font of a playing-technique label, in the handwritten look for the Jazz symbol style.
@@ -151,15 +144,6 @@ fn run_flags(bar: &Bar, n: usize, extend: bool, has: impl Fn(&Beat) -> bool) -> 
     f
 }
 
-/// Colour used for notes and symbols (grey for voices not being edited).
-pub fn set_ink(c: Color32) {
-    INK_NOW.with(|x| x.set(c));
-}
-
-fn ink() -> Color32 {
-    INK_NOW.with(|x| x.get())
-}
-
 pub fn draw_bar_content(p: &Painter, c: &BarCtx) {
     let track = &c.song.tracks[c.ti];
     let bar = c.vbar;
@@ -199,6 +183,7 @@ pub fn draw_bar_content(p: &Painter, c: &BarCtx) {
                 Pos2::new(x, top),
                 z * dk,
                 st.chord_style,
+                c.ink,
             );
             if let Some(ch) = &beat.chord {
                 p.text(
@@ -206,7 +191,7 @@ pub fn draw_bar_content(p: &Painter, c: &BarCtx) {
                     Align2::CENTER_BOTTOM,
                     ch,
                     chord_font.clone(),
-                    ink(),
+                    c.ink,
                 );
             }
             above = top - 16.0 * z;
@@ -216,7 +201,7 @@ pub fn draw_bar_content(p: &Painter, c: &BarCtx) {
                 Align2::CENTER_BOTTOM,
                 ch,
                 chord_font.clone(),
-                ink(),
+                c.ink,
             );
             above -= 14.0 * z;
         }
@@ -226,7 +211,7 @@ pub fn draw_bar_content(p: &Painter, c: &BarCtx) {
                 Align2::LEFT_BOTTOM,
                 t,
                 st.font_text.id(fz),
-                ink(),
+                c.ink,
             );
         }
         // Small markings just above the top staff.
@@ -244,8 +229,8 @@ pub fn draw_bar_content(p: &Painter, c: &BarCtx) {
                     Pos2::new(c0.x - a.cos() * 6.0 * z, c0.y - a.sin() * 5.0 * z)
                 })
                 .collect();
-            p.add(Shape::line(pts, PStroke::new(1.3 * z, ink())));
-            p.circle_filled(Pos2::new(c0.x, c0.y - 1.0 * z), 1.3 * z, ink());
+            p.add(Shape::line(pts, PStroke::new(1.3 * z, c.ink)));
+            p.circle_filled(Pos2::new(c0.x, c0.y - 1.0 * z), 1.3 * z, c.ink);
             my -= 9.0 * z;
         }
         if beat.pick != 0 {
@@ -253,12 +238,12 @@ pub fn draw_bar_content(p: &Painter, c: &BarCtx) {
                 let r = Rect::from_center_size(Pos2::new(x, my), Vec2::new(8.0 * z, 6.0 * z));
                 p.line_segment(
                     [r.left_bottom(), r.left_top()],
-                    PStroke::new(1.2 * z, ink()),
+                    PStroke::new(1.2 * z, c.ink),
                 );
-                p.line_segment([r.left_top(), r.right_top()], PStroke::new(2.2 * z, ink()));
+                p.line_segment([r.left_top(), r.right_top()], PStroke::new(2.2 * z, c.ink));
                 p.line_segment(
                     [r.right_top(), r.right_bottom()],
-                    PStroke::new(1.2 * z, ink()),
+                    PStroke::new(1.2 * z, c.ink),
                 );
             } else {
                 p.line_segment(
@@ -266,14 +251,14 @@ pub fn draw_bar_content(p: &Painter, c: &BarCtx) {
                         Pos2::new(x - 4.0 * z, my - 4.0 * z),
                         Pos2::new(x, my + 3.0 * z),
                     ],
-                    PStroke::new(1.2 * z, ink()),
+                    PStroke::new(1.2 * z, c.ink),
                 );
                 p.line_segment(
                     [
                         Pos2::new(x, my + 3.0 * z),
                         Pos2::new(x + 4.0 * z, my - 4.0 * z),
                     ],
-                    PStroke::new(1.2 * z, ink()),
+                    PStroke::new(1.2 * z, c.ink),
                 );
             }
             my -= 10.0 * z;
@@ -290,7 +275,7 @@ pub fn draw_bar_content(p: &Painter, c: &BarCtx) {
                     sym_font(st, crate::style::SYM_POP, fz),
                 ),
             };
-            p.text(Pos2::new(x, my), Align2::CENTER_CENTER, lab, f, ink());
+            p.text(Pos2::new(x, my), Align2::CENTER_CENTER, lab, f, c.ink);
             my -= 11.0 * z;
         }
         if beat.fade_in {
@@ -299,14 +284,14 @@ pub fn draw_bar_content(p: &Painter, c: &BarCtx) {
                     Pos2::new(x - 2.0 * z, my),
                     Pos2::new(x + 10.0 * z, my - 3.5 * z),
                 ],
-                PStroke::new(1.0 * z, ink()),
+                PStroke::new(1.0 * z, c.ink),
             );
             p.line_segment(
                 [
                     Pos2::new(x - 2.0 * z, my),
                     Pos2::new(x + 10.0 * z, my + 3.5 * z),
                 ],
-                PStroke::new(1.0 * z, ink()),
+                PStroke::new(1.0 * z, c.ink),
             );
             my -= 10.0 * z;
         }
@@ -322,7 +307,7 @@ pub fn draw_bar_content(p: &Painter, c: &BarCtx) {
                 Align2::LEFT_CENTER,
                 lab,
                 serif_bi(11.0 * z),
-                ink(),
+                c.ink,
             );
         }
         let _ = my;
@@ -339,7 +324,7 @@ pub fn draw_bar_content(p: &Painter, c: &BarCtx) {
                     Align2::CENTER_CENTER,
                     l,
                     st.font_lyrics.id(fz),
-                    ink(),
+                    c.ink,
                 );
             } else if st.lyrics_pos == 0 {
                 p.text(
@@ -347,7 +332,7 @@ pub fn draw_bar_content(p: &Painter, c: &BarCtx) {
                     Align2::CENTER_CENTER,
                     l,
                     st.font_lyrics.id(fz),
-                    ink(),
+                    c.ink,
                 );
             }
         }
@@ -367,19 +352,20 @@ pub fn draw_bar_content(p: &Painter, c: &BarCtx) {
                     beat.dur,
                     g.ls,
                     c.music_font,
+                    c.ink,
                 );
                 if beat.dotted || beat.double_dot {
                     p.circle_filled(
                         Pos2::new(x + 8.0 * z, y0 + g.std_top + 1.5 * g.ls),
                         1.5 * z,
-                        ink(),
+                        c.ink,
                     );
                 }
                 if beat.double_dot {
                     p.circle_filled(
                         Pos2::new(x + 12.0 * z, y0 + g.std_top + 1.5 * g.ls),
                         1.5 * z,
-                        ink(),
+                        c.ink,
                     );
                 }
             } else if g.tab {
@@ -387,10 +373,10 @@ pub fn draw_bar_content(p: &Painter, c: &BarCtx) {
                 if st.dash_quarter_rest && beat.dur == Dur::Quarter {
                     p.line_segment(
                         [Pos2::new(x - 4.0 * z, mid.y), Pos2::new(x + 4.0 * z, mid.y)],
-                        PStroke::new(1.6 * z, ink()),
+                        PStroke::new(1.6 * z, c.ink),
                     );
                 } else {
-                    draw_rest(p, mid, beat.dur, g.ls, c.music_font);
+                    draw_rest(p, mid, beat.dur, g.ls, c.music_font, c.ink);
                 }
             }
             continue;
@@ -417,18 +403,18 @@ pub fn draw_bar_content(p: &Painter, c: &BarCtx) {
             };
             p.line_segment(
                 [Pos2::new(tip_x, hy), Pos2::new(open_x, hy - 4.0 * z)],
-                PStroke::new(1.0 * z, ink()),
+                PStroke::new(1.0 * z, c.ink),
             );
             p.line_segment(
                 [Pos2::new(tip_x, hy), Pos2::new(open_x, hy + 4.0 * z)],
-                PStroke::new(1.0 * z, ink()),
+                PStroke::new(1.0 * z, c.ink),
             );
         }
         if prev_dyn != Some(beat.dynamic)
             && (c.voice == 0 || !c.vbar_main_used)
             && !st.hide_dynamics
         {
-            let lowest = std_positions(track, beat, mb.key)
+            let lowest = std_positions(track, beat, mb.key, c.song.style.capo_affects_std)
                 .iter()
                 .map(|x| x.0)
                 .min()
@@ -445,7 +431,7 @@ pub fn draw_bar_content(p: &Painter, c: &BarCtx) {
                 Align2::LEFT_CENTER,
                 beat.dynamic.label(),
                 serif_bi(14.0 * z),
-                ink(),
+                c.ink,
             );
         }
         prev_dyn = Some(beat.dynamic);
@@ -465,18 +451,18 @@ pub fn draw_bar_content(p: &Painter, c: &BarCtx) {
     draw_let_ring(p, c, bar);
 }
 
-pub fn draw_small_note(p: &Painter, c: Pos2, z: f32) {
-    notehead(p, Pos2::new(c.x, c.y + 4.0 * z), z * 0.8, true);
+pub fn draw_small_note(p: &Painter, c: Pos2, z: f32, ink: Color32) {
+    notehead(p, Pos2::new(c.x, c.y + 4.0 * z), z * 0.8, true, ink);
     p.line_segment(
         [
             Pos2::new(c.x + 3.4 * z, c.y + 3.0 * z),
             Pos2::new(c.x + 3.4 * z, c.y - 9.0 * z),
         ],
-        PStroke::new(1.1 * z, ink()),
+        PStroke::new(1.1 * z, ink),
     );
 }
 
-pub fn notehead(p: &Painter, c: Pos2, z: f32, filled: bool) {
+pub fn notehead(p: &Painter, c: Pos2, z: f32, filled: bool, ink: Color32) {
     let rx = 4.4 * z;
     let ry = 3.1 * z;
     let rot: f32 = -0.35;
@@ -489,25 +475,25 @@ pub fn notehead(p: &Painter, c: Pos2, z: f32, filled: bool) {
         })
         .collect();
     if filled {
-        p.add(Shape::convex_polygon(pts, ink(), PStroke::NONE));
+        p.add(Shape::convex_polygon(pts, ink, PStroke::NONE));
     } else {
-        p.add(Shape::closed_line(pts, PStroke::new(1.4 * z, ink())));
+        p.add(Shape::closed_line(pts, PStroke::new(1.4 * z, ink)));
     }
 }
 
-pub fn repeat_dots(p: &Painter, g: &Geom, y0: f32, x: f32, z: f32) {
+pub fn repeat_dots(p: &Painter, g: &Geom, y0: f32, x: f32, z: f32, ink: Color32) {
     for (st, _) in g.std_staves() {
-        p.circle_filled(Pos2::new(x, y0 + st + 1.5 * g.ls), 1.7 * z, ink());
-        p.circle_filled(Pos2::new(x, y0 + st + 2.5 * g.ls), 1.7 * z, ink());
+        p.circle_filled(Pos2::new(x, y0 + st + 1.5 * g.ls), 1.7 * z, ink);
+        p.circle_filled(Pos2::new(x, y0 + st + 2.5 * g.ls), 1.7 * z, ink);
     }
     if g.tab {
         let mid = g.tab_top + (g.strings as f32 - 1.0) * g.ts * 0.5;
-        p.circle_filled(Pos2::new(x, y0 + mid - g.ts * 0.5), 1.7 * z, ink());
-        p.circle_filled(Pos2::new(x, y0 + mid + g.ts * 0.5), 1.7 * z, ink());
+        p.circle_filled(Pos2::new(x, y0 + mid - g.ts * 0.5), 1.7 * z, ink);
+        p.circle_filled(Pos2::new(x, y0 + mid + g.ts * 0.5), 1.7 * z, ink);
     }
 }
 
-pub fn clef(p: &Painter, pos: Pos2, g: &Geom, cl: Clef, music_font: bool) {
+pub fn clef(p: &Painter, pos: Pos2, g: &Geom, cl: Clef, music_font: bool, ink: Color32) {
     let ls = g.ls;
     let bass = cl.is_bass();
     if cl == Clef::Percussion {
@@ -519,7 +505,7 @@ pub fn clef(p: &Painter, pos: Pos2, g: &Geom, cl: Clef, music_font: bool) {
                     Pos2::new(pos.x + dx * g.z + 1.6 * g.z, pos.y + 3.0 * ls),
                 ),
                 0.0,
-                ink(),
+                ink,
             );
         }
         return;
@@ -531,7 +517,7 @@ pub fn clef(p: &Painter, pos: Pos2, g: &Geom, cl: Clef, music_font: bool) {
                 Align2::CENTER_CENTER,
                 "\u{1D122}",
                 music(ls * 4.2),
-                ink(),
+                ink,
             );
         } else {
             p.text(
@@ -539,7 +525,7 @@ pub fn clef(p: &Painter, pos: Pos2, g: &Geom, cl: Clef, music_font: bool) {
                 Align2::CENTER_CENTER,
                 "\u{1D11E}",
                 music(ls * 5.6),
-                ink(),
+                ink,
             );
         }
         if cl.shift() != 0 {
@@ -548,7 +534,7 @@ pub fn clef(p: &Painter, pos: Pos2, g: &Geom, cl: Clef, music_font: bool) {
                 Align2::CENTER_CENTER,
                 "8",
                 fid(8.0 * g.z),
-                ink(),
+                ink,
             );
         }
     } else {
@@ -557,12 +543,12 @@ pub fn clef(p: &Painter, pos: Pos2, g: &Geom, cl: Clef, music_font: bool) {
             Align2::CENTER_CENTER,
             if bass { "F" } else { "G" },
             bold(ls * 3.5),
-            ink(),
+            ink,
         );
     }
 }
 
-pub fn draw_rest(p: &Painter, c: Pos2, d: Dur, ls: f32, music_font: bool) {
+pub fn draw_rest(p: &Painter, c: Pos2, d: Dur, ls: f32, music_font: bool, ink: Color32) {
     match d {
         Dur::Whole => {
             p.rect_filled(
@@ -571,7 +557,7 @@ pub fn draw_rest(p: &Painter, c: Pos2, d: Dur, ls: f32, music_font: bool) {
                     Vec2::new(8.0 * ls / 7.5, ls * 0.5),
                 ),
                 0.0,
-                ink(),
+                ink,
             );
         }
         Dur::Half => {
@@ -581,7 +567,7 @@ pub fn draw_rest(p: &Painter, c: Pos2, d: Dur, ls: f32, music_font: bool) {
                     Vec2::new(8.0 * ls / 7.5, ls * 0.5),
                 ),
                 0.0,
-                ink(),
+                ink,
             );
         }
         _ => {
@@ -598,10 +584,10 @@ pub fn draw_rest(p: &Painter, c: Pos2, d: Dur, ls: f32, music_font: bool) {
                     Align2::CENTER_CENTER,
                     ch,
                     music(ls * 4.0),
-                    ink(),
+                    ink,
                 );
             } else {
-                let s = PStroke::new(1.6, ink());
+                let s = PStroke::new(1.6, ink);
                 p.line_segment(
                     [
                         Pos2::new(c.x - 2.0, c.y - 1.5 * ls),
@@ -727,7 +713,13 @@ pub fn key_positions(key: i8) -> Vec<i32> {
 }
 
 /// Staff position, accidental to show (0 none, 1 sharp, -1 flat, 2 natural) and note.
-fn std_positions<'a>(track: &Track, beat: &'a Beat, key: i8) -> Vec<(i32, i8, &'a Note)> {
+/// `capo_std`: a capo changes the written notes (a stylesheet choice).
+fn std_positions<'a>(
+    track: &Track,
+    beat: &'a Beat,
+    key: i8,
+    capo_std: bool,
+) -> Vec<(i32, i8, &'a Note)> {
     let cl = track.clef();
     let bottom = cl.bottom();
     beat.notes
@@ -736,7 +728,7 @@ fn std_positions<'a>(track: &Track, beat: &'a Beat, key: i8) -> Vec<(i32, i8, &'
             if cl == Clef::Percussion {
                 return (drum_staff_pos(track.pitch(n)).0, 0, n);
             }
-            let capo = if CAPO_STD.with(|x| x.get()) {
+            let capo = if capo_std {
                 0
             } else {
                 track.capo_at(n.string as usize) as i32
@@ -787,7 +779,7 @@ fn draw_std_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32, groups
     let key = c.song.master[c.bi].key;
     let lift = if c.lower { 12 } else { 0 };
     let std_positions = |track: &Track, beat: &'_ Beat, key: i8| -> Vec<(i32, i8, Note)> {
-        std_positions(track, beat, key)
+        std_positions(track, beat, key, c.song.style.capo_affects_std)
             .into_iter()
             .map(|(a, b, n)| (a + lift, b, n.clone()))
             .collect()
@@ -830,7 +822,7 @@ fn draw_std_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32, groups
             while l >= *ps {
                 p.line_segment(
                     [Pos2::new(lx[0], ypos(l)), Pos2::new(lx[1], ypos(l))],
-                    PStroke::new(1.0, ink()),
+                    PStroke::new(1.0, c.ink),
                 );
                 l -= 2;
             }
@@ -840,7 +832,7 @@ fn draw_std_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32, groups
             while l <= *ps {
                 p.line_segment(
                     [Pos2::new(lx[0], ypos(l)), Pos2::new(lx[1], ypos(l))],
-                    PStroke::new(1.0, ink()),
+                    PStroke::new(1.0, c.ink),
                 );
                 l += 2;
             }
@@ -855,7 +847,7 @@ fn draw_std_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32, groups
         last_pos = *ps;
         let cpos = Pos2::new(hx, ypos(*ps));
         if cross {
-            let s = PStroke::new(1.5 * z, ink());
+            let s = PStroke::new(1.5 * z, c.ink);
             p.line_segment(
                 [
                     cpos + Vec2::new(-3.5, -3.5) * z,
@@ -879,10 +871,10 @@ fn draw_std_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32, groups
                     cpos + Vec2::new(d, 0.0),
                     cpos + Vec2::new(0.0, d),
                 ],
-                PStroke::new(1.3 * z, ink()),
+                PStroke::new(1.3 * z, c.ink),
             ));
         } else {
-            notehead(p, cpos, z, filled);
+            notehead(p, cpos, z, filled, c.ink);
         }
         if n.ghost {
             p.text(
@@ -890,14 +882,14 @@ fn draw_std_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32, groups
                 Align2::CENTER_CENTER,
                 "(",
                 fid(11.0 * z),
-                ink(),
+                c.ink,
             );
             p.text(
                 cpos + Vec2::new(7.0 * z, 0.0),
                 Align2::CENTER_CENTER,
                 ")",
                 fid(11.0 * z),
-                ink(),
+                c.ink,
             );
         }
         if *sharp != 0 {
@@ -906,33 +898,33 @@ fn draw_std_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32, groups
                 Align2::CENTER_CENTER,
                 accidental_glyph(*sharp),
                 music(13.0 * z),
-                ink(),
+                c.ink,
             );
         }
         if beat.dotted || beat.double_dot {
             let dy = if ps % 2 == 0 { -g.ls * 0.5 } else { 0.0 };
-            p.circle_filled(Pos2::new(x + 8.0 * z, cpos.y + dy), 1.5 * z, ink());
+            p.circle_filled(Pos2::new(x + 8.0 * z, cpos.y + dy), 1.5 * z, c.ink);
             if beat.double_dot {
-                p.circle_filled(Pos2::new(x + 12.0 * z, cpos.y + dy), 1.5 * z, ink());
+                p.circle_filled(Pos2::new(x + 12.0 * z, cpos.y + dy), 1.5 * z, c.ink);
             }
         }
         if let Some(gf) = n.grace {
             let _ = gf;
             let gc = Pos2::new(x - 18.0 * z, cpos.y);
-            notehead(p, gc, z * 0.6, true);
+            notehead(p, gc, z * 0.6, true, c.ink);
             p.line_segment(
                 [
                     gc + Vec2::new(2.6 * z, 0.0),
                     gc + Vec2::new(2.6 * z, -12.0 * z),
                 ],
-                PStroke::new(0.9 * z, ink()),
+                PStroke::new(0.9 * z, c.ink),
             );
             p.line_segment(
                 [
                     gc + Vec2::new(-z, -4.0 * z),
                     gc + Vec2::new(6.0 * z, -10.0 * z),
                 ],
-                PStroke::new(0.9 * z, ink()),
+                PStroke::new(0.9 * z, c.ink),
             );
         }
         if n.tie {
@@ -942,7 +934,7 @@ fn draw_std_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32, groups
                 [a, Pos2::new((a.x + b.x) * 0.5, a.y + 5.0 * z), b],
                 false,
                 Color32::TRANSPARENT,
-                PStroke::new(1.0 * z, ink()),
+                PStroke::new(1.0 * z, c.ink),
             ));
         }
     }
@@ -978,12 +970,12 @@ fn draw_std_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32, groups
                 .iter()
                 .map(|&j| c.o.x + c.xs[j] + if up { 4.0 * z } else { -4.0 * z })
                 .collect();
-            draw_beams(p, bar, gr, &xs, to, if up { 1.0 } else { -1.0 }, z);
+            draw_beams(p, c, bar, gr, &xs, to, if up { 1.0 } else { -1.0 });
         }
     }
     p.line_segment(
         [Pos2::new(sx, from), Pos2::new(sx, to)],
-        PStroke::new(1.1 * z, ink()),
+        PStroke::new(1.1 * z, c.ink),
     );
     if group.is_none() && beat.dur.flags() > 0 {
         for f in 0..beat.dur.flags() {
@@ -1002,7 +994,7 @@ fn draw_std_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32, groups
                 ],
                 false,
                 Color32::TRANSPARENT,
-                PStroke::new(1.5 * z, ink()),
+                PStroke::new(1.5 * z, c.ink),
             ));
         }
     }
@@ -1017,7 +1009,7 @@ fn draw_std_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32, groups
             Align2::CENTER_CENTER,
             ">",
             bold(12.0 * z),
-            ink(),
+            c.ink,
         );
     }
     if beat.notes.iter().any(|n| n.heavy_accent) {
@@ -1031,7 +1023,7 @@ fn draw_std_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32, groups
             Align2::CENTER_CENTER,
             "^",
             bold(13.0 * z),
-            ink(),
+            c.ink,
         );
     }
     if beat.tremolo {
@@ -1043,7 +1035,7 @@ fn draw_std_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32, groups
                     Pos2::new(sx - 4.0 * z, yy + 2.0 * z),
                     Pos2::new(sx + 4.0 * z, yy - 2.0 * z),
                 ],
-                PStroke::new(1.6 * z, ink()),
+                PStroke::new(1.6 * z, c.ink),
             );
         }
     }
@@ -1053,7 +1045,7 @@ fn draw_std_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32, groups
         } else {
             ypos(maxp) - 8.0 * z
         };
-        p.circle_filled(Pos2::new(x, ay), 1.5 * z, ink());
+        p.circle_filled(Pos2::new(x, ay), 1.5 * z, c.ink);
     }
     let st = &c.song.style;
     if beat.tuplet > 0 && st.tuplet_brackets {
@@ -1071,7 +1063,7 @@ fn draw_std_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32, groups
             let ty = if up { to - 9.0 * z } else { to + 9.0 * z };
             let hook = if up { 4.0 * z } else { -4.0 * z };
             let mid = (x0 + x1) * 0.5;
-            let s1 = PStroke::new(0.9 * z, ink());
+            let s1 = PStroke::new(0.9 * z, c.ink);
             p.line_segment([Pos2::new(x0, ty + hook), Pos2::new(x0, ty)], s1);
             p.line_segment([Pos2::new(x0, ty), Pos2::new(mid - 5.0 * z, ty)], s1);
             p.line_segment([Pos2::new(mid + 5.0 * z, ty), Pos2::new(x1, ty)], s1);
@@ -1081,7 +1073,7 @@ fn draw_std_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32, groups
                 Align2::CENTER_CENTER,
                 format!("{}", beat.tuplet),
                 italic(10.0 * z),
-                ink(),
+                c.ink,
             );
         }
     } else if beat.tuplet > 0 && group.map(|gr| gr[0] == bj).unwrap_or(true) {
@@ -1091,12 +1083,13 @@ fn draw_std_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32, groups
             Align2::CENTER_CENTER,
             format!("{}", beat.tuplet),
             italic(10.0 * z),
-            ink(),
+            c.ink,
         );
     }
 }
 
-fn draw_beams(p: &Painter, bar: &Bar, gr: &[usize], xs: &[f32], y: f32, dir: f32, z: f32) {
+fn draw_beams(p: &Painter, c: &BarCtx, bar: &Bar, gr: &[usize], xs: &[f32], y: f32, dir: f32) {
+    let z = c.z;
     let bw = 3.2 * z;
     let rect = |a: f32, b: f32, level: usize| {
         let yy = y + dir * level as f32 * 5.0 * z;
@@ -1107,7 +1100,7 @@ fn draw_beams(p: &Painter, bar: &Bar, gr: &[usize], xs: &[f32], y: f32, dir: f32
         };
         Rect::from_min_max(Pos2::new(a.min(b), t), Pos2::new(a.max(b) + 1.0 * z, bt))
     };
-    p.rect_filled(rect(xs[0], *xs.last().unwrap(), 0), 0.0, ink());
+    p.rect_filled(rect(xs[0], *xs.last().unwrap(), 0), 0.0, c.ink);
     for level in 1..4 {
         for (k, &j) in gr.iter().enumerate() {
             let f = bar.beats[j].dur.flags();
@@ -1120,10 +1113,10 @@ fn draw_beams(p: &Painter, bar: &Bar, gr: &[usize], xs: &[f32], y: f32, dir: f32
                 .unwrap_or(false);
             let prev_has = k > 0 && bar.beats[gr[k - 1]].dur.flags() > level;
             if next_has {
-                p.rect_filled(rect(xs[k], xs[k + 1], level), 0.0, ink());
+                p.rect_filled(rect(xs[k], xs[k + 1], level), 0.0, c.ink);
             } else if !prev_has {
                 let stub = if k + 1 < gr.len() { 6.0 * z } else { -6.0 * z };
-                p.rect_filled(rect(xs[k], xs[k] + stub, level), 0.0, ink());
+                p.rect_filled(rect(xs[k], xs[k] + stub, level), 0.0, c.ink);
             }
         }
     }
@@ -1143,7 +1136,7 @@ fn draw_tab_rhythm(p: &Painter, c: &BarCtx, bar: &Bar, groups: &[Vec<usize>]) {
         let near = c.y0 + g.rhythm_top + 4.0 * z;
         (near, near + 18.0 * z, 1.0)
     };
-    let stroke = PStroke::new(1.0 * z, ink());
+    let stroke = PStroke::new(1.0 * z, c.ink);
     let span = |a: f32, b: f32| (a.min(b), a.max(b));
     for (bj, beat) in bar.beats.iter().enumerate() {
         if beat.is_rest() || bj >= c.xs.len() {
@@ -1174,10 +1167,10 @@ fn draw_tab_rhythm(p: &Painter, c: &BarCtx, bar: &Bar, groups: &[Vec<usize>]) {
             }
         }
         if beat.dotted || beat.double_dot {
-            p.circle_filled(Pos2::new(x + 4.0 * z, far - s * 2.0 * z), 1.3 * z, ink());
+            p.circle_filled(Pos2::new(x + 4.0 * z, far - s * 2.0 * z), 1.3 * z, c.ink);
         }
         if beat.double_dot {
-            p.circle_filled(Pos2::new(x + 7.5 * z, far - s * 2.0 * z), 1.3 * z, ink());
+            p.circle_filled(Pos2::new(x + 7.5 * z, far - s * 2.0 * z), 1.3 * z, c.ink);
         }
         if beat.tremolo {
             for k in 0..3 {
@@ -1187,7 +1180,7 @@ fn draw_tab_rhythm(p: &Painter, c: &BarCtx, bar: &Bar, groups: &[Vec<usize>]) {
                         Pos2::new(x - 3.5 * z, yy + 1.5 * z),
                         Pos2::new(x + 3.5 * z, yy - 1.5 * z),
                     ],
-                    PStroke::new(1.3 * z, ink()),
+                    PStroke::new(1.3 * z, c.ink),
                 );
             }
         }
@@ -1197,7 +1190,7 @@ fn draw_tab_rhythm(p: &Painter, c: &BarCtx, bar: &Bar, groups: &[Vec<usize>]) {
                 let fy = far - s * f as f32 * 4.0 * z;
                 p.line_segment(
                     [Pos2::new(x, fy), Pos2::new(x + 6.0 * z, fy - s * 5.0 * z)],
-                    PStroke::new(1.4 * z, ink()),
+                    PStroke::new(1.4 * z, c.ink),
                 );
             }
         }
@@ -1213,7 +1206,7 @@ fn draw_tab_rhythm(p: &Painter, c: &BarCtx, bar: &Bar, groups: &[Vec<usize>]) {
                 Align2::CENTER_CENTER,
                 format!("{}", beat.tuplet),
                 italic(9.0 * z),
-                ink(),
+                c.ink,
             );
         }
     }
@@ -1224,7 +1217,7 @@ fn draw_tab_rhythm(p: &Painter, c: &BarCtx, bar: &Bar, groups: &[Vec<usize>]) {
         p.rect_filled(
             Rect::from_min_max(Pos2::new(xs[0], t), Pos2::new(*xs.last().unwrap() + 1.0, b)),
             0.0,
-            ink(),
+            c.ink,
         );
         for level in 1..4 {
             for (k, &j) in gr.iter().enumerate() {
@@ -1241,7 +1234,7 @@ fn draw_tab_rhythm(p: &Painter, c: &BarCtx, bar: &Bar, groups: &[Vec<usize>]) {
                     p.rect_filled(
                         Rect::from_min_max(Pos2::new(xs[k], t), Pos2::new(xs[k + 1] + 1.0, b)),
                         0.0,
-                        ink(),
+                        c.ink,
                     );
                 } else if !prev_has {
                     let (a, bb) = if k + 1 < gr.len() {
@@ -1252,7 +1245,7 @@ fn draw_tab_rhythm(p: &Painter, c: &BarCtx, bar: &Bar, groups: &[Vec<usize>]) {
                     p.rect_filled(
                         Rect::from_min_max(Pos2::new(a, t), Pos2::new(bb + 1.0, b)),
                         0.0,
-                        ink(),
+                        c.ink,
                     );
                 }
             }
@@ -1299,7 +1292,7 @@ fn draw_tab_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32) {
             let (r, g2, b) = VOICE_INK[(c.voice - 1).min(2)];
             Color32::from_rgb(r, g2, b)
         } else {
-            ink()
+            c.ink
         };
         let gal = p.layout_no_wrap(label, font.clone(), col);
         let sz = gal.size();
@@ -1316,7 +1309,7 @@ fn draw_tab_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32) {
         let right = x + sz.x * 0.5 + 1.0 * z;
         let left = x - sz.x * 0.5 - 1.0 * z;
         if let Some(gf) = n.grace {
-            let gg = p.layout_no_wrap(format!("{gf}"), st.font_grace.id(fz), ink());
+            let gg = p.layout_no_wrap(format!("{gf}"), st.font_grace.id(fz), c.ink);
             let gs = gg.size();
             let gx = left - gs.x - 3.0 * z;
             p.rect_filled(
@@ -1327,7 +1320,7 @@ fn draw_tab_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32) {
                 0.0,
                 Color32::WHITE,
             );
-            p.galley(Pos2::new(gx, y - gs.y * 0.5), gg, ink());
+            p.galley(Pos2::new(gx, y - gs.y * 0.5), gg, c.ink);
         }
         if n.slide_in {
             p.line_segment(
@@ -1335,7 +1328,7 @@ fn draw_tab_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32) {
                     Pos2::new(left - 10.0 * z, y + 4.0 * z),
                     Pos2::new(left - 1.0 * z, y - 1.0 * z),
                 ],
-                PStroke::new(1.1 * z, ink()),
+                PStroke::new(1.1 * z, c.ink),
             );
         }
         if n.slide_out && !n.slide {
@@ -1344,7 +1337,7 @@ fn draw_tab_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32) {
                     Pos2::new(right + 1.0 * z, y - 1.0 * z),
                     Pos2::new(right + 11.0 * z, y + 4.0 * z),
                 ],
-                PStroke::new(1.1 * z, ink()),
+                PStroke::new(1.1 * z, c.ink),
             );
         }
         if n.trill > 0 {
@@ -1353,7 +1346,7 @@ fn draw_tab_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32) {
                 Align2::CENTER_CENTER,
                 "tr",
                 serif_bi(11.0 * z),
-                ink(),
+                c.ink,
             );
             if st.trill_second {
                 p.text(
@@ -1371,7 +1364,7 @@ fn draw_tab_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32) {
                 Align2::CENTER_CENTER,
                 "P.H.",
                 italic(8.5 * z),
-                ink(),
+                c.ink,
             );
         }
         if n.hammer || n.slide {
@@ -1384,7 +1377,7 @@ fn draw_tab_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32) {
                         [a, mid, b],
                         false,
                         Color32::TRANSPARENT,
-                        PStroke::new(1.0 * z, ink()),
+                        PStroke::new(1.0 * z, c.ink),
                     ));
                     if st.hopo_letters {
                         let k = if nx_note.fret >= n.fret {
@@ -1397,7 +1390,7 @@ fn draw_tab_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32) {
                             Align2::CENTER_BOTTOM,
                             sym_text(st, k),
                             sym_font(st, k, fz),
-                            ink(),
+                            c.ink,
                         );
                     }
                 }
@@ -1409,7 +1402,7 @@ fn draw_tab_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32) {
                             Pos2::new(right + 1.0 * z, if up { y + d } else { y - d }),
                             Pos2::new(nx_x - 6.0 * z, if up { y - d } else { y + d }),
                         ],
-                        PStroke::new(1.1 * z, ink()),
+                        PStroke::new(1.1 * z, c.ink),
                     );
                     if st.slide_sl {
                         let k = crate::style::SYM_SLIDE;
@@ -1418,7 +1411,7 @@ fn draw_tab_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32) {
                             Align2::CENTER_BOTTOM,
                             sym_text(st, k),
                             sym_font(st, k, fz),
-                            ink(),
+                            c.ink,
                         );
                     }
                 }
@@ -1428,7 +1421,7 @@ fn draw_tab_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32) {
                         Pos2::new(right + 1.0, y + 3.0 * z),
                         Pos2::new(right + 12.0 * z, y - 3.0 * z),
                     ],
-                    PStroke::new(1.1 * z, ink()),
+                    PStroke::new(1.1 * z, c.ink),
                 );
             }
         }
@@ -1436,7 +1429,7 @@ fn draw_tab_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32) {
             let top = y0 + g.lane_top - 2.0 * z;
             let a = Pos2::new(right, y);
             let b = Pos2::new(right + 10.0 * z, top + 6.0 * z);
-            let st = PStroke::new(1.1 * z, ink());
+            let st = PStroke::new(1.1 * z, c.ink);
             if n.bend_kind >= 2 {
                 // Pre-bend: straight up from the note.
                 p.line_segment([Pos2::new(x, y - 5.0 * z), Pos2::new(x, b.y)], st);
@@ -1447,7 +1440,7 @@ fn draw_tab_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32) {
                         Pos2::new(b.x + 3.0 * z, b.y + 1.0 * z),
                         Pos2::new(b.x, b.y - 4.0 * z),
                     ],
-                    ink(),
+                    c.ink,
                     PStroke::NONE,
                 ));
             } else {
@@ -1463,7 +1456,7 @@ fn draw_tab_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32) {
                         Pos2::new(b.x + 3.0 * z, b.y + 1.0 * z),
                         Pos2::new(b.x, b.y - 4.0 * z),
                     ],
-                    ink(),
+                    c.ink,
                     PStroke::NONE,
                 ));
             }
@@ -1487,7 +1480,7 @@ fn draw_tab_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32) {
                         Pos2::new(e.x + 3.0 * z, e.y - 1.0 * z),
                         Pos2::new(e.x, e.y + 4.0 * z),
                     ],
-                    ink(),
+                    c.ink,
                     PStroke::NONE,
                 ));
             }
@@ -1504,7 +1497,7 @@ fn draw_tab_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32) {
                 Align2::CENTER_BOTTOM,
                 lab,
                 fid(9.0 * z),
-                ink(),
+                c.ink,
             );
         }
     }
@@ -1525,7 +1518,7 @@ fn draw_tab_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32) {
             .collect();
         p.add(Shape::line(
             pts,
-            PStroke::new(if wide { 2.0 } else { 1.3 } * z, ink()),
+            PStroke::new(if wide { 2.0 } else { 1.3 } * z, c.ink),
         ));
     }
     if beat.stroke != Stroke::None && beat.notes.len() > 1 {
@@ -1541,7 +1534,7 @@ fn draw_tab_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32) {
         let sx = x - 10.0 * z;
         p.line_segment(
             [Pos2::new(sx, mn - 3.0 * z), Pos2::new(sx, mx + 3.0 * z)],
-            PStroke::new(1.1 * z, ink()),
+            PStroke::new(1.1 * z, c.ink),
         );
         let (tip, dir) = if beat.stroke == Stroke::Down {
             (mn - 4.0 * z, -1.0)
@@ -1555,7 +1548,7 @@ fn draw_tab_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32) {
                     Pos2::new(sx + 3.0 * z, tip - dir * 5.0 * z),
                     Pos2::new(sx, tip),
                 ],
-                ink(),
+                c.ink,
                 PStroke::NONE,
             ));
         }
@@ -1566,7 +1559,7 @@ fn draw_tab_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32) {
             Align2::CENTER_CENTER,
             ">",
             bold(11.0 * z),
-            ink(),
+            c.ink,
         );
     }
 }
@@ -1615,19 +1608,19 @@ fn draw_runs(p: &Painter, c: &BarCtx, bar: &Bar) {
             let x0 = c.o.x + c.xs[start] - 6.0 * z;
             let x1 = c.o.x + c.xs[j] + 6.0 * z;
             let k = crate::style::SYM_PALM_MUTE;
-            let gal = p.layout_no_wrap(sym_text(st, k), sym_font(st, k, c.lay.fz), ink());
+            let gal = p.layout_no_wrap(sym_text(st, k), sym_font(st, k, c.lay.fz), c.ink);
             let w = gal.size().x;
-            p.galley(Pos2::new(x0, y - gal.size().y * 0.5), gal, ink());
+            p.galley(Pos2::new(x0, y - gal.size().y * 0.5), gal, c.ink);
             if x1 > x0 + w + 4.0 * z {
                 p.add(Shape::dashed_line(
                     &[Pos2::new(x0 + w + 2.0 * z, y), Pos2::new(x1, y)],
-                    PStroke::new(1.0 * z, ink()),
+                    PStroke::new(1.0 * z, c.ink),
                     3.0 * z,
                     2.0 * z,
                 ));
                 p.line_segment(
                     [Pos2::new(x1, y - 3.0 * z), Pos2::new(x1, y + 3.0 * z)],
-                    PStroke::new(1.0 * z, ink()),
+                    PStroke::new(1.0 * z, c.ink),
                 );
             }
         }
@@ -1668,7 +1661,7 @@ fn draw_let_ring(p: &Painter, c: &BarCtx, bar: &Bar) {
     let bar_right = c.o.x + bl.x + bl.w;
     let first_in_system = k == 0;
     let y = c.y0 + g.lane_top + 6.0 * z;
-    let stroke = PStroke::new(1.0 * z, ink());
+    let stroke = PStroke::new(1.0 * z, c.ink);
     let mut j = 0;
     while j < nbeats {
         if !flags[j] {
@@ -1694,10 +1687,10 @@ fn draw_let_ring(p: &Painter, c: &BarCtx, bar: &Bar) {
         let mut line_from = x0;
         if !continues_in || first_in_system {
             let k = crate::style::SYM_LET_RING;
-            let gal = p.layout_no_wrap(sym_text(st, k), sym_font(st, k, c.lay.fz), ink());
+            let gal = p.layout_no_wrap(sym_text(st, k), sym_font(st, k, c.lay.fz), c.ink);
             let w = gal.size().x;
             let tx = if continues_in { x0 + 4.0 * z } else { x0 };
-            p.galley(Pos2::new(tx, y - gal.size().y * 0.5), gal, ink());
+            p.galley(Pos2::new(tx, y - gal.size().y * 0.5), gal, c.ink);
             line_from = tx + w + 3.0 * z;
         }
         // A ring on a single short note still shows a bit of line after the words.
@@ -1726,7 +1719,15 @@ fn draw_let_ring(p: &Painter, c: &BarCtx, bar: &Bar) {
 
 /// A small chord diagram made from the beat's notes; `top` is its top centre.
 /// Style 0 Classic, 1 Jazz (light lines, small dots), 2 Rock (bold lines, big dots).
-pub fn draw_diagram(p: &Painter, track: &Track, beat: &Beat, top: Pos2, z: f32, style: u8) {
+pub fn draw_diagram(
+    p: &Painter,
+    track: &Track,
+    beat: &Beat,
+    top: Pos2,
+    z: f32,
+    style: u8,
+    ink: Color32,
+) {
     let (lw, dot) = match style {
         1 => (0.6, 2.0),
         2 => (1.1, 3.0),
@@ -1750,7 +1751,7 @@ pub fn draw_diagram(p: &Painter, track: &Track, beat: &Beat, top: Pos2, z: f32, 
     } else {
         fretted.iter().copied().min().unwrap_or(1)
     };
-    let line = PStroke::new(lw * z, ink());
+    let line = PStroke::new(lw * z, ink);
     for s in 0..n {
         let x = left + s as f32 * gap;
         p.line_segment([Pos2::new(x, y0), Pos2::new(x, y0 + 5.0 * fh)], line);
@@ -1758,7 +1759,7 @@ pub fn draw_diagram(p: &Painter, track: &Track, beat: &Beat, top: Pos2, z: f32, 
     for f in 0..=5 {
         let y = y0 + f as f32 * fh;
         let st = if f == 0 && base == 1 {
-            PStroke::new(if style == 2 { 2.8 } else { 2.0 } * z, ink())
+            PStroke::new(if style == 2 { 2.8 } else { 2.0 } * z, ink)
         } else {
             line
         };
@@ -1770,7 +1771,7 @@ pub fn draw_diagram(p: &Painter, track: &Track, beat: &Beat, top: Pos2, z: f32, 
             Align2::LEFT_CENTER,
             format!("{base}fr"),
             fid(7.5 * z),
-            ink(),
+            ink,
         );
     }
     // Low string on the left.
@@ -1782,13 +1783,13 @@ pub fn draw_diagram(p: &Painter, track: &Track, beat: &Beat, top: Pos2, z: f32, 
                 p.circle_stroke(
                     Pos2::new(x, y0 - 4.0 * z),
                     2.0 * z,
-                    PStroke::new(0.9 * z, ink()),
+                    PStroke::new(0.9 * z, ink),
                 );
             }
             Some(nn) => {
                 let row = nn.fret as i32 - base as i32;
                 if (0..5).contains(&row) {
-                    p.circle_filled(Pos2::new(x, y0 + (row as f32 + 0.5) * fh), dot * z, ink());
+                    p.circle_filled(Pos2::new(x, y0 + (row as f32 + 0.5) * fh), dot * z, ink);
                 }
             }
             None => {
@@ -1796,11 +1797,11 @@ pub fn draw_diagram(p: &Painter, track: &Track, beat: &Beat, top: Pos2, z: f32, 
                 let c = Pos2::new(x, y0 - 4.0 * z);
                 p.line_segment(
                     [c + Vec2::new(-d, -d), c + Vec2::new(d, d)],
-                    PStroke::new(0.9 * z, ink()),
+                    PStroke::new(0.9 * z, ink),
                 );
                 p.line_segment(
                     [c + Vec2::new(-d, d), c + Vec2::new(d, -d)],
-                    PStroke::new(0.9 * z, ink()),
+                    PStroke::new(0.9 * z, ink),
                 );
             }
         }
@@ -1808,8 +1809,8 @@ pub fn draw_diagram(p: &Painter, track: &Track, beat: &Beat, top: Pos2, z: f32, 
 }
 
 /// Staff position (half-spaces above the bottom line) of a note in standard notation.
-pub fn note_staff_pos(track: &Track, beat: &Beat, key: i8, n: &Note) -> i32 {
-    std_positions(track, beat, key)
+pub fn note_staff_pos(track: &Track, beat: &Beat, key: i8, n: &Note, capo_std: bool) -> i32 {
+    std_positions(track, beat, key, capo_std)
         .iter()
         .find(|(_, _, x)| std::ptr::eq(*x, n) || (x.string == n.string && x.fret == n.fret))
         .map(|x| x.0)

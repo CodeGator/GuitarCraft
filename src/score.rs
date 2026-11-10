@@ -2,9 +2,7 @@
 //! with every shown track stacked in each system (a full score).
 
 mod draw;
-pub use draw::{
-    key_positions, note_staff_pos, set_ink, staff_pos_name, staff_pos_pitch, written_name,
-};
+pub use draw::{key_positions, note_staff_pos, staff_pos_name, staff_pos_pitch, written_name};
 
 use crate::model::*;
 use draw::*;
@@ -1059,7 +1057,6 @@ pub fn draw_page(p: &Painter, lay: &Layout, dc: &DrawCtx, page: usize, origin: P
     let pz = lay.pz;
     let song = dc.song;
     let st = &song.style;
-    draw::set_capo_std(st.capo_affects_std);
     let page_rect = Rect::from_min_size(origin, Vec2::new(lay.page_w(), lay.page_h()));
     p.rect_filled(
         page_rect.translate(Vec2::new(2.0, 3.0)),
@@ -1156,12 +1153,12 @@ pub fn draw_page(p: &Painter, lay: &Layout, dc: &DrawCtx, page: usize, origin: P
                         INK,
                     );
                 }
-                draw::draw_diagram(p, t, beat, top, pz * k, st.chord_style);
+                draw::draw_diagram(p, t, beat, top, pz * k, st.chord_style, INK);
                 x += w * pz;
             }
         }
         let tp = Pos2::new(left + 30.0 * pz, origin.y + lay.head.tempo_y * pz);
-        draw_small_note(p, tp, pz);
+        draw_small_note(p, tp, pz, INK);
         let r = p.text(
             Pos2::new(tp.x + 9.0 * pz, tp.y),
             Align2::LEFT_CENTER,
@@ -1659,7 +1656,7 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
             && bi != 0
         {
             let tp = Pos2::new(bx + 70.0 * z, y0 + 14.0 * z);
-            draw_small_note(p, tp, z);
+            draw_small_note(p, tp, z, INK);
             let r = p.text(
                 Pos2::new(tp.x + 9.0 * z, tp.y),
                 Align2::LEFT_CENTER,
@@ -1745,7 +1742,7 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
                     [Pos2::new(ex, top), Pos2::new(ex, bottom)],
                     PStroke::new(3.0 * z, INK),
                 );
-                repeat_dots(p, &g, y0, ex - 9.0 * z, z);
+                repeat_dots(p, &g, y0, ex - 9.0 * z, z, INK);
                 if mb.repeat_close > 2 && k == 0 {
                     p.text(
                         Pos2::new(ex - 2.0 * z, top - 4.0 * z),
@@ -1805,7 +1802,14 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
             let mut hx = bx + 4.0 * z;
             if bl.clef {
                 for (st, cl) in g.std_staves() {
-                    clef(p, Pos2::new(hx + 10.0 * z, y0 + st), &g, cl, dc.music_font);
+                    clef(
+                        p,
+                        Pos2::new(hx + 10.0 * z, y0 + st),
+                        &g,
+                        cl,
+                        dc.music_font,
+                        INK,
+                    );
                 }
                 if g.tab {
                     let mid = y0 + g.tab_top + (g.strings as f32 - 1.0) * g.ts * 0.5;
@@ -1855,7 +1859,7 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
                     ],
                     line,
                 );
-                repeat_dots(p, &g, y0, lx + 9.0 * z, z);
+                repeat_dots(p, &g, y0, lx + 9.0 * z, z, INK);
                 hx += 10.0 * z;
             }
             if bl.time {
@@ -1946,7 +1950,6 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
                     bl.voice_xs(&vbar.beats)
                 };
                 let grey = multi && blk.ti == dc.ti && v != dc.voice;
-                set_ink(if grey { Color32::from_gray(150) } else { INK });
                 let bctx = BarCtx {
                     song,
                     ti: blk.ti,
@@ -1970,9 +1973,10 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
                     },
                     vbar_main_used: bar.voice_used(0),
                     lower: false,
+                    ink: if grey { Color32::from_gray(150) } else { INK },
                 };
                 if g.grand {
-                    let (up, low) = draw::split_grand(track, &vbar, mb.key);
+                    let (up, low) = draw::split_grand(track, &vbar, mb.key, st.capo_affects_std);
                     let upper = BarCtx { vbar: &up, ..bctx };
                     draw_bar_content(p, &upper);
                     let mut g2 = g;
@@ -1988,7 +1992,6 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
                     draw_bar_content(p, &bctx);
                 }
             }
-            set_ink(INK);
         }
     }
 
@@ -2052,10 +2055,15 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
                 Some(pos) if cg.std => {
                     yellow(std_box(pos));
                     if cg.tab
-                        && let Some(n) = beat
-                            .notes
-                            .iter()
-                            .find(|n| draw::note_staff_pos(track, beat, key, n) == pos)
+                        && let Some(n) = beat.notes.iter().find(|n| {
+                            draw::note_staff_pos(
+                                track,
+                                beat,
+                                key,
+                                n,
+                                dc.song.style.capo_affects_std,
+                            ) == pos
+                        })
                     {
                         grey(tab_box(n.string as usize));
                     }
@@ -2065,7 +2073,13 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
                     if cg.std
                         && let Some(n) = beat.note_on(dc.cursor.2 as u8)
                     {
-                        grey(std_box(draw::note_staff_pos(track, beat, key, n)));
+                        grey(std_box(draw::note_staff_pos(
+                            track,
+                            beat,
+                            key,
+                            n,
+                            dc.song.style.capo_affects_std,
+                        )));
                     }
                 }
                 _ => {
