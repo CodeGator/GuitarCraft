@@ -154,12 +154,20 @@ impl GpOptions {
     }
 }
 
-thread_local! {
-    static OPTS: std::cell::Cell<GpOptions> = const { std::cell::Cell::new(GpOptions { chords: false, views: false }) };
-}
-
-fn opts() -> GpOptions {
-    OPTS.with(|o| o.get())
+/// The chord names a track uses, sorted, each once. Their positions are the ids
+/// beats refer to. Empty when chord names are left out.
+fn chord_names(t: &Track, o: GpOptions) -> Vec<&String> {
+    if !o.chords {
+        return vec![];
+    }
+    let mut names: Vec<&String> = t
+        .bars
+        .iter()
+        .flat_map(|b| b.beats.iter().filter_map(|x| x.chord.as_ref()))
+        .collect();
+    names.sort();
+    names.dedup();
+    names
 }
 
 /// The score as Guitar Pro XML.
@@ -169,7 +177,6 @@ pub fn gpif_xml(song: &Song) -> String {
 }
 
 pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
-    OPTS.with(|c| c.set(o));
     let mut x = String::with_capacity(256 * 1024);
     x.push_str("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<GPIF>\n<GPVersion>7</GPVersion>\n<GPRevision required=\"12021\" recommended=\"12023\">12025</GPRevision>\n<Encoding><EncodingDescription>GP7</EncodingDescription></Encoding>\n");
     // Song information.
@@ -368,16 +375,7 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
                 );
             }
             // Chord names used by the track.
-            let mut names: Vec<&String> = if opts().chords {
-                t.bars
-                    .iter()
-                    .flat_map(|b| b.beats.iter().filter_map(|x| x.chord.as_ref()))
-                    .collect()
-            } else {
-                vec![]
-            };
-            names.sort();
-            names.dedup();
+            let names = chord_names(t, o);
             x.push_str("<Property name=\"ChordCollection\"><Items/></Property><Property name=\"ChordWorkingSet\"><Items/></Property><Property name=\"DiagramCollection\"><Items>");
             for (i, n) in names.iter().enumerate() {
                 let _ = write!(
@@ -428,20 +426,11 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
         nbars: 0,
     };
     let mut master = String::from("<MasterBars>\n");
+    let track_chords: Vec<Vec<&String>> = song.tracks.iter().map(|t| chord_names(t, o)).collect();
     for (bi, mb) in song.master.iter().enumerate() {
         let mut bar_ids = vec![];
-        for t in &song.tracks {
+        for (t, chords) in song.tracks.iter().zip(&track_chords) {
             let key = mb.key;
-            let chords: Vec<&String> = {
-                let mut v: Vec<&String> = t
-                    .bars
-                    .iter()
-                    .flat_map(|b| b.beats.iter().filter_map(|x| x.chord.as_ref()))
-                    .collect();
-                v.sort();
-                v.dedup();
-                v
-            };
             let staves: Vec<(Option<bool>, &str)> = if t.grand() {
                 vec![(Some(false), "G2"), (Some(true), "F4")]
             } else {
@@ -488,7 +477,7 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
                             };
                             let refs: Vec<&Note> = graced.iter().collect();
                             beat_ids.push(write_beat_ex(
-                                &mut ids, t, &gb, &refs, &chords, key, false, true,
+                                &mut ids, t, &gb, &refs, chords, key, false, true,
                             ));
                         }
                         beat_ids.push(write_beat(
@@ -496,7 +485,7 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
                             t,
                             beat,
                             &notes,
-                            &chords,
+                            chords,
                             key,
                             v == 0 && low != Some(true),
                         ));
@@ -635,7 +624,7 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
         x.push_str("</Rhythm>\n");
     }
     x.push_str("</Rhythms>\n");
-    if opts().views {
+    if o.views {
         x.push_str("<ScoreViews>");
         for k in 0..=song.tracks.len() {
             let _ = write!(x, "<ScoreView id=\"{k}\"/>");
@@ -711,7 +700,6 @@ fn write_beat_ex(
             .chord
             .as_ref()
             .and_then(|c| chords.iter().position(|n| *n == c))
-            && opts().chords
         {
             let _ = write!(x, "<Chord>{c}</Chord>");
         }
