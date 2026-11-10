@@ -4,3 +4,6 @@
 
 # Format the code with rustfmt
 a29ebf90ca8554ef83a8f5dddb5a9abe6ddac036
+
+# Format the code with the rustfmt 2024 style
+041e3159749eecdf610668d38e9500ae4e0f43a1
