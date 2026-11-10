@@ -170,6 +170,17 @@ fn chunk(out: &mut Vec<u8>, events: &mut [(u32, Vec<u8>)]) {
     out.extend_from_slice(&data);
 }
 
+/// A MIDI meta event (0xFF, kind, length, body).
+fn meta(kind: u8, body: &[u8]) -> Vec<u8> {
+    let mut ev = vec![0xff, kind];
+    vlq(&mut ev, body.len() as u32);
+    ev.extend_from_slice(body);
+    ev
+}
+
+/// Writes the song as a standard MIDI file: a conductor track (title, tempo, time
+/// and key signatures, section markers) and one track per instrument. Repeats are
+/// played out, since MIDI has no way to mark them.
 pub fn export_midi(song: &Song) -> Vec<u8> {
     let order = song.play_order();
     let mut out = vec![];
@@ -184,6 +195,7 @@ pub fn export_midi(song: &Song) -> Vec<u8> {
     let mut t = 0u32;
     let mut last_tempo = 0;
     let mut last_sig = (0, 0);
+    let mut last_key = None;
     for &bi in &order {
         let tempo = song.tempo_at(bi);
         if tempo != last_tempo {
@@ -207,11 +219,16 @@ pub fn export_midi(song: &Song) -> Vec<u8> {
             tempo_ev.push((t, vec![0xff, 0x58, 0x04, mb.num, dd, 24, 8]));
             last_sig = (mb.num, mb.den);
         }
+        if last_key != Some((mb.key, mb.key_minor)) {
+            tempo_ev.push((t, meta(0x59, &[mb.key as u8, mb.key_minor as u8])));
+            last_key = Some((mb.key, mb.key_minor));
+        }
+        if let Some(m) = &mb.marker {
+            tempo_ev.push((t, meta(0x06, m.as_bytes())));
+        }
         t += mb.ticks();
     }
-    let mut name = vec![0xff, 0x03, song.title.len().min(127) as u8];
-    name.extend_from_slice(&song.title.as_bytes()[..song.title.len().min(127)]);
-    tempo_ev.insert(0, (0, name));
+    tempo_ev.insert(0, (0, meta(0x03, song.title.as_bytes())));
     chunk(&mut out, &mut tempo_ev);
 
     for (ti, tr) in song.tracks.iter().enumerate() {
@@ -222,10 +239,7 @@ pub fn export_midi(song: &Song) -> Vec<u8> {
         } else {
             ti as u8
         } & 0x0f;
-        let mut ev: Vec<(u32, Vec<u8>)> = vec![];
-        let mut nm = vec![0xff, 0x03, tr.name.len().min(127) as u8];
-        nm.extend_from_slice(&tr.name.as_bytes()[..tr.name.len().min(127)]);
-        ev.push((0, nm));
+        let mut ev: Vec<(u32, Vec<u8>)> = vec![(0, meta(0x03, tr.name.as_bytes()))];
         ev.push((0, vec![0xC0 | ch, tr.instrument.midi_program()]));
         ev.push((
             0,
@@ -239,29 +253,38 @@ pub fn export_midi(song: &Song) -> Vec<u8> {
                 ((tr.pan.clamp(-1.0, 1.0) + 1.0) * 63.5) as u8,
             ],
         ));
-        let mut t = 0u32;
-        for &bi in &order {
-            for v in 0..VOICES {
+        for v in 0..VOICES {
+            // Every beat of this voice in play order, with its start time.
+            let mut seq: Vec<(u32, &Beat)> = vec![];
+            let mut t = 0u32;
+            for &bi in &order {
                 let bar = &tr.bars[bi];
-                if v > 0 && !bar.voice_used(v) {
-                    continue;
-                }
-                let mut tick = t;
-                for beat in bar.voice(v) {
-                    let len = beat.ticks();
-                    for n in &beat.notes {
-                        if n.tie {
-                            continue;
-                        }
-                        let p = tr.pitch(n);
-                        let vel = beat.dynamic.velocity().min(127);
-                        ev.push((tick, vec![0x90 | ch, p, vel]));
-                        ev.push((tick + len.saturating_sub(10).max(1), vec![0x80 | ch, p, 0]));
+                if v == 0 || bar.voice_used(v) {
+                    let mut tick = t;
+                    for beat in bar.voice(v) {
+                        seq.push((tick, beat));
+                        tick += beat.ticks();
                     }
-                    tick += len;
+                }
+                t += song.master[bi].ticks();
+            }
+            for (i, &(tick, beat)) in seq.iter().enumerate() {
+                for n in beat.notes.iter().filter(|n| !n.tie) {
+                    // A tied note continues this one, so hold it to the end of the tie.
+                    let mut end = tick + beat.ticks();
+                    for &(t2, b2) in &seq[i + 1..] {
+                        match b2.note_on(n.string) {
+                            Some(m) if m.tie && t2 == end => end = t2 + b2.ticks(),
+                            _ => break,
+                        }
+                    }
+                    let p = tr.pitch(n);
+                    let vel = beat.dynamic.velocity().min(127);
+                    ev.push((tick, vec![0x90 | ch, p, vel]));
+                    let off = (end - tick).saturating_sub(10).max(1);
+                    ev.push((tick + off, vec![0x80 | ch, p, 0]));
                 }
             }
-            t += song.master[bi].ticks();
         }
         chunk(&mut out, &mut ev);
     }

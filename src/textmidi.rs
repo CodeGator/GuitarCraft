@@ -468,7 +468,10 @@ pub fn import_midi(data: &[u8], title: &str) -> Result<Song, String> {
     let mut p = 8 + u32::from_be_bytes([data[4], data[5], data[6], data[7]]) as usize;
     let mut tempos: Vec<(u32, u32)> = vec![];
     let mut sigs: Vec<(u32, u8, u8)> = vec![];
-    let mut keys: Vec<(u32, i8)> = vec![];
+    let mut keys: Vec<(u32, i8, bool)> = vec![];
+    let mut markers: Vec<(u32, String)> = vec![];
+    // The first track's name, which is the song's title when that track has no notes.
+    let mut first_name = String::new();
     // (track index, channel) -> notes, program, name
     let mut parts: std::collections::BTreeMap<(usize, u8), (Vec<MidiNote>, u8, String)> =
         Default::default();
@@ -510,7 +513,13 @@ pub fn import_midi(data: &[u8], title: &str) -> Result<Song, String> {
                     0x58 if body.len() >= 2 => {
                         sigs.push((to_ticks(t), body[0].max(1), 1u8 << body[1].min(5)))
                     }
-                    0x59 if !body.is_empty() => keys.push((to_ticks(t), body[0] as i8)),
+                    0x59 if !body.is_empty() => {
+                        keys.push((to_ticks(t), body[0] as i8, body.get(1) == Some(&1)))
+                    }
+                    0x06 => markers.push((
+                        to_ticks(t),
+                        String::from_utf8_lossy(body).trim().to_string(),
+                    )),
                     _ => {}
                 }
                 q += l as usize;
@@ -576,6 +585,9 @@ pub fn import_midi(data: &[u8], title: &str) -> Result<Song, String> {
                 _ => break,
             }
         }
+        if ti == 0 {
+            first_name = name.clone();
+        }
         for e in parts.iter_mut().filter(|((t2, _), _)| *t2 == ti) {
             if e.1 .2.is_empty() {
                 e.1 .2 = name.clone();
@@ -608,12 +620,18 @@ pub fn import_midi(data: &[u8], title: &str) -> Result<Song, String> {
         };
         if let Some(k) = keys.iter().rev().find(|k| k.0 <= t) {
             mb.key = k.1.clamp(-7, 7);
+            mb.key_minor = k.2;
         }
+        t += mb.ticks();
         master.push(mb);
-        t += master.last().unwrap().ticks();
     }
     let mut song = Song::new_blank();
-    song.title = title.to_string();
+    let conductor = !first_name.is_empty() && !parts.keys().any(|&(ti, _)| ti == 0);
+    song.title = if conductor {
+        first_name
+    } else {
+        title.to_string()
+    };
     tempos.sort_by_key(|x| x.0);
     song.tempo = tempos.first().map(|x| x.1).unwrap_or(120).clamp(20, 400);
     let mut bar_starts = vec![];
@@ -626,6 +644,14 @@ pub fn import_midi(data: &[u8], title: &str) -> Result<Song, String> {
         if let Some(bi) = bar_starts.iter().rposition(|&s| s <= tt) {
             if bi > 0 {
                 master[bi].tempo = Some(bpm.clamp(20, 400));
+            }
+        }
+    }
+    // Section markers go on the bar they fall in; the first one there wins.
+    for (tt, text) in markers {
+        if let Some(bi) = bar_starts.iter().rposition(|&s| s <= tt) {
+            if !text.is_empty() && master[bi].marker.is_none() {
+                master[bi].marker = Some(text);
             }
         }
     }
@@ -785,5 +811,46 @@ mod tests {
             back.tracks[0].pitch(&first.notes[0]),
             song.tracks[0].pitch(&song.tracks[0].bars[0].beats[0].notes[0])
         );
+    }
+
+    #[test]
+    fn midi_keeps_title_key_and_sections() {
+        let song = Song::demo();
+        let back = import_midi(&crate::fileio::export_midi(&song), "file name").unwrap();
+        assert_eq!(back.title, song.title);
+        assert_eq!(back.master[0].key, song.master[0].key);
+        assert_eq!(back.master[0].key_minor, song.master[0].key_minor);
+        let names = |s: &Song| -> Vec<String> {
+            s.master.iter().filter_map(|m| m.marker.clone()).collect()
+        };
+        // Repeats are played out, so a section can appear more than once.
+        for name in names(&song) {
+            assert!(names(&back).contains(&name), "lost section {name}");
+        }
+    }
+
+    #[test]
+    fn midi_holds_tied_notes() {
+        let mut song = Song::new_blank();
+        let half = |tie: bool| Beat {
+            dur: Dur::Half,
+            notes: vec![Note {
+                tie,
+                ..Note::new(0, 3)
+            }],
+            ..Beat::rest(Dur::Half)
+        };
+        song.tracks[0].bars[0] = Bar::new(vec![half(false), half(true)]);
+        let back = import_midi(&crate::fileio::export_midi(&song), "Tie").unwrap();
+        // One note held for the whole bar, not a half note and a half rest.
+        assert_eq!(back.tracks[0].bars[0].beats[0].dur, Dur::Whole);
+    }
+
+    #[test]
+    fn midi_keeps_long_non_ascii_titles() {
+        let mut song = Song::demo();
+        song.title = "Café ".repeat(40).trim().to_string();
+        let back = import_midi(&crate::fileio::export_midi(&song), "x").unwrap();
+        assert_eq!(back.title, song.title);
     }
 }
