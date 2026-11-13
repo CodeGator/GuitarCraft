@@ -71,6 +71,9 @@ pub const FONTS: [(&str, [&str; 4]); 9] = [
     ),
 ];
 
+/// The handwritten font standing in for Guitar Pro's own jazz font.
+pub const JAZZ_FONT: &str = "Ink Free";
+
 pub const STYLE_NAMES: [&str; 4] = ["Regular", "Bold", "Italic", "Bold Italic"];
 
 /// Adds every font of the list to egui, each style as its own family
@@ -365,87 +368,64 @@ fn times(size: f32) -> FontSpec {
 fn times_b(size: f32) -> FontSpec {
     FontSpec::new("Times New Roman", size, true, false)
 }
-fn ui(size: f32) -> FontSpec {
-    FontSpec::new("Segoe UI", size, false, false)
+fn arial(size: f32) -> FontSpec {
+    FontSpec::new("Arial", size, false, false)
 }
 
-/// Header items of the first page, in their usual order.
+/// Header items of the first page, in their usual order (Guitar Pro 8's starting values).
 fn first_header() -> Vec<HeaderItem> {
     vec![
         hi("Title", true, "%TITLE%", 1, times(25.0)),
-        hi("Subtitle", true, "%SUBTITLE%", 1, times_b(12.5)),
-        hi("Artist", true, "%ARTIST%", 1, times(11.0)),
-        hi("Album", true, "%ALBUM%", 1, times(11.0)),
-        hi("Words", true, "Words by %WORDS%", 0, times(8.8)),
-        hi("Music", true, "Music by %MUSIC%", 1, times(8.8)),
-        hi(
-            "Words & Music",
-            true,
-            "Words & Music by %MUSIC%",
-            1,
-            times(8.8),
-        ),
-        hi("Transcriber", false, "Tabbed by %TABBER%", 2, times(8.8)),
+        hi("Subtitle", true, "%SUBTITLE%", 1, times(12.0)),
+        hi("Artist", true, "%ARTIST%", 1, times_b(12.0)),
+        hi("Album", true, "%ALBUM%", 1, times(12.0)),
+        hi("Words", true, "Words by %WORDS%", 0, times(10.0)),
+        hi("Music", true, "Music by %MUSIC%", 2, times(10.0)),
+        hi("Words & Music", true, "Words & Music by %MUSIC%", 2, times(10.0)),
+        hi("Transcriber", false, "Tabbed by %TABBER%", 2, times(10.0)),
     ]
 }
 
-fn footer(copyright_on: bool) -> Vec<HeaderItem> {
+fn footer() -> Vec<HeaderItem> {
     vec![
-        hi("Copyright", copyright_on, "%COPYRIGHT%", 1, times(8.0)),
-        hi(
-            "Copyright (second line)",
-            copyright_on,
-            "All Rights Reserved - International Copyright Secured",
-            1,
-            times(7.0),
-        ),
-        hi("Page number", true, "%PAGE%/%PAGES%", 2, times(7.3)),
+        hi("Copyright", true, "%COPYRIGHT%", 1, times(7.0)),
+        hi("Copyright (second line)", true, "All Rights Reserved - International Copyright Secured", 1, times(7.0)),
+        hi("Page number", true, "%PAGE%/%PAGES%", 2, times(8.0)),
     ]
 }
 
+/// The following pages: a small "title by artist" line on top.
 fn other_header() -> Vec<HeaderItem> {
     let mut v = first_header();
     for it in &mut v {
         it.on = false;
     }
-    // A small running title on the following pages.
-    v[0].on = false;
-    v[0].font = times(10.0);
-    v[0].align = 0;
+    v[0].on = true;
+    v[0].text = "%TITLE% by %ARTIST%".into();
+    v[0].font = times(7.0);
+    v[0].align = 1;
     v
 }
 
-fn symbols(italic_family: &str) -> Vec<SymbolLabel> {
-    let s = |name: &str, text: &str, f: FontSpec| SymbolLabel {
-        name: name.into(),
-        text: text.into(),
-        font: f,
-    };
-    let it = |size: f32| FontSpec::new(italic_family, size, false, true);
+fn symbols(family: &str) -> Vec<SymbolLabel> {
+    let s = |name: &str, text: &str, f: FontSpec| SymbolLabel { name: name.into(), text: text.into(), font: f };
+    let f = |size: f32, bold: bool, italic: bool| FontSpec::new(family, size, bold, italic);
     vec![
-        s("Let Ring", "let ring", it(7.3)),
-        s("Palm Mute", "P.M.", it(6.9)),
-        s("Slide", "sl.", it(6.5)),
-        s(
-            "Hammer-On",
-            "H",
-            FontSpec::new(italic_family, 6.5, false, false),
-        ),
-        s(
-            "Pull-Off",
-            "P",
-            FontSpec::new(italic_family, 6.5, false, false),
-        ),
-        s("Slap", "S", FontSpec::new(italic_family, 7.6, true, false)),
-        s("Pop", "P", FontSpec::new(italic_family, 7.6, true, false)),
-        s("Pick Scrape", "P.S.", it(6.9)),
-        s("Rasgueado", "rasg.", it(6.9)),
-        s("Whammy Bar Indication", "w/bar", it(6.9)),
+        s("Let Ring", "let ring", f(8.0, false, true)),
+        s("Palm Mute", "P.M.", f(8.0, true, false)),
+        s("Slide", "sl.", f(6.0, false, true)),
+        s("Hammer-On", "H", f(6.0, false, false)),
+        s("Pull-Off", "P", f(6.0, false, false)),
+        s("Slap", "S", f(6.3, false, false)),
+        s("Pop", "P", f(6.3, false, false)),
+        s("Pick Scrape", "P.S.", f(8.0, false, false)),
+        s("Rasgueado", "rasg.", f(8.0, false, true)),
+        s("Whammy Bar Indication", "w/bar", f(8.0, false, false)),
     ]
 }
 
 impl Stylesheet {
-    /// The look new songs start with.
+    /// The look new songs start with: Guitar Pro 8's own starting values.
     pub fn standard() -> Stylesheet {
         Stylesheet {
             page_format: 0,
@@ -461,15 +441,15 @@ impl Stylesheet {
             rhythm_spacing: 0.5,
             tuning_show: true,
             tuning_pos: 0,
-            tuning_mode: 0,
+            tuning_mode: 2,
             tuning_cols: 0,
             tuning_framed: false,
-            chord_style: 0,
-            chords_top: false,
+            chord_style: 2,
+            chords_top: true,
             chords_top_size: 10.0,
             chords_top_spacing: 3.0,
-            chords_in_score: true,
-            chords_in_score_size: 9.0,
+            chords_in_score: false,
+            chords_in_score_size: 9.7,
             staff_line: 0.13,
             system_gap: 4.0,
             indent_on: false,
@@ -484,41 +464,41 @@ impl Stylesheet {
             brackets: 0,
             separator: false,
             name_single: true,
-            name_single_policy: 2,
+            name_single_policy: 0,
             name_multi: true,
-            name_multi_policy: 2,
+            name_multi_policy: 1,
             name_first_mode: 1,
             name_first_orient: 0,
             name_other_mode: 1,
             first_header: first_header(),
-            first_footer: footer(true),
+            first_footer: footer(),
             other_header: other_header(),
-            other_footer: footer(false),
-            font_fret: ui(8.4),
-            font_grace: ui(6.2),
-            font_text: FontSpec::new("Times New Roman", 8.8, true, true),
-            font_chord: times_b(9.5),
-            font_tuning: times(8.8),
-            font_section: times_b(10.2),
-            font_tempo: times(10.2),
+            other_footer: footer(),
+            font_fret: arial(7.0),
+            font_grace: arial(5.0),
+            font_text: arial(7.0),
+            font_chord: times_b(10.0),
+            font_tuning: times(8.0),
+            font_section: times_b(10.0),
+            font_tempo: times_b(10.0),
             tempo_decimal: false,
             font_timer: FontSpec::new("Arial", 8.0, false, false),
-            font_capo: times(8.8),
+            font_capo: times(8.0),
             font_barre: times_b(8.0),
-            font_track_h: times(8.8),
+            font_track_h: times_b(10.0),
             font_track_v: times(8.0),
-            font_lyrics: times(8.8),
+            font_lyrics: times(6.0),
             lyrics_pos: 0,
-            font_bar_number: ui(6.5),
+            font_bar_number: times(6.0),
             bar_numbers: 0,
             symbol_style: 0,
-            symbols: symbols("Segoe UI"),
-            lines_over_rests: false,
-            rhythm_hide_with_std: false,
-            rhythm_extend: false,
+            symbols: symbols("Times New Roman"),
+            lines_over_rests: true,
+            rhythm_hide_with_std: true,
+            rhythm_extend: true,
             beams_on_rests: false,
-            circle_half_whole: false,
-            horizontal_beams: true,
+            circle_half_whole: true,
+            horizontal_beams: false,
             horizontal_beams_drums: true,
             rhythm_voice: [1, 1, 2, 2],
             harmonic_string: true,
@@ -527,21 +507,21 @@ impl Stylesheet {
             bend_real_pitch: true,
             arpeggio_arrow: true,
             trill_second: true,
-            tied_in_tab: true,
-            coda_space_on: false,
+            tied_in_tab: false,
+            coda_space_on: true,
             coda_space: 6.0,
             hopo_letters: true,
             hopo_avoid: true,
             hopo_outer: true,
             hopo_single: true,
-            slide_sl: false,
+            slide_sl: true,
             color_voices: false,
             hide_useless_rests: true,
             dash_quarter_rest: false,
             hide_dynamics: false,
             slash_fret_string: false,
-            tuplet_brackets: false,
-            scale_grid: 1.0,
+            tuplet_brackets: true,
+            scale_grid: 2.0,
             lh_type: 0,
             lh_scale: 1.0,
             lh_staff: 1,
@@ -553,114 +533,177 @@ impl Stylesheet {
         }
     }
 
-    /// Rock: sans-serif texts, bold chord names, rhythm under the tablature.
+    // The ready-made styles, as the user guide describes them: the chord
+    // diagram notation (Classic, Jazz or Rock) and the musical symbols (Classic
+    // or Jazz). Everything else stays as Guitar Pro 8 starts a new file.
+
+    /// Rock: Rock chord diagrams with Classic symbols (Guitar Pro 8's starting look).
     pub fn rock() -> Stylesheet {
         let mut s = Stylesheet::standard();
-        let arial = |size: f32, bold: bool| FontSpec::new("Arial", size, bold, false);
-        for it in s
-            .first_header
-            .iter_mut()
-            .chain(s.first_footer.iter_mut())
-            .chain(s.other_header.iter_mut())
-            .chain(s.other_footer.iter_mut())
-        {
-            it.font.family = "Arial".into();
-        }
-        s.first_header[0].font = arial(24.0, true);
-        s.first_header[1].font = arial(12.0, false);
-        s.font_fret = arial(7.5, false);
-        s.font_grace = arial(5.5, false);
-        s.font_text = FontSpec::new("Arial", 8.0, false, true);
-        s.font_chord = arial(9.5, true);
-        s.font_tuning = arial(8.0, false);
-        s.font_section = arial(10.0, true);
-        s.font_tempo = arial(9.5, true);
-        s.font_capo = arial(8.0, false);
-        s.font_track_h = arial(9.0, true);
-        s.font_track_v = arial(7.5, false);
-        s.font_lyrics = arial(8.0, false);
-        s.font_bar_number = arial(6.0, false);
-        s.symbols = symbols("Arial");
         s.chord_style = 2;
-        s.chords_top = true;
-        s.tuning_mode = 1;
-        s.circle_half_whole = true;
-        s.rhythm_hide_with_std = false;
-        s.rhythm_extend = true;
-        s.lines_over_rests = true;
-        s.hopo_letters = true;
-        s.slide_sl = false;
+        s.symbol_style = 0;
         s
     }
 
-    /// Classic: serif texts throughout, no rhythm in the tablature when the
-    /// notation is shown, bar numbers on the first bar of each system.
+    /// Classic, as Guitar Pro 8 sets it (the person's pictures 43-46 of the
+    /// Stylesheet window after Options > Apply Classic style).
     pub fn classic() -> Stylesheet {
         let mut s = Stylesheet::standard();
-        let t = |size: f32| FontSpec::new("Times New Roman", size, false, false);
-        s.font_fret = t(8.0);
-        s.font_grace = t(6.0);
-        s.font_text = FontSpec::new("Times New Roman", 9.0, false, true);
-        s.font_bar_number = FontSpec::new("Times New Roman", 7.0, false, true);
-        s.font_track_v = t(8.0);
-        s.font_track_h = t(10.0);
-        s.symbols = symbols("Times New Roman");
-        s.first_header[4].align = 0;
-        s.first_header[5].align = 2;
-        s.first_header[6].align = 2;
         s.chord_style = 0;
-        s.chords_top = false;
-        s.bar_numbers = 1;
-        s.rhythm_hide_with_std = true;
-        s.circle_half_whole = false;
+        s.symbol_style = 0;
+        // Systems & Staves.
         s.indent_on = true;
-        s.indent = 8.0;
-        s.name_first_mode = 0;
-        s.name_first_orient = 1;
-        s.brackets = 1;
-        s.tuplet_brackets = true;
+        s.indent = 10.0;
+        s.brackets = 2;
+        s.separator = true;
+        // Header: bigger title lines; the words line is just the name; transcriber shown.
+        let sizes = [36.0, 21.0, 24.0, 15.0, 15.0, 12.0, 11.0, 11.0];
+        for (it, size) in s.first_header.iter_mut().zip(sizes) {
+            it.font = times(size);
+        }
+        s.first_header[4].text = "%WORDS%".into();
+        s.first_header[4].align = 1;
+        s.first_header[7].on = true;
+        // Texts & Styles.
+        s.font_fret = arial(7.0);
+        s.font_grace = arial(5.0);
+        s.font_text = arial(8.0);
+        s.font_chord = times(9.0);
+        s.font_tuning = times(9.0);
+        s.font_section = times_b(14.0);
+        s.font_tempo = times(11.0);
+        s.font_timer = arial(9.0);
+        s.font_capo = times(9.0);
+        s.font_barre = times(9.0);
+        s.font_track_h = times(12.0);
+        s.font_track_v = times(9.0);
+        s.font_lyrics = times(9.0);
+        s.font_bar_number = times(7.0);
+        s.lines_over_rests = true;
+        // Notation.
+        s.rhythm_hide_with_std = true;
+        s.rhythm_extend = true;
+        s.beams_on_rests = false;
+        s.circle_half_whole = false;
+        s.horizontal_beams = true;
+        s.horizontal_beams_drums = true;
+        s.rhythm_voice = [1, 0, 2, 2];
+        s.harmonic_string = false;
+        s.harmonic_dot = false;
+        s.common_time_c = true;
+        s.bend_real_pitch = false;
+        s.arpeggio_arrow = true;
+        s.trill_second = true;
+        s.tied_in_tab = false;
+        s.coda_space_on = true;
+        s.coda_space = 6.0;
         s.hopo_letters = false;
+        s.hopo_avoid = true;
+        s.hopo_outer = true;
+        s.hopo_single = true;
         s.slide_sl = false;
+        s.color_voices = false;
+        s.hide_useless_rests = true;
+        s.dash_quarter_rest = false;
+        s.hide_dynamics = false;
+        s.slash_fret_string = false;
+        s.tuplet_brackets = true;
+        s.scale_grid = 2.0;
+        s.lh_type = 1;
+        s.lh_scale = 1.0;
+        s.lh_staff = 1;
+        s.lh_tab = 0;
+        s.rh_type = 0;
+        s.rh_scale = 1.0;
+        s.rh_staff = 0;
+        s.rh_tab = 1;
         s
     }
 
-    /// Jazz: a handwritten look for texts and symbols, and jazz chord diagrams.
+    /// Jazz, as Guitar Pro 8 sets it (the person's pictures 47-50 after
+    /// Options > Apply Jazz style). Guitar Pro uses its own handwritten font
+    /// there, which isn't on this computer; Windows' "Ink Free" stands in.
     pub fn jazz() -> Stylesheet {
         let mut s = Stylesheet::standard();
-        let hand = |size: f32, bold: bool| FontSpec::new("Ink Free", size, bold, false);
-        for it in s
-            .first_header
-            .iter_mut()
-            .chain(s.first_footer.iter_mut())
-            .chain(s.other_header.iter_mut())
-            .chain(s.other_footer.iter_mut())
-        {
-            it.font.family = "Ink Free".into();
+        let hand = |size: f32| FontSpec::new(JAZZ_FONT, size, false, false);
+        s.chord_style = 1;
+        s.symbol_style = 1;
+        // Systems & Staves.
+        s.indent_on = false;
+        s.clef_each_system = false;
+        s.capo_affects_std = false;
+        s.brackets = 0;
+        s.separator = false;
+        s.name_first_mode = 1;
+        s.name_first_orient = 1;
+        s.name_other_mode = 1;
+        // Header & footer, all in the handwritten font.
+        let sizes = [36.0, 16.0, 16.0, 14.0, 11.0, 11.0, 11.0, 11.0];
+        for (it, size) in s.first_header.iter_mut().zip(sizes) {
+            it.font = hand(size);
+        }
+        for (it, size) in s.first_footer.iter_mut().zip([6.0, 6.0, 7.0]) {
+            it.font = hand(size);
+        }
+        for it in s.other_header.iter_mut().chain(s.other_footer.iter_mut()) {
+            it.font.family = JAZZ_FONT.into();
+            it.font.bold = false;
             it.font.italic = false;
         }
-        s.first_header[0].font = hand(28.0, false);
-        s.font_fret = hand(8.5, false);
-        s.font_grace = hand(6.5, false);
-        s.font_text = hand(9.0, false);
-        s.font_chord = hand(11.0, true);
-        s.font_tuning = hand(9.0, false);
-        s.font_section = FontSpec::new("Ink Free", 11.0, true, false);
-        s.font_tempo = hand(10.5, false);
-        s.font_capo = hand(9.0, false);
-        s.font_track_h = hand(10.0, false);
-        s.font_track_v = hand(8.5, false);
-        s.font_lyrics = hand(9.0, false);
-        s.font_bar_number = hand(6.5, false);
-        s.symbols = symbols("Ink Free");
-        for sy in &mut s.symbols {
-            sy.font.italic = false;
-        }
-        s.symbol_style = 1;
-        s.chord_style = 1;
-        s.chords_top = true;
-        s.rhythm_hide_with_std = true;
-        s.common_time_c = true;
+        // Texts & Styles.
+        s.font_fret = hand(7.5);
+        s.font_grace = hand(6.0);
+        s.font_text = hand(10.0);
+        s.font_chord = hand(14.0);
+        s.font_tuning = hand(10.0);
+        s.font_section = FontSpec::new(JAZZ_FONT, 14.0, true, false);
+        s.font_tempo = hand(13.0);
+        s.font_timer = hand(10.0);
+        s.font_capo = hand(12.0);
+        s.font_barre = hand(12.0);
+        s.font_track_h = hand(8.0);
+        s.font_track_v = hand(8.0);
+        s.font_lyrics = hand(7.0);
+        s.font_bar_number = hand(7.0);
+        s.symbols = symbols(JAZZ_FONT);
         s.lines_over_rests = true;
+        // Notation.
+        s.rhythm_hide_with_std = true;
+        s.rhythm_extend = true;
+        s.beams_on_rests = false;
+        s.circle_half_whole = false;
+        s.horizontal_beams = false;
+        s.horizontal_beams_drums = true;
+        s.rhythm_voice = [1, 1, 2, 2];
+        s.harmonic_string = true;
+        s.harmonic_dot = false;
+        s.common_time_c = true;
+        s.bend_real_pitch = false;
+        s.arpeggio_arrow = false;
+        s.trill_second = true;
+        s.tied_in_tab = false;
+        s.coda_space_on = true;
+        s.coda_space = 6.0;
+        s.hopo_letters = false;
+        s.hopo_avoid = true;
+        s.hopo_outer = true;
+        s.hopo_single = true;
+        s.slide_sl = false;
+        s.color_voices = false;
+        s.hide_useless_rests = true;
+        s.dash_quarter_rest = false;
+        s.hide_dynamics = true;
+        s.slash_fret_string = false;
+        s.tuplet_brackets = true;
+        s.scale_grid = 2.0;
+        s.lh_type = 0;
+        s.lh_scale = 1.0;
+        s.lh_staff = 1;
+        s.lh_tab = 1;
+        s.rh_type = 0;
+        s.rh_scale = 1.0;
+        s.rh_staff = 1;
+        s.rh_tab = 0;
         s
     }
 
@@ -795,8 +838,10 @@ mod tests {
 
     #[test]
     fn presets_differ_and_survive_json() {
-        let r = Stylesheet::rock();
-        assert_ne!(r, Stylesheet::standard());
+        let r = Stylesheet::jazz();
+        // Rock is Guitar Pro 8's starting look; Classic and Jazz differ from it.
+        assert_eq!(Stylesheet::rock(), Stylesheet::standard());
+        assert_ne!(Stylesheet::classic(), Stylesheet::standard());
         assert_ne!(Stylesheet::classic(), Stylesheet::jazz());
         let back: Stylesheet = serde_json::from_str(&serde_json::to_string(&r).unwrap()).unwrap();
         assert_eq!(back, r);
@@ -813,6 +858,13 @@ mod tests {
         let data = crate::gpifwrite::export_gp(&song).unwrap();
         let back = crate::gpif::import_gp(&data).unwrap();
         assert_eq!(back.style, song.style);
+        // Only the files Guitar Pro itself writes are in the archive.
+        let zip = zip::ZipArchive::new(std::io::Cursor::new(&data[..])).unwrap();
+        let known = ["VERSION", "Content/score.gpif", "Content/PartConfiguration", "Content/BinaryStylesheet", "Content/LayoutConfiguration"];
+        assert!(zip.file_names().all(|n| known.contains(&n) || n.starts_with("Content/ScoreViews/")));
+        // The score stays well-formed XML with the stylesheet comment in it.
+        let xml = crate::gpifwrite::gpif_xml(&song);
+        assert!(roxmltree::Document::parse(&xml).is_ok());
         // A song with the standard style doesn't need the extra file.
         let plain = crate::gpif::import_gp(
             &crate::gpifwrite::export_gp(&crate::model::Song::demo()).unwrap(),

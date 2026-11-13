@@ -234,7 +234,7 @@ impl App {
                     .filter(|p| {
                         p.extension()
                             .map(|e| {
-                                e == fileio::GP_EXT || fileio::OLD_EXTS.iter().any(|x| e == *x)
+                                e == fileio::GP_EXT
                             })
                             .unwrap_or(false)
                     })

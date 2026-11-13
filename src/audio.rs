@@ -816,7 +816,8 @@ fn build_voice_schedule(song: &Song, sr: f32, opt: &ScheduleOptions) -> Schedule
             if !audible {
                 continue;
             }
-            let bar = &track.bars[bi];
+            // A bar repeat sign plays the bar (or two) it stands for.
+            let bar = simile_source(track, bi);
             let mut tick: u32 = 0;
             for (bj, beat) in bar.beats.iter().enumerate() {
                 let bt = beat.ticks();
@@ -889,7 +890,7 @@ fn build_voice_schedule(song: &Song, sr: f32, opt: &ScheduleOptions) -> Schedule
                     if n.slide_out && slide == 0.0 {
                         slide = -5.0;
                     }
-                    let soft = prev_hammer(song, ti, bi, bj, n.string);
+                    let soft = prev_hammer(song, ti, bi, bj, n.string) || n.fx.lh_tap;
                     if n.let_ring || track.auto_let_ring {
                         len_ticks = len_ticks.max(QUARTER as f64 * 4.0);
                     }
@@ -904,12 +905,19 @@ fn build_voice_schedule(song: &Song, sr: f32, opt: &ScheduleOptions) -> Schedule
                     } else {
                         beat.stroke
                     };
-                    let stroke_off = match stroke {
-                        Stroke::None => 0.0,
-                        Stroke::Down => (nstr - 1 - k.min(nstr - 1)) as f64,
-                        Stroke::Up => k as f64,
-                    } * sr as f64
-                        * 0.012;
+                    let stroke_off = match beat.fx.arpeggio {
+                        // An arpeggio rolls the chord slowly.
+                        1 => (nstr - 1 - k.min(nstr - 1)) as f64 * sr as f64 * 0.045,
+                        2 => k as f64 * sr as f64 * 0.045,
+                        _ => {
+                            (match stroke {
+                                Stroke::None => 0.0,
+                                Stroke::Down => (nstr - 1 - k.min(nstr - 1)) as f64,
+                                Stroke::Up => k as f64,
+                            }) * sr as f64
+                                * 0.012
+                        }
+                    };
                     let mut p = track.pitch(n) as f32;
                     if n.harmonic {
                         p += 12.0;
@@ -957,7 +965,7 @@ fn build_voice_schedule(song: &Song, sr: f32, opt: &ScheduleOptions) -> Schedule
                         bend_shape: n.bend_kind,
                         slide_in: if n.slide_in { -4.0 } else { 0.0 },
                         wide_vibrato: n.wide_vibrato,
-                        fade_in: beat.fade_in,
+                        fade_in: beat.fade_in || beat.fx.swell,
                     };
                     // Grace note just before the beat.
                     if let Some(g) = n.grace {
@@ -1097,8 +1105,21 @@ fn prev_hammer(song: &Song, ti: usize, bi: usize, bj: usize, s: u8) -> bool {
         None
     };
     prev.and_then(|b| b.note_on(s))
-        .map(|n| n.hammer || n.slide)
+        .map(|n| n.hammer || n.slide || n.fx.legato)
         .unwrap_or(false)
+}
+
+/// The bar whose notes bar `bi` plays: itself, or the one a repeat sign stands for.
+fn simile_source(track: &Track, bi: usize) -> &Bar {
+    let mut b = bi;
+    for _ in 0..16 {
+        match track.bars[b].simile {
+            1 if b >= 1 => b -= 1,
+            2 if b >= 2 => b -= 2,
+            _ => break,
+        }
+    }
+    &track.bars[b]
 }
 
 /// Renders the whole song with the built-in sound (stereo, interleaved).

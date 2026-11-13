@@ -10,4 +10,5 @@ shots/
 
 # Test files written by "--gp-tests" and "--convert"
 samples/Test *.gp
-samples/MorningWalk (new save).gp
+samples/Check *.gp
+samples/MorningWalk*.gp

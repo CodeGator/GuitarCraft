@@ -335,7 +335,7 @@ impl App {
                 egui::Panel::bottom("ss-bar").frame(egui::Frame::new().fill(BODY_BG).inner_margin(egui::Margin::symmetric(14, 10))).resizable(false).show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.menu_button(RichText::new("\u{2699} Options \u{25B4}\u{25BE}").size(14.0), |ui| {
-                            for (name, f) in [("Apply Rock style", Stylesheet::rock as fn() -> Stylesheet), ("Apply Classic style", Stylesheet::classic), ("Apply Jazz style", Stylesheet::jazz), ("Apply standard style", Stylesheet::standard)] {
+                            for (name, f) in [("Apply Rock style", Stylesheet::rock as fn() -> Stylesheet), ("Apply Classic style", Stylesheet::classic), ("Apply Jazz style", Stylesheet::jazz)] {
                                 if ui.button(name).clicked() {
                                     dlg.draft = f();
                                     dlg.note = format!("{} \u{2013} press Apply or OK to use it.", name.trim_start_matches("Apply "));

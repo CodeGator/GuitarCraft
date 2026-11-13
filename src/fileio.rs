@@ -2,9 +2,6 @@
 
 use crate::model::*;
 
-/// Files saved by earlier versions of this app (still opened, never written).
-pub const OLD_EXTS: [&str; 3] = ["gcraft", "tabf", "json"];
-
 /// Songs are saved as Guitar Pro files: .gp (current) or .gp5 (older).
 pub const GP_EXT: &str = "gp";
 pub const GP5_EXT: &str = "gp5";
@@ -135,7 +132,7 @@ pub fn load_song(path: &std::path::Path) -> Result<Song, String> {
             crate::textmidi::import_ascii(&String::from_utf8_lossy(&data))?,
             &stem,
         ),
-        _ => serde_json::from_slice::<Song>(&data).map_err(|e| format!("Not a song file: {e}"))?,
+        _ => return Err("GuitarCraft opens Guitar Pro (.gp, .gpx, .gp3-.gp5), MIDI and text tab files.".into()),
     };
     song.normalize();
     Ok(song)

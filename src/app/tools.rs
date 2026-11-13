@@ -322,7 +322,8 @@ impl App {
         if self.screenshot.is_some() {
             return;
         }
-        let Some(p) = rfd::FileDialog::new()
+        let Some(p) = self
+            .file_dialog()
             .add_filter("Text tab", &["txt", "tab"])
             .pick_file()
         else {
@@ -361,7 +362,8 @@ impl App {
         if self.screenshot.is_some() {
             return;
         }
-        if let Some(p) = rfd::FileDialog::new()
+        if let Some(p) = self
+            .file_dialog()
             .add_filter("MIDI", &["mid", "midi"])
             .pick_file()
         {
@@ -378,6 +380,7 @@ impl App {
         self.add_track_window(ctx);
         self.tuning_window(ctx);
         self.chord_window(ctx);
+        self.chord_library_window(ctx);
         self.scale_window(ctx);
         self.lyrics_window(ctx);
         self.command_palette(ctx);

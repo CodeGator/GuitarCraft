@@ -34,14 +34,20 @@ pub fn import_gp(data: &[u8]) -> Result<Song, String> {
             t.visible = shown.contains(&k);
         }
     }
-    // The stylesheet this app saved with the song, if any.
-    if let Ok(mut f) = zip.by_name(crate::gpifwrite::STYLE_FILE) {
-        let mut json = String::new();
-        if f.read_to_string(&mut json).is_ok()
-            && let Ok(st) = serde_json::from_str::<crate::style::Stylesheet>(&json)
-        {
-            song.style = st.fixed();
-        }
+    // The settings of Guitar Pro's stylesheet that this app has, then this
+    // app's full stylesheet when the score carries one.
+    let mut gp_style = vec![];
+    if let Ok(mut f) = zip.by_name("Content/BinaryStylesheet") {
+        let _ = f.read_to_end(&mut gp_style);
+    }
+    if let Some(map) = crate::gpstyle::read(&gp_style) {
+        crate::gpstyle::apply(&map, &mut song.style);
+    }
+    if let Some(st) = crate::gpifwrite::style_from_xml(&xml) {
+        song.style = st;
+    }
+    if let Some(x) = crate::extras::from_xml(&xml) {
+        crate::extras::apply(&mut song, &x);
     }
     // Which staves each track shows (notation, tablature).
     let mut part = vec![];

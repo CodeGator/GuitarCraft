@@ -310,6 +310,7 @@ pub fn draw_bar_content(p: &Painter, c: &BarCtx) {
                 c.ink,
             );
         }
+        draw_beat_marks(p, c, beat, bj, x, &mut my);
         let _ = my;
         if let Some(l) = if c.voice == 0 {
             c.lyrics.get(&(c.bi, bj))
@@ -435,6 +436,13 @@ pub fn draw_bar_content(p: &Painter, c: &BarCtx) {
             );
         }
         prev_dyn = Some(beat.dynamic);
+        if beat.fx.slash {
+            draw_slash(p, c, beat, x);
+            continue;
+        }
+        if beat.fx.arpeggio != 0 {
+            draw_arpeggio(p, c, beat, x);
+        }
         if g.std {
             draw_std_beat(p, c, beat, bj, x, &groups);
         }
@@ -628,7 +636,7 @@ pub fn beam_groups(bar: &Bar, mb: &MasterBar) -> Vec<Vec<usize>> {
     for (i, b) in bar.beats.iter().enumerate() {
         let u = tick / unit;
         let beamable = b.dur.flags() > 0 && !b.is_rest();
-        if !beamable || u != cur_unit {
+        if !beamable || (u != cur_unit && b.fx.beam != 1) || b.fx.beam == 2 {
             if cur.len() > 1 {
                 groups.push(std::mem::take(&mut cur));
             }
@@ -804,6 +812,11 @@ fn draw_std_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32, groups
         }
     };
     let up = if perc && !c.multi { true } else { up };
+    let up = match beat.fx.stem {
+        1 => true,
+        2 => false,
+        _ => up,
+    };
     let filled = beat.dur.index() >= 2;
     let mut minp = i32::MAX;
     let mut maxp = i32::MIN;
@@ -919,13 +932,15 @@ fn draw_std_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32, groups
                 ],
                 PStroke::new(0.9 * z, c.ink),
             );
-            p.line_segment(
-                [
-                    gc + Vec2::new(-z, -4.0 * z),
-                    gc + Vec2::new(6.0 * z, -10.0 * z),
-                ],
-                PStroke::new(0.9 * z, c.ink),
-            );
+            if !beat.fx.grace_on_beat {
+                p.line_segment(
+                    [
+                        gc + Vec2::new(-z, -4.0 * z),
+                        gc + Vec2::new(6.0 * z, -10.0 * z),
+                    ],
+                    PStroke::new(0.9 * z, c.ink),
+                );
+            }
         }
         if n.tie {
             let a = Pos2::new(x - 20.0 * z, cpos.y + 5.0 * z);
@@ -1299,7 +1314,10 @@ fn draw_tab_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32) {
         let r = Rect::from_center_size(Pos2::new(x, y), Vec2::new(sz.x + 2.0 * z, g.ts * 0.8));
         p.rect_filled(r, 0.0, Color32::WHITE);
         p.galley(Pos2::new(x - sz.x * 0.5, y - sz.y * 0.5), gal, col);
-        if st.circle_half_whole && matches!(beat.dur, Dur::Half | Dur::Whole) {
+        // Circles stand in for stems only where the tablature shows the rhythm
+        // (as in Guitar Pro: not when the notation above already shows it).
+        let tab_shows_rhythm = super::tab_rhythm_pos(st, c.voice, g.std) != 2;
+        if st.circle_half_whole && tab_shows_rhythm && matches!(beat.dur, Dur::Half | Dur::Whole) {
             p.circle_stroke(
                 Pos2::new(x, y),
                 (sz.x.max(g.ts * 0.6) * 0.5 + 2.0 * z).min(g.ts * 0.62),
@@ -1330,6 +1348,39 @@ fn draw_tab_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32) {
                 ],
                 PStroke::new(1.1 * z, c.ink),
             );
+        }
+        if n.fx.slide_in_above {
+            p.line_segment([Pos2::new(left - 10.0 * z, y - 5.0 * z), Pos2::new(left - 1.0 * z, y)], PStroke::new(1.1 * z, c.ink));
+        }
+        if n.fx.slide_out_up && !n.slide {
+            p.line_segment([Pos2::new(right + 1.0 * z, y), Pos2::new(right + 11.0 * z, y - 5.0 * z)], PStroke::new(1.1 * z, c.ink));
+        }
+        if n.fx.art_harmonic != 0 || n.fx.lh_tap {
+            let lab = match n.fx.art_harmonic {
+                1 => "A.H.",
+                2 => "T.H.",
+                3 => "S.H.",
+                _ => "L.H.T.",
+            };
+            p.text(Pos2::new(x, y0 + g.lane_top + 2.0 * z), Align2::CENTER_CENTER, lab, italic(8.5 * z), c.ink);
+        }
+        if (n.fx.legato || n.fx.shift_slide)
+            && let Some((nx_x, nx_note)) = next_note_x(c, bj, n.string)
+        {
+            if n.fx.legato {
+                let a = Pos2::new(x + 2.0 * z, y - 6.0 * z);
+                let b = Pos2::new(nx_x - 2.0 * z, y - 6.0 * z);
+                let mid = Pos2::new((a.x + b.x) * 0.5, y - 13.0 * z);
+                p.add(QuadraticBezierShape::from_points_stroke([a, mid, b], false, Color32::TRANSPARENT, PStroke::new(1.0 * z, c.ink)));
+            }
+            if n.fx.shift_slide {
+                let up = nx_note.fret > n.fret;
+                let d = 3.5 * z;
+                p.line_segment(
+                    [Pos2::new(right + 1.0 * z, if up { y + d } else { y - d }), Pos2::new(nx_x - 6.0 * z, if up { y - d } else { y + d })],
+                    PStroke::new(1.1 * z, c.ink),
+                );
+            }
         }
         if n.slide_out && !n.slide {
             p.line_segment(
@@ -1874,4 +1925,195 @@ pub fn staff_pos_name(track: &Track, key: i8, pos: i32) -> String {
         acc_text(key_alter(key, letter)),
         d.div_euclid(7)
     )
+}
+
+/// Beat and note marks of the palette's newer tools, stacked above the staff
+/// (`my` is the next free height and moves up), and the sustain pedal below.
+fn draw_beat_marks(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32, my: &mut f32) {
+    let z = c.z;
+    let fz = c.lay.fz;
+    let st = &c.song.style;
+    let g = &c.g;
+    let ink = c.ink;
+    let fx = &beat.fx;
+    // On a bar's first beat, keep clear of the section name.
+    if bj == 0 && c.block == 0 && c.song.master[c.bi].marker.is_some() {
+        *my = my.min(c.y0 + g.staff_span().0 - 30.0 * z);
+    }
+    let label = |p: &Painter, my: &mut f32, t: String, f: FontId| {
+        p.text(Pos2::new(x, *my), Align2::CENTER_CENTER, t, f, ink);
+        *my -= 11.0 * z;
+    };
+    // Ornaments on the beat's notes.
+    if let Some(o) = beat.notes.iter().map(|n| n.fx.ornament).find(|&o| o != 0) {
+        let y = *my;
+        let (l, r) = (x - 6.0 * z, x + 6.0 * z);
+        match o {
+            1 | 2 => {
+                let pts: Vec<Pos2> = (0..=4).map(|i| Pos2::new(l + i as f32 * 3.0 * z, y + if i % 2 == 0 { 2.5 } else { -2.5 } * z)).collect();
+                p.add(Shape::line(pts, PStroke::new(1.5 * z, ink)));
+                if o == 2 {
+                    p.line_segment([Pos2::new(x, y - 5.0 * z), Pos2::new(x, y + 5.0 * z)], PStroke::new(1.0 * z, ink));
+                }
+            }
+            _ => {
+                let s = if o == 3 { 1.0 } else { -1.0 };
+                let pts: Vec<Pos2> = (0..=16).map(|i| {
+                    let t = i as f32 / 16.0;
+                    Pos2::new(l + t * (r - l), y - s * (t * std::f32::consts::TAU).sin() * 3.0 * z)
+                }).collect();
+                p.add(Shape::line(pts, PStroke::new(1.4 * z, ink)));
+            }
+        }
+        *my -= 11.0 * z;
+    }
+    if fx.fade_out || fx.swell {
+        let y = *my;
+        let wedge = |a: f32, b: f32| {
+            p.line_segment([Pos2::new(a, y), Pos2::new(b, y - 3.5 * z)], PStroke::new(1.0 * z, ink));
+            p.line_segment([Pos2::new(a, y), Pos2::new(b, y + 3.5 * z)], PStroke::new(1.0 * z, ink));
+        };
+        if fx.fade_out {
+            wedge(x + 10.0 * z, x - 2.0 * z);
+        } else {
+            wedge(x - 4.0 * z, x + 3.0 * z);
+            wedge(x + 10.0 * z, x + 3.0 * z);
+        }
+        *my -= 10.0 * z;
+    }
+    if fx.wah != 0 {
+        label(p, my, if fx.wah == 1 { "o".into() } else { "+".into() }, bold(11.0 * fz));
+    }
+    if fx.whammy {
+        label(p, my, sym_text(st, crate::style::SYM_WHAMMY), sym_font(st, crate::style::SYM_WHAMMY, fz));
+    }
+    if fx.bridge_vibrato != 0 {
+        let y = *my;
+        let amp = if fx.bridge_vibrato == 2 { 3.0 } else { 2.0 } * z;
+        let pts: Vec<Pos2> = (0..=6).map(|i| Pos2::new(x - 6.0 * z + i as f32 * 3.0 * z, y + if i % 2 == 0 { amp } else { -amp })).collect();
+        p.add(Shape::line(pts, PStroke::new(1.3 * z, ink)));
+        *my -= 10.0 * z;
+    }
+    if fx.rasgueado {
+        label(p, my, sym_text(st, crate::style::SYM_RASG), sym_font(st, crate::style::SYM_RASG, fz));
+    }
+    if fx.golpe != 0 {
+        label(p, my, if fx.golpe == 1 { "golpe".into() } else { "golpe (T)".into() }, italic(8.5 * fz));
+    }
+    if fx.scrape != 0 {
+        let t = format!("{} {}", sym_text(st, crate::style::SYM_SCRAPE), if fx.scrape == 1 { "\u{2191}" } else { "\u{2193}" });
+        label(p, my, t, sym_font(st, crate::style::SYM_SCRAPE, fz));
+    }
+    if fx.dead_slap {
+        label(p, my, "d.s.".into(), italic(9.0 * fz));
+    }
+    if fx.barre > 0 {
+        let t = format!("{}B{}", if fx.barre_half { "\u{00BD}" } else { "" }, roman_numeral(fx.barre));
+        p.text(Pos2::new(x - 4.0 * z, *my), Align2::LEFT_CENTER, t, serif(10.5 * fz), ink);
+        *my -= 11.0 * z;
+    }
+    if fx.timer {
+        let secs = time_at(c.song, c.bi, beat_start(c.vbar, bj));
+        let t = format!("{}:{:02}", (secs / 60.0) as u32, (secs % 60.0) as u32);
+        let r = p.text(Pos2::new(x - 4.0 * z, *my), Align2::LEFT_CENTER, t, st.font_timer.id(fz), ink);
+        p.rect_stroke(r.expand(2.0 * z), 0.0, PStroke::new(0.8 * z, ink), egui::StrokeKind::Outside);
+        *my -= 13.0 * z;
+    }
+    // Sustain pedal below the staves.
+    if fx.pedal != 0 {
+        let t = if fx.pedal == 1 { "Ped." } else { "\u{2731}" };
+        p.text(Pos2::new(x - 3.0 * z, c.y0 + g.bottom - 3.0 * z), Align2::LEFT_BOTTOM, t, serif_bi(11.0 * fz), ink);
+    }
+    // Fingering and string numbers on the notation.
+    if g.std {
+        let key = c.song.master[c.bi].key;
+        let track = &c.song.tracks[c.ti];
+        let bot = c.y0 + g.std_top + 4.0 * g.ls;
+        for n in &beat.notes {
+            let fx = &n.fx;
+            if fx.lh_finger == 0 && fx.rh_finger == 0 && !fx.string_number {
+                continue;
+            }
+            let pos = note_staff_pos(track, beat, key, n, st.capo_affects_std);
+            let y = bot - pos as f32 * g.ls * 0.5;
+            if fx.lh_finger > 0 {
+                let names = if st.lh_type == 1 { ["P", "1", "2", "3", "4"] } else { ["T", "1", "2", "3", "4"] };
+                p.text(Pos2::new(x - 13.0 * z, y), Align2::RIGHT_CENTER, names[(fx.lh_finger - 1).min(4) as usize], bold(8.0 * fz * st.lh_scale), ink);
+            }
+            if fx.rh_finger > 0 {
+                let names = match st.rh_type {
+                    1 => ["p", "i", "m", "a", "x"],
+                    2 => ["p", "i", "m", "a", "e"],
+                    3 => ["t", "i", "m", "a", "o"],
+                    _ => ["p", "i", "m", "a", "c"],
+                };
+                p.text(Pos2::new(x + 9.0 * z, y - 6.0 * z), Align2::LEFT_CENTER, names[(fx.rh_finger - 1).min(4) as usize], italic(8.5 * fz * st.rh_scale), ink);
+            }
+            if fx.string_number {
+                let t = char::from_u32(0x2460 + n.string as u32).map(|c| c.to_string()).unwrap_or_default();
+                p.text(Pos2::new(x, y - 11.0 * z), Align2::CENTER_CENTER, t, music(10.0 * fz), ink);
+            }
+        }
+    }
+}
+
+/// Ticks from the start of the bar to beat `bj`.
+fn beat_start(bar: &Bar, bj: usize) -> u32 {
+    bar.beats.iter().take(bj).map(|b| b.ticks()).sum()
+}
+
+/// Seconds from the start of the song (first time through) to a point in bar `bi`.
+fn time_at(song: &Song, bi: usize, tick: u32) -> f32 {
+    let secs = |b: usize, ticks: u32| ticks as f32 / QUARTER as f32 * 60.0 / song.tempo_at(b).max(1) as f32;
+    (0..bi).map(|b| secs(b, song.master[b].ticks())).sum::<f32>() + secs(bi, tick)
+}
+
+fn roman_numeral(n: u8) -> &'static str {
+    const R: [&str; 25] = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "XVII", "XVIII", "XIX", "XX", "XXI", "XXII", "XXIII", "XXIV"];
+    R.get(n as usize).copied().unwrap_or("")
+}
+
+/// A beat shown in slash notation: a slash on the middle of each staff.
+fn draw_slash(p: &Painter, c: &BarCtx, beat: &Beat, x: f32) {
+    let g = &c.g;
+    let z = c.z;
+    let w = PStroke::new(2.4 * z, c.ink);
+    let slash_at = |y: f32| {
+        p.line_segment([Pos2::new(x - 4.0 * z, y + 4.0 * z), Pos2::new(x + 4.0 * z, y - 4.0 * z)], w);
+        if beat.dur.index() >= 1 {
+            p.line_segment([Pos2::new(x + 4.0 * z, y - 3.0 * z), Pos2::new(x + 4.0 * z, y - 3.0 * g.ls)], PStroke::new(1.0 * z, c.ink));
+        }
+    };
+    if g.std {
+        slash_at(c.y0 + g.std_top + 2.0 * g.ls);
+    }
+    if g.tab {
+        slash_at(c.y0 + g.tab_top + (g.strings as f32 - 1.0) * g.ts * 0.5);
+    }
+}
+
+/// An arpeggio: a wavy line beside the chord, with an arrow showing which way.
+fn draw_arpeggio(p: &Painter, c: &BarCtx, beat: &Beat, x: f32) {
+    let g = &c.g;
+    let z = c.z;
+    if beat.notes.len() < 2 || !g.tab {
+        return;
+    }
+    let ys: Vec<f32> = beat.notes.iter().map(|n| c.y0 + g.string_y(n.string as usize)).collect();
+    let (top, bot) = (ys.iter().cloned().fold(f32::MAX, f32::min) - 4.0 * z, ys.iter().cloned().fold(f32::MIN, f32::max) + 4.0 * z);
+    let ax = x - 11.0 * z;
+    let pts: Vec<Pos2> = (0..=((bot - top) / (1.5 * z)) as usize)
+        .map(|i| {
+            let y = top + i as f32 * 1.5 * z;
+            Pos2::new(ax + ((y - top) / (3.0 * z) * std::f32::consts::PI).sin() * 1.6 * z, y)
+        })
+        .collect();
+    p.add(Shape::line(pts, PStroke::new(1.0 * z, c.ink)));
+    // Downwards (low string to high) points up the tablature.
+    let (tip, dir) = if beat.fx.arpeggio == 1 { (top - 3.0 * z, -1.0) } else { (bot + 3.0 * z, 1.0) };
+    p.add(Shape::convex_polygon(
+        vec![Pos2::new(ax - 3.0 * z, tip - dir * 5.0 * z), Pos2::new(ax + 3.0 * z, tip - dir * 5.0 * z), Pos2::new(ax, tip)],
+        c.ink,
+        PStroke::NONE,
+    ));
 }

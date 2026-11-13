@@ -2,12 +2,14 @@
 
 mod app;
 mod audio;
+mod extras;
 mod fileio;
 mod fretboard;
 mod gp5write;
 mod gpif;
 mod gpifwrite;
 mod gpimport;
+mod gpstyle;
 mod gpsv;
 mod model;
 mod score;
@@ -26,8 +28,16 @@ fn main() -> eframe::Result {
             // Save a song (or "demo") in another format and exit: --convert <from> <to>.
             let from = args.next().unwrap_or_default();
             let to = args.next().unwrap_or_default();
-            let song = if from == "demo" {
-                Ok(model::Song::demo())
+            // "demo:classic" (or rock, jazz) is the demo song with a ready-made style.
+            let song = if let Some(look) = from.strip_prefix("demo") {
+                let mut s = model::Song::demo();
+                match look {
+                    ":rock" => s.style = style::Stylesheet::rock(),
+                    ":classic" => s.style = style::Stylesheet::classic(),
+                    ":jazz" => s.style = style::Stylesheet::jazz(),
+                    _ => {}
+                }
+                Ok(s)
             } else {
                 fileio::load_song(std::path::Path::new(&from))
             };
@@ -40,15 +50,17 @@ fn main() -> eframe::Result {
             }
         }
         if a == "--gp-tests" {
-            let dir = std::path::PathBuf::from(args.next().unwrap_or_else(|| ".".into()));
-            let song = model::Song::demo();
-            for (name, chords, views) in [
-                ("Test 1 - plain", false, false),
-                ("Test 2 - chord names", true, false),
-                ("Test 3 - layout views", false, true),
-                ("Test 4 - both", true, true),
+            // Files for checking which parts Guitar Pro 8 accepts.
+            let dir = std::path::PathBuf::from(args.next().unwrap_or_else(|| "shots/gp-checks".into()));
+            let _ = std::fs::create_dir_all(&dir);
+            let demo = model::Song::demo();
+            let blank = model::Song::new_blank();
+            for (name, song, chords) in [
+                ("Check 2 - new format", &demo, true),
+                ("Check 3 - new format, no chord names", &demo, false),
+                ("Check 4 - blank song, new format", &blank, false),
             ] {
-                let data = gpifwrite::export_gp_with(&song, gpifwrite::GpOptions { chords, views })
+                let data = gpifwrite::export_gp_with(song, gpifwrite::GpOptions { chords, views: false })
                     .unwrap_or_default();
                 let _ = std::fs::write(dir.join(format!("{name}.gp")), data);
             }
