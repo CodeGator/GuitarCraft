@@ -154,6 +154,32 @@ impl GpOptions {
     }
 }
 
+/// The chord diagram of a chord name: the frets of the first beat that uses it
+/// (strings counted from the lowest, frets from the diagram's first fret).
+fn diagram_xml(t: &Track, name: &str) -> String {
+    let n = t.strings().max(1);
+    let beat = t.bars.iter().flat_map(|b| b.beats.iter()).find(|b| b.chord.as_deref() == Some(name) && !b.is_rest());
+    let notes: Vec<(usize, u8)> = beat
+        .map(|b| b.notes.iter().filter(|x| (x.string as usize) < n).map(|x| (n - 1 - x.string as usize, x.fret)).collect())
+        .unwrap_or_default();
+    let fretted: Vec<u8> = notes.iter().map(|x| x.1).filter(|&f| f > 0).collect();
+    let max = fretted.iter().copied().max().unwrap_or(0);
+    let base = if max <= 5 { 0 } else { fretted.iter().copied().min().unwrap_or(1).saturating_sub(1) };
+    let show = beat.map(|b| b.chord_diagram).unwrap_or(false);
+    let mut x = format!(
+        "<Diagram stringCount=\"{n}\" fretCount=\"5\" baseFret=\"{base}\" barsStates=\"{}\">",
+        vec!["1"; n].join(" ")
+    );
+    for (s, f) in &notes {
+        let _ = write!(x, "<Fret string=\"{s}\" fret=\"{}\"/>", f.saturating_sub(base));
+    }
+    let _ = write!(
+        x,
+        "<Property name=\"ShowName\" type=\"bool\" value=\"true\"/><Property name=\"ShowDiagram\" type=\"bool\" value=\"{show}\"/><Property name=\"ShowFingering\" type=\"bool\" value=\"false\"/></Diagram>"
+    );
+    x
+}
+
 /// The chord names a track uses, sorted, each once. Their positions are the ids
 /// beats refer to. Empty when chord names are left out.
 fn chord_names(t: &Track, o: GpOptions) -> Vec<&String> {
@@ -301,12 +327,22 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
             let (a, b) = (next(), next());
             (t.instrument.midi_program(), a, b)
         };
+        let mut strip = [0.5f32; 16];
+        strip[9] = 0.0;
+        strip[11] = (t.pan.clamp(-1.0, 1.0) + 1.0) * 0.5;
+        strip[12] = t.volume.clamp(0.0, 1.0);
+        let params: Vec<String> = strip.iter().map(|v| format!("{v:.6}")).collect();
+        let _ = write!(
+            x,
+            "<RSE><ChannelStrip version=\"E56\"><Parameters>{}</Parameters></ChannelStrip></RSE>",
+            params.join(" ")
+        );
+        x.push_str("<ForcedSound>-1</ForcedSound>");
         let _ = write!(
             x,
             "<Sounds><Sound><Name>{label}</Name><Label>{label}</Label><Path>Midi/{label}</Path><Role>Factory</Role><MIDI><LSB>0</LSB><MSB>{}</MSB><Program>{prog}</Program></MIDI></Sound></Sounds><MidiConnection><Port>0</Port><PrimaryChannel>{primary}</PrimaryChannel><SecondaryChannel>{secondary}</SecondaryChannel><ForeOneChannelPerString>false</ForeOneChannelPerString></MidiConnection>",
             if drum { 128 } else { 0 }
         );
-        x.push_str("<ForcedSound>-1</ForcedSound>");
         let state = if t.solo {
             "Solo"
         } else if t.mute {
@@ -317,16 +353,6 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
         let _ = write!(
             x,
             "<PlaybackState>{state}</PlaybackState><AudioEngineState>MIDI</AudioEngineState>"
-        );
-        let mut strip = [0.5f32; 16];
-        strip[9] = 0.0;
-        strip[11] = (t.pan.clamp(-1.0, 1.0) + 1.0) * 0.5;
-        strip[12] = t.volume.clamp(0.0, 1.0);
-        let params: Vec<String> = strip.iter().map(|v| format!("{v:.6}")).collect();
-        let _ = write!(
-            x,
-            "<RSE><ChannelStrip version=\"E56\"><Parameters>{}</Parameters></ChannelStrip></RSE>",
-            params.join(" ")
         );
         // Lyrics: the first of five lines.
         x.push_str("<Lyrics dispatched=\"true\">");
@@ -380,10 +406,11 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
             for (i, n) in names.iter().enumerate() {
                 let _ = write!(
                     x,
-                    "<Item id=\"{i}\" name=\"{}\"/>",
+                    "<Item id=\"{i}\" name=\"{}\">{}</Item>",
                     n.replace('&', "&amp;")
                         .replace('"', "&quot;")
-                        .replace('<', "&lt;")
+                        .replace('<', "&lt;"),
+                    diagram_xml(t, n)
                 );
             }
             x.push_str(
@@ -631,8 +658,40 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
         }
         x.push_str("</ScoreViews>\n");
     }
+    // This app's stylesheet rides along as an XML comment inside the score, so
+    // the file holds nothing other programs don't expect. Left out when standard.
+    if song.style != crate::style::Stylesheet::standard() {
+        if let Ok(json) = serde_json::to_string(&song.style) {
+            let _ = write!(x, "<!--{STYLE_MARK}{}-->\n", hex(json.as_bytes()));
+        }
+    }
+    // Marks only this app keeps, also as a hidden note.
+    if let Some(c) = crate::extras::comment(song) {
+        x.push_str(&c);
+    }
     x.push_str("</GPIF>\n");
     x
+}
+
+/// Marks the stylesheet comment in score.gpif; the JSON follows in hexadecimal
+/// (which can never contain "--", the one thing a comment may not hold).
+pub const STYLE_MARK: &str = "GuitarCraftStylesheet:";
+
+fn hex(b: &[u8]) -> String {
+    b.iter().map(|x| format!("{x:02x}")).collect()
+}
+
+/// Reads the stylesheet comment back from a score's XML, if there is one.
+pub fn style_from_xml(xml: &str) -> Option<crate::style::Stylesheet> {
+    let start = xml.find(STYLE_MARK)? + STYLE_MARK.len();
+    let end = start + xml[start..].find("-->")?;
+    let digits = xml[start..end].trim().as_bytes();
+    let bytes: Option<Vec<u8>> = digits
+        .chunks(2)
+        .map(|c| std::str::from_utf8(c).ok().and_then(|t| u8::from_str_radix(t, 16).ok()))
+        .collect();
+    let st: crate::style::Stylesheet = serde_json::from_slice(&bytes?).ok()?;
+    Some(st.fixed())
 }
 
 pub fn direction_target_name(t: u8) -> Option<&'static str> {
@@ -900,8 +959,9 @@ fn part_configuration(song: &Song) -> Vec<u8> {
     b
 }
 
-/// Where the stylesheet is kept inside a .gp file.
-pub const STYLE_FILE: &str = "Content/GuitarCraftStylesheet.json";
+/// The layout settings record, as in a .gp file Guitar Pro 8 saved for the
+/// person (its meaning isn't documented; it holds no song content).
+const LAYOUT_CONFIGURATION: [u8; 14] = [0, 0, 0, 4, 1, 0, 0, 0xff, 0xff, 0xff, 0, 0, 0, 1];
 
 /// The whole .gp file.
 pub fn export_gp(song: &Song) -> Result<Vec<u8>, String> {
@@ -923,13 +983,11 @@ pub fn export_gp_with(song: &Song, o: GpOptions) -> Result<Vec<u8>, String> {
         z.start_file("Content/PartConfiguration", opt).map_err(e)?;
         z.write_all(&part_configuration(song))
             .map_err(|e| e.to_string())?;
-        // This app's stylesheet, kept in its own file next to the score (other
-        // programs skip files they don't know). Left out when it's the standard one.
-        if song.style != crate::style::Stylesheet::standard() {
-            z.start_file(STYLE_FILE, opt).map_err(e)?;
-            let json = serde_json::to_string_pretty(&song.style).map_err(|e| e.to_string())?;
-            z.write_all(json.as_bytes()).map_err(|e| e.to_string())?;
-        }
+        // The stylesheet and the layout settings Guitar Pro's own files carry.
+        z.start_file("Content/BinaryStylesheet", opt).map_err(e)?;
+        z.write_all(&crate::gpstyle::write(&song.style)).map_err(|e| e.to_string())?;
+        z.start_file("Content/LayoutConfiguration", opt).map_err(e)?;
+        z.write_all(&LAYOUT_CONFIGURATION).map_err(|e| e.to_string())?;
         // Score views: the full score lists only the tracks that are shown.
         let staves_of = |k: usize| -> Vec<(usize, usize)> {
             let (std, tab) = crate::score::staves(&song.tracks[k], crate::score::Notation::Both);
@@ -980,6 +1038,27 @@ mod tests {
         let mut v: Vec<u8> = b.notes.iter().map(|n| t.pitch(n)).collect();
         v.sort();
         v
+    }
+
+    /// What made Guitar Pro 8 open our files (checked by the person on 12 Nov
+    /// 2026: the old layout crashed it, this one opens): the stylesheet and
+    /// layout parts are present, and every chord name has a diagram.
+    #[test]
+    fn saves_what_guitar_pro_8_needs() {
+        let data = export_gp(&Song::demo()).unwrap();
+        let mut z = zip::ZipArchive::new(std::io::Cursor::new(&data[..])).unwrap();
+        for name in ["VERSION", "Content/score.gpif", "Content/PartConfiguration", "Content/BinaryStylesheet", "Content/LayoutConfiguration"] {
+            assert!(z.by_name(name).is_ok(), "missing {name}");
+        }
+        let mut xml = String::new();
+        std::io::Read::read_to_string(&mut z.by_name("Content/score.gpif").unwrap(), &mut xml).unwrap();
+        let doc = roxmltree::Document::parse(&xml).unwrap();
+        let items: Vec<_> = doc.descendants().filter(|n| n.has_tag_name("Item") && n.attribute("name").is_some()).collect();
+        assert!(!items.is_empty());
+        assert!(items.iter().all(|it| it.children().any(|c| c.has_tag_name("Diagram"))));
+        // Each track's details in Guitar Pro's order.
+        let pos = |t: &str| xml.find(t).unwrap();
+        assert!(pos("<ChannelStrip") < pos("<ForcedSound>") && pos("<ForcedSound>") < pos("<Sounds>") && pos("<Sounds>") < pos("<MidiConnection>"));
     }
 
     #[test]

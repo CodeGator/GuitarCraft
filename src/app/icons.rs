@@ -73,7 +73,31 @@ pub fn glyph_button(ui: &mut Ui, on: bool, text: &str, font: FontId, tip: &str) 
     let gal = p.layout(text.to_string(), font, col, 40.0);
     let sz = gal.size();
     p.galley(r.center() - sz * 0.5, gal, col);
-    resp.on_hover_text(tip)
+    resp.on_hover_text(tip).on_disabled_hover_text(tip)
+}
+
+/// A palette button with a drawn picture: `draw` paints it in the given colour
+/// inside the button's inner square.
+pub fn paint_button(
+    ui: &mut Ui,
+    on: bool,
+    tip: &str,
+    draw: impl FnOnce(&egui::Painter, Rect, Color32),
+) -> egui::Response {
+    let (r, resp) = ui.allocate_exact_size(Vec2::new(25.0, 25.0), Sense::click());
+    let p = ui.painter();
+    if on {
+        p.rect_filled(r, 4.0, SEL_BLUE);
+    } else if resp.hovered() {
+        p.rect_filled(r, 4.0, Color32::from_gray(70));
+    }
+    let col = if ui.is_enabled() {
+        Color32::from_gray(232)
+    } else {
+        Color32::from_gray(110)
+    };
+    draw(p, r.shrink(4.0), col);
+    resp.on_hover_text(tip).on_disabled_hover_text(tip)
 }
 
 pub fn note_icon_button(ui: &mut Ui, d: Dur, on: bool) -> egui::Response {

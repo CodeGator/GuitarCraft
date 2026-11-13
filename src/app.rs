@@ -2,6 +2,7 @@
 //! The panels are drawn in `panels.rs`.
 
 mod actions;
+mod chordlib;
 mod automation;
 mod bottom;
 mod cursor;
@@ -9,6 +10,7 @@ mod home;
 mod icons;
 mod keys;
 mod menus;
+mod palette;
 mod panels;
 mod popups;
 mod side;
@@ -193,6 +195,8 @@ pub struct App {
     focus_request: Option<String>,
     /// The Stylesheet window, while open.
     style_dlg: Option<stylesheet::StyleDlg>,
+    /// The chord diagram library window (Chords button of the palette).
+    chord_lib_open: bool,
 }
 
 impl App {
@@ -332,6 +336,7 @@ impl App {
             fullscreen_changed: false,
             focus_request: None,
             style_dlg: None,
+            chord_lib_open: false,
         };
         if app.screenshot.is_none() {
             app.recent = home::load_recent();
@@ -419,6 +424,26 @@ impl App {
                 "palette-cmd" => app.cmd_open = true,
                 "directions" => app.dir_open = true,
                 "chord" => app.chord_open = true,
+                "chordlib" => app.chord_lib_open = true,
+                // A sample of the palette's newer marks on the demo, for checking pictures.
+                "newmarks" => {
+                    let t = &mut app.song.tracks[0];
+                    t.bars[0].beats[0].fx.timer = true;
+                    t.bars[0].beats[1].fx.wah = 1;
+                    t.bars[0].beats[2].notes.iter_mut().for_each(|n| n.fx.ornament = 1);
+                    t.bars[0].beats[3].fx.stem = 2;
+                    t.bars[0].beats[4].fx.barre = 5;
+                    t.bars[0].beats[5].fx.slash = true;
+                    t.bars[0].beats[6].fx.pedal = 1;
+                    t.bars[0].beats[6].notes.iter_mut().for_each(|n| n.fx.lh_finger = 3);
+                    t.bars[0].beats[7].notes.iter_mut().for_each(|n| {
+                        n.fx.string_number = true;
+                        n.fx.legato = true;
+                    });
+                    t.bars[1].simile = 1;
+                    app.song.tracks[1].bars[1].simile = 1;
+                    app.song.master[2].free_time = true;
+                }
                 "scales" => app.scale_open = true,
                 "lyrics" => app.lyrics_open = true,
                 "addtrack" => app.addtrack_open = true,
@@ -1050,13 +1075,33 @@ impl App {
         self.inspector = InspectorTab::Song;
     }
 
+    /// The folder file dialogs start in: the open song's folder, otherwise the
+    /// folder of the file opened or saved last.
+    fn dialog_dir(&self) -> Option<PathBuf> {
+        self.path
+            .iter()
+            .chain(self.save_hint.iter())
+            .chain(self.recent.iter())
+            .filter_map(|p| full_path(p).parent().map(|d| d.to_path_buf()))
+            .find(|d| d.is_dir())
+    }
+
+    /// A file dialog starting in `dialog_dir`.
+    fn file_dialog(&self) -> rfd::FileDialog {
+        let d = rfd::FileDialog::new();
+        match self.dialog_dir() {
+            Some(dir) => d.set_directory(dir),
+            None => d,
+        }
+    }
+
     fn open_dialog(&mut self) {
         if self.screenshot.is_some() {
             return;
         }
-        let f = rfd::FileDialog::new()
+        let f = self
+            .file_dialog()
             .add_filter("Guitar Pro files", &["gp", "gpx", "gp3", "gp4", "gp5"])
-            .add_filter("Older GuitarCraft files", &fileio::OLD_EXTS)
             .pick_file();
         if let Some(p) = f {
             self.open_path(p);
@@ -1064,6 +1109,8 @@ impl App {
     }
 
     fn open_path(&mut self, p: PathBuf) {
+        // Kept as a full location, so later dialogs can start in its folder.
+        let p = full_path(&p);
         match fileio::load_song(&p) {
             Ok(song) => {
                 self.stop();
@@ -1085,12 +1132,8 @@ impl App {
                 self.reset_after_load();
                 self.add_recent(&p);
                 self.show_home = false;
-                self.status = format!(
-                    "Opened {}.",
-                    p.file_name()
-                        .map(|f| f.to_string_lossy().to_string())
-                        .unwrap_or_default()
-                );
+                let name = p.file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default();
+                self.status = format!("Opened {name}.");
             }
             Err(e) => self.status = format!("Couldn't open the file: {e}"),
         }
@@ -1101,14 +1144,13 @@ impl App {
             return;
         }
         let path = if save_as || self.path.is_none() {
-            let mut d = rfd::FileDialog::new()
+            // Starts in the song's own folder, or the folder used last.
+            let mut d = self
+                .file_dialog()
                 .add_filter("Guitar Pro file", &[fileio::GP_EXT])
                 .add_filter("Guitar Pro 5 file (older)", &[fileio::GP5_EXT]);
             match (&self.save_hint, &self.path) {
                 (_, Some(p)) | (Some(p), None) => {
-                    if let Some(dir) = p.parent() {
-                        d = d.set_directory(dir);
-                    }
                     let stem = p
                         .file_stem()
                         .map(|x| x.to_string_lossy().to_string())
@@ -1150,6 +1192,7 @@ impl App {
                         )
                     };
                     self.save_hint = None;
+                    let p = full_path(&p);
                     self.add_recent(&p);
                     self.path = Some(p);
                 }
@@ -1164,7 +1207,7 @@ impl App {
         if self.screenshot.is_some() {
             return None;
         }
-        rfd::FileDialog::new()
+        self.file_dialog()
             .add_filter(kind, &[ext])
             .set_file_name(format!("{}.{ext}", sanitize(&self.song.title)))
             .save_file()
@@ -1520,5 +1563,29 @@ impl App {
             eprintln!("Screenshot timed out");
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
+    }
+}
+
+/// The full location of a file (a path typed or passed in short form is made
+/// complete), without Windows' "\\?\" prefix that dialogs don't accept.
+fn full_path(p: &std::path::Path) -> PathBuf {
+    let full = std::fs::canonicalize(p).unwrap_or_else(|_| std::env::current_dir().map(|d| d.join(p)).unwrap_or_else(|_| p.to_path_buf()));
+    let text = full.to_string_lossy();
+    match text.strip_prefix(r"\\?\") {
+        Some(rest) if !rest.starts_with("UNC") => PathBuf::from(rest),
+        _ => full,
+    }
+}
+
+#[cfg(test)]
+mod path_tests {
+    use super::full_path;
+
+    #[test]
+    fn short_paths_become_full_ones() {
+        let p = full_path(std::path::Path::new("Cargo.toml"));
+        assert!(p.is_absolute());
+        assert!(p.parent().map(|d| d.is_dir()).unwrap_or(false));
+        assert!(!p.to_string_lossy().starts_with(r"\\?\"));
     }
 }

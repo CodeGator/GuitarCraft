@@ -153,14 +153,21 @@ impl App {
                 (&mut master, None)
             } else {
                 let t = &mut self.song.tracks[ti];
+                // As in Guitar Pro: the track's colour as a thin chip at the
+                // row's edge, and a light picture of the instrument.
                 let col = Color32::from_rgb(t.color[0], t.color[1], t.color[2]);
+                p.rect_filled(
+                    Rect::from_min_size(row.min + Vec2::new(0.0, 1.0), Vec2::new(4.0, ROW_H - 2.0)),
+                    0.0,
+                    col,
+                );
                 super::trackicons::draw(
                     &p,
                     Rect::from_center_size(
-                        row.min + Vec2::new(14.0, ROW_H * 0.5),
-                        Vec2::new(12.0, 15.0),
+                        row.min + Vec2::new(17.0, ROW_H * 0.5),
+                        Vec2::new(14.0, 17.0),
                     ),
-                    col,
+                    Color32::from_gray(222),
                     super::trackicons::icon_of(t),
                 );
                 let name_r =

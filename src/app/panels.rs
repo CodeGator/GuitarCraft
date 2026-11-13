@@ -193,11 +193,10 @@ impl App {
         let (bar, _) = self.play_beat.unwrap_or((self.bar, self.beat));
         let mb = &self.song.master[bar];
         let tr = &self.song.tracks[self.track];
-        let col = Color32::from_rgb(tr.color[0], tr.color[1], tr.color[2]);
         super::trackicons::draw(
             p,
-            Rect::from_min_size(r.min + Vec2::new(8.0, 5.0), Vec2::new(12.0, 14.0)),
-            col,
+            Rect::from_min_size(r.min + Vec2::new(7.0, 4.0), Vec2::new(13.0, 16.0)),
+            Color32::from_gray(230),
             super::trackicons::icon_of(tr),
         );
         p.text(

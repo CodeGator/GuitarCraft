@@ -20,11 +20,8 @@ pub fn load_recent() -> Vec<PathBuf> {
     let Some(f) = config_file() else {
         return vec![];
     };
-    // Fall back to the list saved under the app's earlier name.
-    let old = config_dir("TabForge").map(|d| d.join("recent.json"));
     std::fs::read(&f)
         .ok()
-        .or_else(|| old.and_then(|o| std::fs::read(o).ok()))
         .and_then(|d| serde_json::from_slice::<Vec<PathBuf>>(&d).ok())
         .unwrap_or_default()
 }

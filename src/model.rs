@@ -161,6 +161,73 @@ pub struct Note {
     pub spell: u8,
     /// A grace note played just before, on this fret.
     pub grace: Option<u8>,
+    /// The palette's further note marks.
+    pub fx: NoteFx,
+}
+
+/// Further note marks from the edition palette.
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Default)]
+#[serde(default)]
+pub struct NoteFx {
+    /// A slur to the next note: played without a new attack.
+    pub legato: bool,
+    /// Artificial harmonic: 0 none, 1 A.H., 2 T.H. (tapped), 3 S.H. (semi).
+    /// Pinch harmonics use `Note::pinch_harmonic`.
+    pub art_harmonic: u8,
+    /// 0 none, 1 upper mordent, 2 lower mordent, 3 turn, 4 inverted turn.
+    pub ornament: u8,
+    /// Left-hand tapping: the note sounds without being picked.
+    pub lh_tap: bool,
+    /// Shift slide to the next note (attacked again).
+    pub shift_slide: bool,
+    /// Slide in from above (from a higher fret).
+    pub slide_in_above: bool,
+    /// Slide out upwards (to a higher fret).
+    pub slide_out_up: bool,
+    /// Left-hand finger: 0 none, 1 thumb, 2-5 fingers 1-4.
+    pub lh_finger: u8,
+    /// Right-hand finger: 0 none, 1 p, 2 i, 3 m, 4 a, 5 c.
+    pub rh_finger: u8,
+    /// Show the string number (circled) on the notation.
+    pub string_number: bool,
+}
+
+/// Further beat marks from the edition palette.
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Default)]
+#[serde(default)]
+pub struct BeatFx {
+    pub fade_out: bool,
+    pub swell: bool,
+    /// Sustain pedal: 0 none, 1 pressed (Ped.), 2 released (*).
+    pub pedal: u8,
+    /// Wah-wah: 0 none, 1 open, 2 closed.
+    pub wah: u8,
+    /// Arpeggio: 0 none, 1 downwards, 2 upwards.
+    pub arpeggio: u8,
+    pub rasgueado: bool,
+    /// Golpe: 0 none, 1 finger, 2 thumb.
+    pub golpe: u8,
+    /// Pick scrape: 0 none, 1 upwards, 2 downwards.
+    pub scrape: u8,
+    pub dead_slap: bool,
+    pub whammy: bool,
+    /// Bridge vibrato: 0 none, 1 slight, 2 wide.
+    pub bridge_vibrato: u8,
+    /// Grace notes of this beat are played on the beat.
+    pub grace_on_beat: bool,
+    /// Shown as slash notation.
+    pub slash: bool,
+    /// Barre on this fret (0 none); `half` for a half barre.
+    pub barre: u8,
+    pub barre_half: bool,
+    /// Shows the time elapsed since the start of the song.
+    pub timer: bool,
+    /// Stem direction: 0 automatic, 1 up, 2 down.
+    pub stem: u8,
+    /// Beaming: 0 automatic, 1 force a beam to the previous beat, 2 break the
+    /// beam before this beat, 3 break the secondary beams before it.
+    pub beam: u8,
+    pub force_group: bool,
 }
 
 impl Note {
@@ -200,6 +267,8 @@ pub struct Beat {
     pub fade_in: bool,
     /// Written an octave (or two) higher/lower: -2, -1, 0, 1, 2.
     pub ottava: i8,
+    /// The palette's further beat marks.
+    pub fx: BeatFx,
 }
 
 impl Default for Beat {
@@ -229,6 +298,7 @@ impl Beat {
             technique: 0,
             fade_in: false,
             ottava: 0,
+            fx: BeatFx::default(),
         }
     }
     pub fn is_rest(&self) -> bool {
@@ -274,12 +344,16 @@ pub struct Bar {
     /// Voices 2, 3 and 4 (a single whole rest when unused).
     #[serde(default, skip_serializing_if = "voices_unused")]
     pub voices: Vec<Vec<Beat>>,
+    /// A repeat sign standing for the previous bar (1) or two bars (2).
+    #[serde(default)]
+    pub simile: u8,
 }
 
 impl Bar {
     pub fn new(beats: Vec<Beat>) -> Bar {
         Bar {
             beats,
+            simile: 0,
             voices: vec![],
         }
     }
@@ -461,6 +535,8 @@ pub struct MasterBar {
     pub direction_target: u8,
     /// Direction jump at the end of this bar (see JUMP_NAMES).
     pub direction_jump: u8,
+    /// Free time: played without following the tempo (dotted bar lines).
+    pub free_time: bool,
 }
 
 impl Default for MasterBar {
@@ -481,6 +557,7 @@ impl Default for MasterBar {
             line_break: false,
             direction_target: 0,
             direction_jump: 0,
+            free_time: false,
         }
     }
 }
@@ -1557,6 +1634,7 @@ impl Song {
                 if i == 11 {
                     Bar {
                         voices: vec![],
+                        simile: 0,
                         beats: vec![Beat {
                             dur: Dur::Whole,
                             notes: vec![n(s, f)],
@@ -1566,6 +1644,7 @@ impl Song {
                 } else if i < 4 {
                     Bar {
                         voices: vec![],
+                        simile: 0,
                         beats: vec![
                             Beat {
                                 dur: Dur::Half,
@@ -1582,6 +1661,7 @@ impl Song {
                 } else {
                     Bar {
                         voices: vec![],
+                        simile: 0,
                         beats: vec![
                             q(vec![n(s, f)]),
                             e8(vec![n(s, f)]),

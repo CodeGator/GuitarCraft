@@ -2,7 +2,7 @@
 //! with every shown track stacked in each system (a full score).
 
 mod draw;
-pub use draw::{key_positions, note_staff_pos, staff_pos_name, staff_pos_pitch, written_name};
+pub use draw::{draw_diagram, key_positions, note_staff_pos, staff_pos_name, staff_pos_pitch, written_name};
 
 use crate::model::*;
 use draw::*;
@@ -86,7 +86,7 @@ impl Geom {
         let ts = 12.5 * z;
         let (std, tab) = staves(track, notation);
         let grand = std && track.grand();
-        let chord_y = top + if first { 40.0 } else { 16.0 } * z + 52.0 * z * diagrams;
+        let chord_y = top + if first { 26.0 } else { 16.0 } * z + 52.0 * z * diagrams;
         let lyrics_above = lyrics && st.lyrics_pos == 1;
         let lyrics_below = lyrics && st.lyrics_pos == 0;
         let mut y = chord_y + 2.0 * z + if lyrics_above { 14.0 * z } else { 0.0 };
@@ -1157,7 +1157,8 @@ pub fn draw_page(p: &Painter, lay: &Layout, dc: &DrawCtx, page: usize, origin: P
                 x += w * pz;
             }
         }
-        let tp = Pos2::new(left + 30.0 * pz, origin.y + lay.head.tempo_y * pz);
+        let first_note = lay.systems.first().and_then(|s| s.bars.first()).and_then(|b| b.beats_x.first()).and_then(|v| v.first()).copied();
+        let tp = Pos2::new(first_note.map(|x| origin.x + x - 2.0 * lay.z).unwrap_or(left + 30.0 * pz), origin.y + lay.head.tempo_y * pz);
         draw_small_note(p, tp, pz, INK);
         let r = p.text(
             Pos2::new(tp.x + 9.0 * pz, tp.y),
@@ -1206,6 +1207,27 @@ pub fn draw_page(p: &Painter, lay: &Layout, dc: &DrawCtx, page: usize, origin: P
             draw_system(p, lay, dc, si, origin);
         }
     }
+}
+
+/// Where a bar's section name goes (x from the page's left, y of its bottom
+/// from the page's top when `y0` is the system's top): from just before the
+/// bar's first note, above the bar number, or above the first track's chord
+/// names and texts when the bar has some, as Guitar Pro places it.
+fn section_anchor(song: &Song, lay: &Layout, bl: &BarLay, y0: f32, z: f32) -> (f32, f32) {
+    let g0 = lay.blocks[0].g;
+    let first = bl.beats_x.first().and_then(|v| v.first()).copied().unwrap_or(bl.x + 10.0 * z);
+    let x = first - 5.0 * z;
+    let beats = &song.tracks[lay.blocks[0].ti].bars[bl.bar].beats;
+    let above = beats.iter().any(|b| b.chord.is_some() || b.text.is_some());
+    let diagram = beats.iter().any(|b| b.chord_diagram && !b.is_rest()) && song.style.chords_in_score;
+    let y = if diagram {
+        y0 + g0.chord_y - 46.0 * z * song.style.chords_in_score_size / 9.0 - 18.0 * z
+    } else if above {
+        y0 + g0.chord_y - 15.0 * z
+    } else {
+        y0 + g0.staff_span().0 - 11.0 * z
+    };
+    (x, y)
 }
 
 /// "= 120" (or "= 120.0" when the stylesheet shows the decimal).
@@ -1563,7 +1585,7 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
             };
             p.text(
                 Pos2::new(
-                    bx + if mb.marker.is_some() { 60.0 } else { 4.0 } * z,
+                    bx + 4.0 * z,
                     y0 + 7.0 * z,
                 ),
                 Align2::LEFT_TOP,
@@ -1579,12 +1601,10 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
             } else {
                 m.as_str()
             };
+            let (sx, sy) = section_anchor(song, lay, bl, y0, z);
             let r = p.text(
-                Pos2::new(
-                    bx + 2.0 * z + if framed { 3.0 * z } else { 0.0 },
-                    y0 + 6.0 * z,
-                ),
-                Align2::LEFT_TOP,
+                Pos2::new(o.x + sx + if framed { 3.0 * z } else { 0.0 }, sy),
+                Align2::LEFT_BOTTOM,
                 label,
                 st.font_section.id(fz),
                 INK,
@@ -1600,8 +1620,9 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
         }
         // Direction targets (Segno, Coda, Fine) at the start of the bar, jumps at its end.
         if mb.direction_target != 0 {
-            let tx = bx + if mb.marker.is_some() { 4.0 } else { 6.0 } * z;
-            let ty = top0 - 16.0 * z;
+            let tx = bx + 6.0 * z;
+            // Above the section name when the bar has one.
+            let ty = if mb.marker.is_some() { section_anchor(song, lay, bl, y0, z).1 - 22.0 * z } else { top0 - 16.0 * z };
             match mb.direction_target {
                 DIR_FINE => {
                     p.text(
@@ -1778,6 +1799,19 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
                     let lb = y0 + lay.blocks.last().unwrap().g.staff_span().1;
                     p.line_segment([Pos2::new(ex, top), Pos2::new(ex, lb)], line);
                 }
+            } else if mb.free_time {
+                // Free time: dotted bar lines.
+                let mut spans = vec![];
+                if g.std {
+                    let low = if g.grand { g.std2_top } else { g.std_top };
+                    spans.push((y0 + g.std_top, y0 + low + 4.0 * g.ls));
+                }
+                if g.tab {
+                    spans.push((y0 + g.tab_top, y0 + g.string_y(g.strings - 1)));
+                }
+                for (a, b) in spans {
+                    p.add(egui::Shape::dashed_line(&[Pos2::new(ex, a), Pos2::new(ex, b)], line, 2.5 * z, 2.0 * z));
+                }
             } else {
                 if g.std {
                     let low = if g.grand { g.std2_top } else { g.std_top };
@@ -1930,6 +1964,28 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
                         INK,
                     );
                 }
+            }
+            // A repeat sign for the previous bar (or two) stands in for the notes.
+            if bar.simile > 0 {
+                let first_note = bl.beats_x.get(k).and_then(|v| v.first()).copied().unwrap_or(bl.x + 20.0 * z);
+                let cx = o.x + (first_note + bl.x + bl.w) * 0.5 - 4.0 * z;
+                let mut mids = vec![];
+                for (sy, _) in g.std_staves() {
+                    mids.push((y0 + sy + 2.0 * g.ls, g.ls));
+                }
+                if g.tab {
+                    mids.push((y0 + g.tab_top + (g.strings as f32 - 1.0) * g.ts * 0.5, g.ts * 0.8));
+                }
+                for (my, sp) in mids {
+                    for s in 0..bar.simile {
+                        let dx = s as f32 * 7.0 * z - (bar.simile as f32 - 1.0) * 3.5 * z;
+                        p.line_segment([Pos2::new(cx - 5.0 * z + dx, my + sp), Pos2::new(cx + 5.0 * z + dx, my - sp)], PStroke::new(3.0 * z, INK));
+                    }
+                    let half = (bar.simile as f32) * 3.5 * z + 4.0 * z;
+                    p.circle_filled(Pos2::new(cx - half, my - sp * 0.5), 1.8 * z, INK);
+                    p.circle_filled(Pos2::new(cx + half, my + sp * 0.5), 1.8 * z, INK);
+                }
+                continue;
             }
             // Every voice with notes, on the same staff. Voices not being edited are grey.
             let multi = (1..VOICES).any(|v| bar.voice_used(v));
@@ -2170,11 +2226,12 @@ pub fn hit_test(
             }
             let staff_top = g.staff_span().0;
             if ry < staff_top - 12.0 * lay.z {
-                let zone = if bk == 0 && ry < g.top + 22.0 * lay.z {
-                    0
-                } else {
-                    1
+                // The section name sits just above the bar number, from the first note.
+                let on_section = bk == 0 && song.master[bl.bar].marker.is_some() && {
+                    let (sx, sy) = section_anchor(song, lay, bl, 0.0, lay.z);
+                    ry <= sy + 2.0 * lay.z && ry >= sy - 18.0 * lay.z && rel.x >= sx - 4.0 * lay.z && rel.x <= sx + 90.0 * lay.z
                 };
+                let zone = if on_section || (bk == 0 && ry < g.top + 22.0 * lay.z) { 0 } else { 1 };
                 hit = Some(Hit::Above(zone));
             }
             if g.tab && hit.is_none() {
