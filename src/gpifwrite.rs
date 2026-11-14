@@ -122,6 +122,10 @@ struct Ids {
     nnotes: usize,
     nvoices: usize,
     nbars: usize,
+    /// The beat about to be written is slurred from the one before it (legato).
+    legato_dest: bool,
+    /// Seconds from the start of the song to the beat about to be written (for timers).
+    beat_secs: u32,
 }
 
 impl Ids {
@@ -451,6 +455,8 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
         nnotes: 0,
         nvoices: 0,
         nbars: 0,
+        legato_dest: false,
+        beat_secs: 0,
     };
     let mut master = String::from("<MasterBars>\n");
     let track_chords: Vec<Vec<&String>> = song.tracks.iter().map(|t| chord_names(t, o)).collect();
@@ -477,7 +483,7 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
                         continue;
                     }
                     let mut beat_ids = vec![];
-                    for beat in bar.voice(v) {
+                    for (j, beat) in bar.voice(v).iter().enumerate() {
                         // On a grand staff each staff keeps the notes on its side of middle C.
                         let notes: Vec<&Note> = beat
                             .notes
@@ -506,6 +512,19 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
                             beat_ids.push(write_beat_ex(
                                 &mut ids, t, &gb, &refs, chords, key, false, true,
                             ));
+                        }
+                        // Legato from the previous beat of this voice (maybe in the previous bar).
+                        let prev = if j > 0 {
+                            bar.voice(v).get(j - 1)
+                        } else if bi > 0 {
+                            t.bars[bi - 1].voice(v).last()
+                        } else {
+                            None
+                        };
+                        ids.legato_dest = prev.map(|p| p.notes.iter().any(|n| n.fx.legato)).unwrap_or(false);
+                        if beat.fx.timer {
+                            let before: u32 = bar.voice(v).iter().take(j).map(|b| b.ticks()).sum();
+                            ids.beat_secs = seconds_at(song, bi, before);
                         }
                         beat_ids.push(write_beat(
                             &mut ids,
@@ -787,6 +806,41 @@ fn write_beat_ex(
     if beat.fade_in {
         x.push_str("<Fadding>FadeIn</Fadding>");
     }
+    // Legato, as Guitar Pro 8 writes it: on the beat the slur starts from
+    // (origin) and on the beat it goes to (destination), just before the notes.
+    let origin = !grace && notes.iter().any(|n| n.fx.legato);
+    let dest = !grace && std::mem::take(&mut ids.legato_dest);
+    if origin || dest {
+        let _ = write!(x, "<Legato origin=\"{origin}\" destination=\"{dest}\" />");
+    }
+    // Wah-wah, as Guitar Pro 8 writes it: <Wah>Open</Wah> or <Wah>Closed</Wah>.
+    match beat.fx.wah {
+        1 => x.push_str("<Wah>Open</Wah>"),
+        2 => x.push_str("<Wah>Closed</Wah>"),
+        _ => {}
+    }
+    // Arpeggio, as Guitar Pro 8 writes it: <Arpeggio>Down</Arpeggio> (low
+    // string to high) or <Arpeggio>Up</Arpeggio>.
+    let arpeggio = if grace { 0 } else { beat.fx.arpeggio };
+    match arpeggio {
+        1 => x.push_str("<Arpeggio>Down</Arpeggio>"),
+        2 => x.push_str("<Arpeggio>Up</Arpeggio>"),
+        _ => {}
+    }
+    // Golpe, as Guitar Pro 8 writes it: <Golpe>Finger</Golpe> or <Golpe>Thumb</Golpe>.
+    if !grace {
+        match beat.fx.golpe {
+            1 => x.push_str("<Golpe>Finger</Golpe>"),
+            2 => x.push_str("<Golpe>Thumb</Golpe>"),
+            _ => {}
+        }
+    }
+    // Timer, as Guitar Pro 8 writes it: <Timer>time</Timer>. The person's file
+    // had one on the first beat (0), so the unit isn't known yet; whole
+    // seconds are written, as the timer shows minutes and seconds.
+    if !grace && beat.fx.timer {
+        let _ = write!(x, "<Timer>{}</Timer>", ids.beat_secs);
+    }
     if !notes.is_empty() {
         let mut nids = vec![];
         for n in notes {
@@ -818,9 +872,52 @@ fn write_beat_ex(
     if !props.is_empty() {
         let _ = write!(x, "<Properties>{props}</Properties>");
     }
+    // With an arpeggio Guitar Pro 8 adds two settings after the properties
+    // (most likely its speed and start, from the Arpeggio window); these are
+    // the values it wrote in the person's file (479 down, 478 up, and 1).
+    // The person's pictures of the Arpeggio window show what they are: the
+    // duration (480 to the quarter note) and the start time (1 starts on time,
+    // 0 falls on time).
+    if arpeggio != 0 {
+        let len = match beat.fx.arp_len {
+            0 => if arpeggio == 1 { 479 } else { 478 },
+            n => n,
+        };
+        let start = (1.0 - beat.fx.arp_falls).clamp(0.0, 1.0);
+        let start = format!("{start:.6}").trim_end_matches('0').trim_end_matches('.').to_string();
+        let _ = write!(
+            x,
+            "<XProperties><XProperty id=\"687931393\"><Int>{len}</Int></XProperty><XProperty id=\"687931394\"><Float>{start}</Float></XProperty></XProperties>"
+        );
+    }
     x.push_str("</Beat>\n");
     ids.beats.push_str(&x);
     id
+}
+
+/// Whole seconds from the start of the song (first time through) to `tick`
+/// ticks into bar `bi`.
+fn seconds_at(song: &Song, bi: usize, tick: u32) -> u32 {
+    let secs = |b: usize, ticks: u32| ticks as f64 / QUARTER as f64 * 60.0 / song.tempo_at(b).max(1) as f64;
+    let total: f64 = (0..bi).map(|b| secs(b, song.master[b].ticks())).sum::<f64>() + secs(bi, tick);
+    total.floor() as u32
+}
+
+/// Guitar Pro's letter for a finger (1 thumb ... 5 little finger).
+pub fn finger_letter(f: u8) -> Option<&'static str> {
+    ["P", "I", "M", "A", "C"].get((f as usize).checked_sub(1)?).copied()
+}
+
+/// A finger from Guitar Pro's letter (0 = none).
+pub fn finger_from_letter(s: &str) -> u8 {
+    match s.trim() {
+        "P" | "p" | "T" | "t" => 1,
+        "I" | "i" => 2,
+        "M" | "m" => 3,
+        "A" | "a" => 4,
+        "C" | "c" | "E" | "e" | "X" | "x" | "O" | "o" => 5,
+        _ => 0,
+    }
 }
 
 fn write_note(ids: &mut Ids, t: &Track, beat: &Beat, n: &Note, key: i8) -> usize {
@@ -828,6 +925,14 @@ fn write_note(ids: &mut Ids, t: &Track, beat: &Beat, n: &Note, key: i8) -> usize
     ids.nnotes += 1;
     let pitch = t.pitch(n) as i32;
     let mut x = format!("<Note id=\"{id}\">");
+    // Fingerings, as Guitar Pro 8 writes them: first in the note, one letter
+    // for both hands (P thumb, I index, M middle, A ring, C little finger).
+    if let Some(f) = finger_letter(n.fx.lh_finger) {
+        let _ = write!(x, "<LeftFingering>{f}</LeftFingering>");
+    }
+    if let Some(f) = finger_letter(n.fx.rh_finger) {
+        let _ = write!(x, "<RightFingering>{f}</RightFingering>");
+    }
     if n.ghost {
         x.push_str("<AntiAccent>Normal</AntiAccent>");
     }
@@ -890,7 +995,8 @@ fn write_note(ids: &mut Ids, t: &Track, beat: &Beat, n: &Note, key: i8) -> usize
             n.fret
         );
     }
-    if n.dead {
+    // A pick scrape is written on each note as a muted note (as Guitar Pro 8 does).
+    if n.dead || beat.fx.scrape != 0 {
         x.push_str("<Property name=\"Muted\"><Enable/></Property>");
     }
     if n.palm_mute {
@@ -906,10 +1012,23 @@ fn write_note(ids: &mut Ids, t: &Track, beat: &Beat, n: &Note, key: i8) -> usize
             if n.pinch_harmonic { "Pinch" } else { "Natural" }
         );
     }
-    if n.slide || n.slide_in || n.slide_out {
-        let flags = (if n.slide { 2 } else { 0 })
-            | (if n.slide_out { 4 } else { 0 })
-            | (if n.slide_in { 16 } else { 0 });
+    // Slides are bits of one number: 1 shift slide, 2 legato slide, 4 out
+    // downwards, 8 out upwards, 16 in from below, 32 in from above, 64 pick
+    // scrape downwards, 128 pick scrape upwards. 64 and 128 are confirmed by a
+    // file the person saved in Guitar Pro 8; the others follow the public
+    // descriptions of the format.
+    let flags = (if n.fx.shift_slide { 1 } else { 0 })
+        | (if n.slide { 2 } else { 0 })
+        | (if n.slide_out { 4 } else { 0 })
+        | (if n.fx.slide_out_up { 8 } else { 0 })
+        | (if n.slide_in { 16 } else { 0 })
+        | (if n.fx.slide_in_above { 32 } else { 0 })
+        | match beat.fx.scrape {
+            1 => 128,
+            2 => 64,
+            _ => 0,
+        };
+    if flags != 0 {
         let _ = write!(
             x,
             "<Property name=\"Slide\"><Flags>{flags}</Flags></Property>"
@@ -1059,6 +1178,235 @@ mod tests {
         // Each track's details in Guitar Pro's order.
         let pos = |t: &str| xml.find(t).unwrap();
         assert!(pos("<ChannelStrip") < pos("<ForcedSound>") && pos("<ForcedSound>") < pos("<Sounds>") && pos("<Sounds>") < pos("<MidiConnection>"));
+    }
+
+    /// Legato as Guitar Pro 8 writes it (from a file the person saved in
+    /// Guitar Pro 8 with legato on the first two bass notes): the slur's first
+    /// beat has origin="true", the next destination="true".
+    #[test]
+    fn legato_written_like_guitar_pro() {
+        let mut song = Song::demo();
+        let bass = 1;
+        for n in &mut song.tracks[bass].bars[0].beats[0].notes {
+            n.fx.legato = true;
+        }
+        let xml = gpif_xml(&song);
+        assert!(xml.contains("<Legato origin=\"true\" destination=\"false\" /><Notes>"));
+        assert!(xml.contains("<Legato origin=\"false\" destination=\"true\" /><Notes>"));
+        let back = crate::gpif::import_gp(&export_gp(&song).unwrap()).unwrap();
+        assert!(back.tracks[bass].bars[0].beats[0].notes.iter().all(|n| n.fx.legato));
+        assert!(back.tracks[bass].bars[0].beats[1].notes.iter().all(|n| !n.fx.legato));
+    }
+
+    /// Wah as Guitar Pro 8 writes it (from the person's GP8 file with an open
+    /// wah on the first bass note and a closed one on the second).
+    #[test]
+    fn wah_written_like_guitar_pro() {
+        let mut song = Song::demo();
+        song.tracks[1].bars[0].beats[0].fx.wah = 1;
+        song.tracks[1].bars[0].beats[1].fx.wah = 2;
+        let xml = gpif_xml(&song);
+        assert!(xml.contains("<Wah>Open</Wah><Notes>"));
+        assert!(xml.contains("<Wah>Closed</Wah><Notes>"));
+        assert!(!xml.contains("GuitarCraftExtras"));
+        let back = crate::gpif::import_gp(&export_gp(&song).unwrap()).unwrap();
+        assert_eq!(back.tracks[1].bars[0].beats[0].fx.wah, 1);
+        assert_eq!(back.tracks[1].bars[0].beats[1].fx.wah, 2);
+        // And from the file Guitar Pro 8 saved.
+        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("samples").join("Morning Walk - wah.gp");
+        if let Ok(data) = std::fs::read(p) {
+            let gp = crate::gpif::import_gp(&data).unwrap();
+            let bass = gp.tracks.iter().position(|t| t.instrument == Instrument::Bass).unwrap();
+            assert_eq!(gp.tracks[bass].bars[0].beats[0].fx.wah, 1);
+            assert_eq!(gp.tracks[bass].bars[0].beats[1].fx.wah, 2);
+        }
+    }
+
+    /// Arpeggio as Guitar Pro 8 writes it (from the person's GP8 file with a
+    /// downward arpeggio on the first bass note and an upward one on the second).
+    #[test]
+    fn arpeggio_written_like_guitar_pro() {
+        let mut song = Song::demo();
+        song.tracks[1].bars[0].beats[0].fx.arpeggio = 1;
+        song.tracks[1].bars[0].beats[1].fx.arpeggio = 2;
+        let xml = gpif_xml(&song);
+        assert!(xml.contains("<Arpeggio>Down</Arpeggio><Notes>"));
+        assert!(xml.contains("<Arpeggio>Up</Arpeggio><Notes>"));
+        assert!(xml.contains("<XProperty id=\"687931393\"><Int>479</Int></XProperty>"));
+        assert!(!xml.contains("GuitarCraftExtras"));
+        assert!(roxmltree::Document::parse(&xml).is_ok());
+        let back = crate::gpif::import_gp(&export_gp(&song).unwrap()).unwrap();
+        assert_eq!(back.tracks[1].bars[0].beats[0].fx.arpeggio, 1);
+        assert_eq!(back.tracks[1].bars[0].beats[1].fx.arpeggio, 2);
+        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("samples").join("Morning Walk - Arpeggio.gp");
+        if let Ok(data) = std::fs::read(p) {
+            let gp = crate::gpif::import_gp(&data).unwrap();
+            let bass = gp.tracks.iter().position(|t| t.instrument == Instrument::Bass).unwrap();
+            assert_eq!(gp.tracks[bass].bars[0].beats[0].fx.arpeggio, 1);
+            assert_eq!(gp.tracks[bass].bars[0].beats[1].fx.arpeggio, 2);
+        }
+    }
+
+    /// The arpeggio's duration and start time (from the Arpeggio window) are
+    /// kept in the XProperties Guitar Pro writes.
+    #[test]
+    fn arpeggio_settings_saved() {
+        let mut song = Song::demo();
+        let b = &mut song.tracks[0].bars[0].beats[0];
+        b.fx.arpeggio = 2;
+        b.fx.arp_len = 240;
+        b.fx.arp_falls = 1.0;
+        let xml = gpif_xml(&song);
+        assert!(xml.contains("<XProperty id=\"687931393\"><Int>240</Int></XProperty><XProperty id=\"687931394\"><Float>0</Float></XProperty>"));
+        let back = crate::gpif::import_gp(&export_gp(&song).unwrap()).unwrap();
+        let fx = &back.tracks[0].bars[0].beats[0].fx;
+        assert_eq!((fx.arpeggio, fx.arp_len, fx.arp_falls), (2, 240, 1.0));
+        // The person's file: a quarter-note arpeggio starting on time.
+        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("samples").join("Morning Walk - Arpeggio.gp");
+        if let Ok(data) = std::fs::read(p) {
+            let gp = crate::gpif::import_gp(&data).unwrap();
+            let bass = gp.tracks.iter().position(|t| t.instrument == Instrument::Bass).unwrap();
+            let fx = &gp.tracks[bass].bars[0].beats[0].fx;
+            assert_eq!((fx.arp_len, fx.arp_falls), (479, 0.0));
+        }
+    }
+
+    /// Golpe as Guitar Pro 8 writes it (from the person's GP8 file with a
+    /// finger golpe on the first bass note and a thumb golpe on the second).
+    #[test]
+    fn golpe_written_like_guitar_pro() {
+        let mut song = Song::demo();
+        song.tracks[1].bars[0].beats[0].fx.golpe = 1;
+        song.tracks[1].bars[0].beats[1].fx.golpe = 2;
+        let xml = gpif_xml(&song);
+        assert!(xml.contains("<Golpe>Finger</Golpe><Notes>"));
+        assert!(xml.contains("<Golpe>Thumb</Golpe><Notes>"));
+        assert!(!xml.contains("GuitarCraftExtras"));
+        let back = crate::gpif::import_gp(&export_gp(&song).unwrap()).unwrap();
+        assert_eq!(back.tracks[1].bars[0].beats[0].fx.golpe, 1);
+        assert_eq!(back.tracks[1].bars[0].beats[1].fx.golpe, 2);
+        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("samples").join("Morning Walk - golpe.gp");
+        if let Ok(data) = std::fs::read(p) {
+            let gp = crate::gpif::import_gp(&data).unwrap();
+            let bass = gp.tracks.iter().position(|t| t.instrument == Instrument::Bass).unwrap();
+            assert_eq!(gp.tracks[bass].bars[0].beats[0].fx.golpe, 1);
+            assert_eq!(gp.tracks[bass].bars[0].beats[1].fx.golpe, 2);
+        }
+    }
+
+    /// Pick scrape as Guitar Pro 8 writes it (from the person's GP8 file with
+    /// pick scrapes on the first two bass notes): each note muted, with slide
+    /// flag 64 (downwards) or 128 (upwards).
+    #[test]
+    fn pick_scrape_written_like_guitar_pro() {
+        let mut song = Song::demo();
+        song.tracks[1].bars[0].beats[0].fx.scrape = 2;
+        song.tracks[1].bars[0].beats[1].fx.scrape = 1;
+        let xml = gpif_xml(&song);
+        assert!(xml.contains("<Property name=\"Slide\"><Flags>64</Flags></Property>"));
+        assert!(xml.contains("<Property name=\"Slide\"><Flags>128</Flags></Property>"));
+        assert!(!xml.contains("GuitarCraftExtras"));
+        let back = crate::gpif::import_gp(&export_gp(&song).unwrap()).unwrap();
+        let b = &back.tracks[1].bars[0].beats;
+        assert_eq!((b[0].fx.scrape, b[1].fx.scrape), (2, 1));
+        assert!(!b[0].notes[0].dead);
+        // Other slides round-trip through the same flags.
+        let mut song = Song::demo();
+        let n = &mut song.tracks[0].bars[0].beats[0].notes[0];
+        n.fx.shift_slide = true;
+        n.fx.slide_in_above = true;
+        n.fx.slide_out_up = true;
+        let back = crate::gpif::import_gp(&export_gp(&song).unwrap()).unwrap();
+        let m = &back.tracks[0].bars[0].beats[0].notes[0];
+        assert!(m.fx.shift_slide && m.fx.slide_in_above && m.fx.slide_out_up && !m.slide);
+        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("samples").join("Morning Walk - pick scrape.gp");
+        if let Ok(data) = std::fs::read(p) {
+            let gp = crate::gpif::import_gp(&data).unwrap();
+            let bass = gp.tracks.iter().position(|t| t.instrument == Instrument::Bass).unwrap();
+            let b = &gp.tracks[bass].bars[0].beats;
+            assert_eq!((b[0].fx.scrape, b[1].fx.scrape), (2, 1));
+        }
+    }
+
+    /// Fingerings as Guitar Pro 8 writes them (from the person's GP8 file with
+    /// left-hand C, A, M, I, P then right-hand P, I, M, A, C on the bass notes).
+    #[test]
+    fn fingering_written_like_guitar_pro() {
+        let mut song = Song::demo();
+        song.tracks[1].bars[0].beats[0].notes[0].fx.lh_finger = 5;
+        song.tracks[1].bars[0].beats[1].notes[0].fx.rh_finger = 2;
+        let xml = gpif_xml(&song);
+        assert!(xml.contains("><LeftFingering>C</LeftFingering>"));
+        assert!(xml.contains("><RightFingering>I</RightFingering>"));
+        assert!(!xml.contains("GuitarCraftExtras"));
+        let back = crate::gpif::import_gp(&export_gp(&song).unwrap()).unwrap();
+        assert_eq!(back.tracks[1].bars[0].beats[0].notes[0].fx.lh_finger, 5);
+        assert_eq!(back.tracks[1].bars[0].beats[1].notes[0].fx.rh_finger, 2);
+        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("samples").join("Morning Walk - fingering.gp");
+        if let Ok(data) = std::fs::read(p) {
+            let gp = crate::gpif::import_gp(&data).unwrap();
+            let bass = gp.tracks.iter().position(|t| t.instrument == Instrument::Bass).unwrap();
+            let f: Vec<(u8, u8)> = gp.tracks[bass].bars[..5]
+                .iter()
+                .flat_map(|b| b.beats.iter().take(2).map(|x| (x.notes[0].fx.lh_finger, x.notes[0].fx.rh_finger)))
+                .collect();
+            assert_eq!(f, vec![(5, 0), (4, 0), (3, 0), (2, 0), (1, 0), (0, 1), (0, 2), (0, 3), (0, 4), (0, 5)]);
+        }
+    }
+
+    /// Timer as Guitar Pro 8 writes it (from the person's GP8 file with a timer
+    /// on the first bass note: <Timer>0</Timer>).
+    #[test]
+    fn timer_written_like_guitar_pro() {
+        let mut song = Song::demo();
+        song.tracks[1].bars[0].beats[0].fx.timer = true;
+        // Bar 3 starts after two bars of 4/4 at 96 bpm: 5 seconds.
+        song.tracks[1].bars[2].beats[0].fx.timer = true;
+        let xml = gpif_xml(&song);
+        assert!(xml.contains("<Timer>0</Timer><Notes>"));
+        assert!(xml.contains("<Timer>5</Timer><Notes>"));
+        assert!(!xml.contains("GuitarCraftExtras"));
+        let back = crate::gpif::import_gp(&export_gp(&song).unwrap()).unwrap();
+        assert!(back.tracks[1].bars[0].beats[0].fx.timer && back.tracks[1].bars[2].beats[0].fx.timer);
+        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("samples").join("Morning Walk - timer.gp");
+        if let Ok(data) = std::fs::read(p) {
+            let gp = crate::gpif::import_gp(&data).unwrap();
+            let bass = gp.tracks.iter().position(|t| t.instrument == Instrument::Bass).unwrap();
+            assert!(gp.tracks[bass].bars[0].beats[0].fx.timer);
+        }
+    }
+
+    /// A bar repeated on its own, as Guitar Pro 8 writes it (from the person's
+    /// GP8 file with bar 6 played 4 times): repeat start and end on the same bar.
+    #[test]
+    fn single_bar_repeat_like_guitar_pro() {
+        let mut song = Song::demo();
+        song.master[5].repeat_open = true;
+        song.master[5].repeat_close = 4;
+        let xml = gpif_xml(&song);
+        assert!(xml.contains("<Repeat start=\"true\" end=\"true\" count=\"4\"/>"));
+        let back = crate::gpif::import_gp(&export_gp(&song).unwrap()).unwrap();
+        assert!(back.master[5].repeat_open && back.master[5].repeat_close == 4);
+        // Played four times in a row.
+        let order = back.play_order();
+        let start = order.iter().position(|&b| b == 5).unwrap();
+        assert_eq!(&order[start..start + 5], &[5, 5, 5, 5, 6]);
+        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("samples").join("Morning Walk - bar repeats.gp");
+        if let Ok(data) = std::fs::read(p) {
+            let gp = crate::gpif::import_gp(&data).unwrap();
+            assert!(gp.master[5].repeat_open && gp.master[5].repeat_close == 4);
+        }
+    }
+
+    #[test]
+    fn reads_legato_from_guitar_pro_file() {
+        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("samples").join("Morning Walk - legato.gp");
+        let Ok(data) = std::fs::read(p) else { return };
+        let song = crate::gpif::import_gp(&data).unwrap();
+        let bass = song.tracks.iter().position(|t| t.instrument == Instrument::Bass).unwrap();
+        let bar = &song.tracks[bass].bars[0];
+        assert!(bar.beats[0].notes.iter().all(|n| n.fx.legato));
+        assert!(!bar.beats[1].notes.iter().any(|n| n.fx.legato));
     }
 
     #[test]

@@ -891,6 +891,45 @@ fn read_beat(
     };
     beat.tremolo = child(bt, "Tremolo").is_some();
     beat.fade_in = text(child(bt, "Fadding")) == "FadeIn";
+    // Legato: the slur starts on this beat.
+    let legato_origin = child(bt, "Legato").and_then(|l| l.attribute("origin")) == Some("true");
+    let mut scrape = 0u8;
+    beat.fx.wah = match text(child(bt, "Wah")).as_str() {
+        "Open" => 1,
+        "Closed" => 2,
+        _ => 0,
+    };
+    beat.fx.timer = child(bt, "Timer").is_some();
+    beat.fx.golpe = match text(child(bt, "Golpe")).as_str() {
+        "Finger" => 1,
+        "Thumb" => 2,
+        _ => 0,
+    };
+    beat.fx.arpeggio = match text(child(bt, "Arpeggio")).as_str() {
+        "Down" => 1,
+        "Up" => 2,
+        _ => 0,
+    };
+    // The arpeggio's duration and start time.
+    if beat.fx.arpeggio != 0
+        && let Some(xp) = child(bt, "XProperties")
+    {
+        for p in xp.children().filter(|c| c.has_tag_name("XProperty")) {
+            match p.attribute("id") {
+                Some("687931393") => {
+                    if let Ok(v) = text(child(p, "Int")).trim().parse::<u16>() {
+                        beat.fx.arp_len = v.clamp(30, 1920);
+                    }
+                }
+                Some("687931394") => {
+                    if let Ok(v) = text(child(p, "Float")).trim().parse::<f32>() {
+                        beat.fx.arp_falls = (1.0 - v).clamp(0.0, 1.0);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
     if bp.contains_key("Tapped") {
         beat.technique = 1;
     } else if bp.contains_key("Slapped") {
@@ -961,6 +1000,8 @@ fn read_beat(
             Note::new((nstr - 1 - s) as u8, f.clamp(0, 36) as u8)
         };
         n.dead = p.contains_key("Muted");
+        n.fx.lh_finger = crate::gpifwrite::finger_from_letter(&text(child(*nn, "LeftFingering")));
+        n.fx.rh_finger = crate::gpifwrite::finger_from_letter(&text(child(*nn, "RightFingering")));
         n.palm_mute = p.contains_key("PalmMuted");
         n.hammer = p.contains_key("HopoOrigin");
         let htype = p
@@ -974,9 +1015,17 @@ fn read_beat(
         }
         if let Some(sl) = p.get("Slide") {
             let flags = text(child(*sl, "Flags")).parse::<i32>().unwrap_or(0);
-            n.slide = flags & 3 != 0;
-            n.slide_out = flags & 12 != 0;
-            n.slide_in = flags & 48 != 0;
+            n.fx.shift_slide = flags & 1 != 0;
+            n.slide = flags & 2 != 0;
+            n.slide_out = flags & 4 != 0;
+            n.fx.slide_out_up = flags & 8 != 0;
+            n.slide_in = flags & 16 != 0;
+            n.fx.slide_in_above = flags & 32 != 0;
+            // Pick scrape: the whole beat; its notes are muted only because of it.
+            if flags & 192 != 0 {
+                scrape = if flags & 128 != 0 { 1 } else { 2 };
+                n.dead = false;
+            }
         }
         if p.contains_key("Bended") {
             let mut v = 0.0f32;
@@ -1006,6 +1055,14 @@ fn read_beat(
         }
     }
     beat.notes.sort_by_key(|n| n.string);
+    if legato_origin {
+        for n in &mut beat.notes {
+            n.fx.legato = true;
+        }
+    }
+    if scrape != 0 {
+        beat.fx.scrape = scrape;
+    }
     beat
 }
 

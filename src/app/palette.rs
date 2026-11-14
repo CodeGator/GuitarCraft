@@ -638,7 +638,7 @@ impl App {
                     })
                     .clicked()
                     {
-                        self.beat_edit(|b| b.fx.arpeggio = if b.fx.arpeggio == v { 0 } else { v });
+                        self.open_popup(if v == 1 { Popup::ArpeggioDown } else { Popup::ArpeggioUp });
                     }
                 }
                 if glyph_button(ui, cur.fx.rasgueado, "rasg.", ital(10.0), "Rasgueado").clicked() {

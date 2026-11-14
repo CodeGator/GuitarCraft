@@ -165,6 +165,7 @@ impl App {
         }
         if cmd {
             match key {
+                Key::P if !m.shift && !m.alt => self.print_song(),
                 Key::Z if m.shift => self.do_redo(),
                 Key::Z => self.do_undo(),
                 Key::Y => self.do_redo(),

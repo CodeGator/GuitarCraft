@@ -381,6 +381,8 @@ impl App {
         self.tuning_window(ctx);
         self.chord_window(ctx);
         self.chord_library_window(ctx);
+        self.export_window(ctx);
+        self.print_preview_window(ctx);
         self.scale_window(ctx);
         self.lyrics_window(ctx);
         self.command_palette(ctx);

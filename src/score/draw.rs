@@ -952,6 +952,20 @@ fn draw_std_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32, groups
                 PStroke::new(1.0 * z, c.ink),
             ));
         }
+        // Legato: a slur to the next note, on the side away from the stem.
+        if n.fx.legato
+            && let Some((nx, _)) = next_note_x(c, bj, n.string)
+        {
+            let side = if up { 1.0 } else { -1.0 };
+            let a = Pos2::new(x + 2.0 * z, cpos.y + side * 5.0 * z);
+            let b = Pos2::new(nx - 2.0 * z, cpos.y + side * 5.0 * z);
+            p.add(QuadraticBezierShape::from_points_stroke(
+                [a, Pos2::new((a.x + b.x) * 0.5, a.y + side * 8.0 * z), b],
+                false,
+                Color32::TRANSPARENT,
+                PStroke::new(1.0 * z, c.ink),
+            ));
+        }
     }
     if beat.dur == Dur::Whole {
         return;
@@ -2096,24 +2110,49 @@ fn draw_slash(p: &Painter, c: &BarCtx, beat: &Beat, x: f32) {
 fn draw_arpeggio(p: &Painter, c: &BarCtx, beat: &Beat, x: f32) {
     let g = &c.g;
     let z = c.z;
-    if beat.notes.len() < 2 || !g.tab {
+    if beat.notes.is_empty() {
         return;
     }
-    let ys: Vec<f32> = beat.notes.iter().map(|n| c.y0 + g.string_y(n.string as usize)).collect();
-    let (top, bot) = (ys.iter().cloned().fold(f32::MAX, f32::min) - 4.0 * z, ys.iter().cloned().fold(f32::MIN, f32::max) + 4.0 * z);
-    let ax = x - 11.0 * z;
-    let pts: Vec<Pos2> = (0..=((bot - top) / (1.5 * z)) as usize)
-        .map(|i| {
-            let y = top + i as f32 * 1.5 * z;
-            Pos2::new(ax + ((y - top) / (3.0 * z) * std::f32::consts::PI).sin() * 1.6 * z, y)
-        })
-        .collect();
-    p.add(Shape::line(pts, PStroke::new(1.0 * z, c.ink)));
-    // Downwards (low string to high) points up the tablature.
-    let (tip, dir) = if beat.fx.arpeggio == 1 { (top - 3.0 * z, -1.0) } else { (bot + 3.0 * z, 1.0) };
-    p.add(Shape::convex_polygon(
-        vec![Pos2::new(ax - 3.0 * z, tip - dir * 5.0 * z), Pos2::new(ax + 3.0 * z, tip - dir * 5.0 * z), Pos2::new(ax, tip)],
-        c.ink,
-        PStroke::NONE,
-    ));
+    // A wavy line beside the notes of each staff, with the arrow showing the
+    // direction: downwards (low string to high) points up the page.
+    let down = beat.fx.arpeggio == 1;
+    let line = |top: f32, bot: f32| {
+        let ax = x - 11.0 * z;
+        let pts: Vec<Pos2> = (0..=((bot - top) / (1.5 * z)) as usize)
+            .map(|i| {
+                let y = top + i as f32 * 1.5 * z;
+                Pos2::new(ax + ((y - top) / (3.0 * z) * std::f32::consts::PI).sin() * 1.6 * z, y)
+            })
+            .collect();
+        p.add(Shape::line(pts, PStroke::new(1.0 * z, c.ink)));
+        let (tip, dir) = if down { (top - 3.0 * z, -1.0) } else { (bot + 3.0 * z, 1.0) };
+        p.add(Shape::convex_polygon(
+            vec![Pos2::new(ax - 3.0 * z, tip - dir * 5.0 * z), Pos2::new(ax + 3.0 * z, tip - dir * 5.0 * z), Pos2::new(ax, tip)],
+            c.ink,
+            PStroke::NONE,
+        ));
+    };
+    let span = |ys: &[f32], min: f32| {
+        let lo = ys.iter().cloned().fold(f32::MAX, f32::min);
+        let hi = ys.iter().cloned().fold(f32::MIN, f32::max);
+        let extra = ((min - (hi - lo)) * 0.5).max(0.0);
+        (lo - 4.0 * z - extra, hi + 4.0 * z + extra)
+    };
+    if g.tab {
+        let ys: Vec<f32> = beat.notes.iter().map(|n| c.y0 + g.string_y((n.string as usize).min(g.strings - 1))).collect();
+        let (t, b) = span(&ys, g.ts * 2.0);
+        line(t, b);
+    }
+    if g.std && !c.lower {
+        let track = &c.song.tracks[c.ti];
+        let key = c.song.master[c.bi].key;
+        let bot = c.y0 + g.std_top + 4.0 * g.ls;
+        let ys: Vec<f32> = beat
+            .notes
+            .iter()
+            .map(|n| bot - note_staff_pos(track, beat, key, n, c.song.style.capo_affects_std) as f32 * g.ls * 0.5)
+            .collect();
+        let (t, b) = span(&ys, g.ls * 2.0);
+        line(t, b);
+    }
 }

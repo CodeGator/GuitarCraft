@@ -981,6 +981,11 @@ pub struct DrawCtx<'a> {
     pub voice: usize,
     /// Staff position of the cursor when it is in the standard notation.
     pub cursor_std: Option<i32>,
+    /// Drawing for print or export: no page shadow, every track and voice in
+    /// full black, and no bar-length warnings.
+    pub printing: bool,
+    /// For export only: leave the paper out (a transparent background).
+    pub transparent: bool,
 }
 
 /// Where a click landed: on a tab string or a position of the notation staff.
@@ -1058,12 +1063,16 @@ pub fn draw_page(p: &Painter, lay: &Layout, dc: &DrawCtx, page: usize, origin: P
     let song = dc.song;
     let st = &song.style;
     let page_rect = Rect::from_min_size(origin, Vec2::new(lay.page_w(), lay.page_h()));
-    p.rect_filled(
-        page_rect.translate(Vec2::new(2.0, 3.0)),
-        1.0,
-        Color32::from_black_alpha(30),
-    );
-    p.rect_filled(page_rect, 0.0, Color32::WHITE);
+    if !dc.printing {
+        p.rect_filled(
+            page_rect.translate(Vec2::new(2.0, 3.0)),
+            1.0,
+            Color32::from_black_alpha(30),
+        );
+    }
+    if !dc.transparent {
+        p.rect_filled(page_rect, 0.0, Color32::WHITE);
+    }
     let left = origin.x + lay.ml * pz;
     let right = origin.x + (lay.pw - lay.mr) * pz;
     if page == 0 {
@@ -1483,7 +1492,7 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
             continue;
         }
         let (t, b) = g.staff_span();
-        let col = if blk.ti == dc.ti {
+        let col = if blk.ti == dc.ti || dc.printing {
             INK
         } else {
             Color32::from_gray(90)
@@ -1714,7 +1723,7 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
             let bar = &track.bars[bi];
             let (top, bottom) = g.staff_span();
             let (top, bottom) = (y0 + top, y0 + bottom);
-            let wrong = bar.wrong_length(mb.ticks());
+            let wrong = bar.wrong_length(mb.ticks()) && !dc.printing;
             // Bars that are too short or too long show in red (except the one being edited).
             if wrong && dc.cursor.0 != bi {
                 p.rect_filled(
@@ -2005,7 +2014,7 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
                 } else {
                     bl.voice_xs(&vbar.beats)
                 };
-                let grey = multi && blk.ti == dc.ti && v != dc.voice;
+                let grey = multi && blk.ti == dc.ti && v != dc.voice && !dc.printing;
                 let bctx = BarCtx {
                     song,
                     ti: blk.ti,

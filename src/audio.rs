@@ -905,10 +905,14 @@ fn build_voice_schedule(song: &Song, sr: f32, opt: &ScheduleOptions) -> Schedule
                     } else {
                         beat.stroke
                     };
+                    // An arpeggio spreads the notes over its duration (480 to the
+                    // quarter note), starting on the beat or ending on it.
+                    let arp_total = if beat.fx.arp_len == 0 { 480.0 } else { beat.fx.arp_len as f64 } * 2.0 * spt;
+                    let arp_step = if nstr > 1 { arp_total / (nstr - 1) as f64 } else { 0.0 };
+                    let arp_shift = -(beat.fx.arp_falls as f64) * arp_total;
                     let stroke_off = match beat.fx.arpeggio {
-                        // An arpeggio rolls the chord slowly.
-                        1 => (nstr - 1 - k.min(nstr - 1)) as f64 * sr as f64 * 0.045,
-                        2 => k as f64 * sr as f64 * 0.045,
+                        1 => (nstr - 1 - k.min(nstr - 1)) as f64 * arp_step + arp_shift,
+                        2 => k as f64 * arp_step + arp_shift,
                         _ => {
                             (match stroke {
                                 Stroke::None => 0.0,
@@ -944,7 +948,7 @@ fn build_voice_schedule(song: &Song, sr: f32, opt: &ScheduleOptions) -> Schedule
                     if soft {
                         vel *= 0.8;
                     }
-                    let start = t + (on_tick * spt + stroke_off) as u64;
+                    let start = (t as f64 + on_tick * spt + stroke_off).max(0.0) as u64;
                     let base = NoteEvent {
                         start,
                         len: 1,

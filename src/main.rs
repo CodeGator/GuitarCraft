@@ -12,6 +12,7 @@ mod gpimport;
 mod gpstyle;
 mod gpsv;
 mod model;
+mod render;
 mod score;
 mod style;
 mod textmidi;
@@ -24,6 +25,34 @@ fn main() -> eframe::Result {
     let mut launch = app::LaunchOptions::default();
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
+        if a == "--export" {
+            // Print a song (or "demo") to a PDF or PNG and exit:
+            // --export <from> <to.pdf|to.png> [dpi]
+            let from = args.next().unwrap_or_default();
+            let to = std::path::PathBuf::from(args.next().unwrap_or_default());
+            let dpi = args.next().and_then(|d| d.parse::<f32>().ok()).unwrap_or(150.0);
+            let song = if from == "demo" { Ok(model::Song::demo()) } else { fileio::load_song(std::path::Path::new(&from)) };
+            let r = song.and_then(|song| {
+                let shown: Vec<usize> = (0..song.tracks.len()).filter(|&i| song.tracks[i].visible).collect();
+                let spec = render::PrintSpec { song: &song, shown, track: 0, notation: score::Notation::Both };
+                let pages: Vec<usize> = (0..spec.pages()).collect();
+                let png = to.extension().map(|e| e.eq_ignore_ascii_case("png")).unwrap_or(false);
+                let imgs = render::render_pages(&spec, &pages, dpi, false);
+                if png {
+                    render::stack(&imgs).save(&to).map_err(|e| e.to_string())
+                } else {
+                    let (w, h) = spec.page_mm();
+                    std::fs::write(&to, render::pdf(&imgs, w, h, &song.title)).map_err(|e| e.to_string())
+                }
+            });
+            match r {
+                Ok(()) => std::process::exit(0),
+                Err(e) => {
+                    eprintln!("{e}");
+                    std::process::exit(1);
+                }
+            }
+        }
         if a == "--convert" {
             // Save a song (or "demo") in another format and exit: --convert <from> <to>.
             let from = args.next().unwrap_or_default();

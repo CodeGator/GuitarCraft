@@ -640,6 +640,8 @@ impl App {
                     show_cursor: !self.playing,
                     voice: self.voice,
                     cursor_std: self.std_cursor,
+                    printing: false,
+                    transparent: false,
                 };
                 for page in 0..lay.pages {
                     let o = lay.page_origin(page, left, rect.top());
