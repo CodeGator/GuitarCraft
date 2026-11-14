@@ -35,12 +35,16 @@ pub fn collect(song: &Song) -> Extras {
             }
             for v in 0..VOICES {
                 for (j, b) in bar.voice(v).iter().enumerate() {
-                    if b.fx != BeatFx::default() {
-                        x.beats.push((ti, bi, v, j, b.fx.clone()));
+                    // Wah is written the Guitar Pro way (see gpifwrite).
+                    let fx = BeatFx { wah: 0, arpeggio: 0, arp_len: 0, arp_falls: 0.0, golpe: 0, scrape: 0, timer: false, ..b.fx.clone() };
+                    if fx != BeatFx::default() {
+                        x.beats.push((ti, bi, v, j, fx));
                     }
                     for n in &b.notes {
-                        if n.fx != NoteFx::default() {
-                            x.notes.push((ti, bi, v, j, n.string, n.fx.clone()));
+                        // Legato is written the Guitar Pro way (see gpifwrite).
+                        let fx = NoteFx { legato: false, shift_slide: false, slide_out_up: false, slide_in_above: false, lh_finger: 0, rh_finger: 0, ..n.fx.clone() };
+                        if fx != NoteFx::default() {
+                            x.notes.push((ti, bi, v, j, n.string, fx));
                         }
                     }
                 }
@@ -60,12 +64,34 @@ pub fn apply(song: &mut Song, x: &Extras) {
     }
     for (ti, bi, v, j, fx) in &x.beats {
         if let Some(b) = beat_mut(song, *ti, *bi, *v, *j) {
+            // Keep what was read the Guitar Pro way.
+            let wah = if b.fx.wah != 0 { b.fx.wah } else { fx.wah };
+            let arpeggio = if b.fx.arpeggio != 0 { b.fx.arpeggio } else { fx.arpeggio };
+            let (arp_len, arp_falls) = (b.fx.arp_len, b.fx.arp_falls);
+            let golpe = if b.fx.golpe != 0 { b.fx.golpe } else { fx.golpe };
+            let scrape = if b.fx.scrape != 0 { b.fx.scrape } else { fx.scrape };
+            let timer = b.fx.timer || fx.timer;
             b.fx = fx.clone();
+            b.fx.wah = wah;
+            b.fx.arpeggio = arpeggio;
+            b.fx.arp_len = arp_len;
+            b.fx.arp_falls = arp_falls;
+            b.fx.golpe = golpe;
+            b.fx.scrape = scrape;
+            b.fx.timer = timer;
         }
     }
     for (ti, bi, v, j, s, fx) in &x.notes {
         if let Some(n) = beat_mut(song, *ti, *bi, *v, *j).and_then(|b| b.note_on_mut(*s)) {
+            // Keep what was read the Guitar Pro way.
+            let keep = n.fx.clone();
             n.fx = fx.clone();
+            n.fx.legato = keep.legato || fx.legato;
+            n.fx.shift_slide = keep.shift_slide || fx.shift_slide;
+            n.fx.slide_out_up = keep.slide_out_up || fx.slide_out_up;
+            n.fx.slide_in_above = keep.slide_in_above || fx.slide_in_above;
+            n.fx.lh_finger = if keep.lh_finger != 0 { keep.lh_finger } else { fx.lh_finger };
+            n.fx.rh_finger = if keep.rh_finger != 0 { keep.rh_finger } else { fx.rh_finger };
         }
     }
     for &bi in &x.free_time {

@@ -536,6 +536,8 @@ impl App {
                     show_cursor: false,
                     voice: 0,
                     cursor_std: None,
+                    printing: false,
+                    transparent: false,
                 };
                 let painter = ui.painter().with_clip_rect(prev_r);
                 score::draw_page(&painter, &lay, &dc, 0, lay.page_origin(0, o.x, o.y));

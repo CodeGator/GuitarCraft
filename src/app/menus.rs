@@ -150,6 +150,15 @@ impl App {
             }
         });
         ui.menu_button("Export", |ui| {
+            if ui.button("PDF...").clicked() {
+                self.open_export(super::printing::ExportKind::Pdf);
+                ui.close();
+            }
+            if ui.button("PNG...").clicked() {
+                self.open_export(super::printing::ExportKind::Png);
+                ui.close();
+            }
+            ui.separator();
             if ui.button("MIDI...").clicked() {
                 self.export_midi();
                 ui.close();
@@ -163,6 +172,10 @@ impl App {
                 ui.close();
             }
         });
+        if item(ui, "Print...", "Ctrl+P").clicked() {
+            ui.close();
+            self.print_song();
+        }
         ui.separator();
         if item(ui, "Quit", "Alt+F4").clicked() {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);

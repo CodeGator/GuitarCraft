@@ -13,6 +13,7 @@ mod menus;
 mod palette;
 mod panels;
 mod popups;
+mod printing;
 mod side;
 mod stylesheet;
 mod tools;
@@ -197,6 +198,10 @@ pub struct App {
     style_dlg: Option<stylesheet::StyleDlg>,
     /// The chord diagram library window (Chords button of the palette).
     chord_lib_open: bool,
+    /// The PDF / PNG export window, while open.
+    export_dlg: Option<printing::ExportDlg>,
+    /// The print preview window, while open.
+    print_preview: Option<printing::PrintPreview>,
 }
 
 impl App {
@@ -337,6 +342,8 @@ impl App {
             focus_request: None,
             style_dlg: None,
             chord_lib_open: false,
+            export_dlg: None,
+            print_preview: None,
         };
         if app.screenshot.is_none() {
             app.recent = home::load_recent();
@@ -425,6 +432,11 @@ impl App {
                 "directions" => app.dir_open = true,
                 "chord" => app.chord_open = true,
                 "chordlib" => app.chord_lib_open = true,
+                "exportpdf" => app.open_export(printing::ExportKind::Pdf),
+                "printpreview" => app.print_song(),
+                "exportpng" => app.open_export(printing::ExportKind::Png),
+                "arpup" => app.open_popup(popups::Popup::ArpeggioUp),
+                "arpdown" => app.open_popup(popups::Popup::ArpeggioDown),
                 // A sample of the palette's newer marks on the demo, for checking pictures.
                 "newmarks" => {
                     let t = &mut app.song.tracks[0];

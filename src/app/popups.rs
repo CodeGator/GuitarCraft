@@ -17,6 +17,8 @@ pub enum Popup {
     Bend,
     Trill,
     Grace,
+    ArpeggioUp,
+    ArpeggioDown,
 }
 
 impl Popup {
@@ -32,10 +34,11 @@ impl Popup {
             Popup::Bend => "Bend",
             Popup::Trill => "Trill",
             Popup::Grace => "Grace Note",
+            Popup::ArpeggioUp | Popup::ArpeggioDown => "Arpeggio",
         }
     }
     fn needs_note(self) -> bool {
-        matches!(self, Popup::Bend | Popup::Trill | Popup::Grace)
+        matches!(self, Popup::Bend | Popup::Trill | Popup::Grace | Popup::ArpeggioUp | Popup::ArpeggioDown)
     }
 }
 
@@ -120,6 +123,17 @@ impl App {
             Popup::Text => beat.text.clone().unwrap_or_default(),
             _ => String::new(),
         };
+        let mut beat = beat;
+        // A new arpeggio (or one turned the other way) starts from the usual settings.
+        let dir = match kind {
+            Popup::ArpeggioDown => 1,
+            Popup::ArpeggioUp => 2,
+            _ => 0,
+        };
+        if dir != 0 && beat.fx.arpeggio == 0 {
+            beat.fx.arp_len = 0;
+            beat.fx.arp_falls = 0.0;
+        }
         self.pop_bar = mb;
         self.pop_beat = beat;
         self.pop_note = note;
@@ -376,6 +390,9 @@ impl App {
                             remove = true;
                         }
                     }
+                    Popup::ArpeggioUp | Popup::ArpeggioDown => {
+                        arpeggio_editor(ui, kind == Popup::ArpeggioUp, &mut self.pop_beat.fx);
+                    }
                     Popup::Grace => {
                         ui.label(
                             RichText::new(format!(
@@ -397,14 +414,34 @@ impl App {
                     }
                 }
                 ui.add_space(6.0);
-                ui.horizontal(|ui| {
-                    if ui.button(RichText::new("  OK  ").strong()).clicked() {
-                        ok = true;
-                    }
-                    if ui.button("Cancel").clicked() {
-                        cancel = true;
-                    }
-                });
+                if matches!(kind, Popup::ArpeggioUp | Popup::ArpeggioDown) {
+                    // As in the original: Remove on the left, OK and Cancel on the right.
+                    ui.horizontal(|ui| {
+                        if ui.add(egui::Button::new("Remove").min_size(Vec2::new(60.0, 24.0))).clicked() {
+                            remove = true;
+                        }
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.add(egui::Button::new("Cancel").min_size(Vec2::new(56.0, 24.0))).clicked() {
+                                cancel = true;
+                            }
+                            if ui
+                                .add(egui::Button::new(RichText::new("OK").color(egui::Color32::WHITE)).fill(egui::Color32::from_rgb(61, 123, 224)).min_size(Vec2::new(36.0, 24.0)))
+                                .clicked()
+                            {
+                                ok = true;
+                            }
+                        });
+                    });
+                } else {
+                    ui.horizontal(|ui| {
+                        if ui.button(RichText::new("  OK  ").strong()).clicked() {
+                            ok = true;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            cancel = true;
+                        }
+                    });
+                }
             });
         if ctx.input(|i| i.key_pressed(Key::Enter)) {
             ok = true;
@@ -442,6 +479,11 @@ impl App {
                     n.grace = None;
                 }
             }),
+            Popup::ArpeggioUp | Popup::ArpeggioDown => self.beat_edit(|b| {
+                b.fx.arpeggio = 0;
+                b.fx.arp_len = 0;
+                b.fx.arp_falls = 0.0;
+            }),
             _ => {}
         }
     }
@@ -452,6 +494,16 @@ impl App {
         let until = self.pop_until_next;
         let text = self.pop_text.trim().to_string();
         let note = self.pop_note.clone();
+        if matches!(kind, Popup::ArpeggioUp | Popup::ArpeggioDown) {
+            let dir = if kind == Popup::ArpeggioDown { 1 } else { 2 };
+            let (len, falls) = (self.pop_beat.fx.arp_len, self.pop_beat.fx.arp_falls);
+            self.beat_edit(move |b| {
+                b.fx.arpeggio = dir;
+                b.fx.arp_len = len;
+                b.fx.arp_falls = falls;
+            });
+            return;
+        }
         match kind {
             Popup::TimeSig => self.edit(move |s, _, _, _, _| {
                 let old = (s.master[bar].num, s.master[bar].den);
@@ -495,6 +547,8 @@ impl App {
             Popup::Text => self.edit(move |s, t, b, j, _| {
                 s.tracks[t].bars[b].beats[j].text = if text.is_empty() { None } else { Some(text) }
             }),
+            // Handled above.
+            Popup::ArpeggioUp | Popup::ArpeggioDown => {}
             Popup::Bend | Popup::Trill | Popup::Grace => {
                 let s = note.string;
                 self.edit(move |so, t, b, j, _| {
@@ -607,4 +661,59 @@ mod tests {
         assert_eq!(key_label(0, true), "Am");
         assert_eq!(key_label(-7, false), "Cb (bbbbbbb)");
     }
+}
+
+/// Arpeggio duration slider range, 480 to the quarter note: a 32nd note to a half note.
+const ARP_MIN: f32 = 60.0;
+const ARP_MAX: f32 = 960.0;
+
+/// The Arpeggio window's settings, laid out like the original's: the
+/// duration slider with note values above it, and the start time slider.
+fn arpeggio_editor(ui: &mut egui::Ui, up: bool, fx: &mut crate::model::BeatFx) {
+    use egui::{Color32, FontFamily, FontId, Pos2, Sense, Stroke};
+    ui.set_width(300.0);
+    ui.label(RichText::new(if up { "ARPEGGIO UP" } else { "ARPEGGIO DOWN" }).size(16.0).family(FontFamily::Name("bold".into())).color(Color32::WHITE));
+    ui.add_space(6.0);
+    ui.label(RichText::new("Duration").size(14.0).color(Color32::from_gray(230)));
+    // Note values above the slider, each over its length.
+    let (r, _) = ui.allocate_exact_size(Vec2::new(300.0, 26.0), Sense::hover());
+    // Lined up with the slider below (270 wide, its handle 8 from each end).
+    let track_x = |v: f32| r.left() + 8.0 + (v - ARP_MIN) / (ARP_MAX - ARP_MIN) * (270.0 - 16.0);
+    let p = ui.painter();
+    let ink = Color32::from_gray(235);
+    for (ticks, flags, filled) in [(60.0, 3usize, true), (240.0, 1, true), (480.0, 0, true), (960.0, 0, false)] {
+        let c = Pos2::new(track_x(ticks) - 1.0, r.bottom() - 5.0);
+        if filled {
+            p.add(egui::Shape::ellipse_filled(c, Vec2::new(3.6, 2.6), ink));
+        } else {
+            p.add(egui::Shape::ellipse_stroke(c, Vec2::new(3.6, 2.6), Stroke::new(1.2, ink)));
+        }
+        let top = c + Vec2::new(3.2, -17.0);
+        p.line_segment([c + Vec2::new(3.2, 0.0), top], Stroke::new(1.2, ink));
+        for f in 0..flags {
+            let y = f as f32 * 3.0;
+            p.line_segment([top + Vec2::new(0.0, y), top + Vec2::new(4.5, y + 5.0)], Stroke::new(1.3, ink));
+        }
+    }
+    let mut len = if fx.arp_len == 0 { 480.0 } else { fx.arp_len as f32 };
+    ui.spacing_mut().slider_width = 270.0;
+    if ui
+        .add(egui::Slider::new(&mut len, ARP_MIN..=ARP_MAX).show_value(false).trailing_fill(true).handle_shape(egui::style::HandleShape::Circle))
+        .on_hover_text(format!("{:.2} beats", len / 480.0))
+        .changed()
+    {
+        fx.arp_len = len.round() as u16;
+    }
+    ui.add_space(4.0);
+    ui.label(RichText::new("Start time").size(14.0).color(Color32::from_gray(230)));
+    ui.horizontal(|ui| {
+        ui.label("Falls on time");
+        let mut start = 1.0 - fx.arp_falls;
+        ui.spacing_mut().slider_width = 140.0;
+        if ui.add(egui::Slider::new(&mut start, 0.0..=1.0).show_value(false).trailing_fill(true).handle_shape(egui::style::HandleShape::Circle)).changed() {
+            fx.arp_falls = (1.0 - start).clamp(0.0, 1.0);
+        }
+        ui.label("Starts on time");
+    });
+    let _ = FontId::default();
 }

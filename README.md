@@ -14,7 +14,7 @@ GuitarCraft opens and saves Guitar Pro files (`.gp` and `.gp5`) and also opens `
 
 **Version 0.1.0, an early version for trying out (November 2026).** It is usable for writing and playing songs, but it is young: please save your work often, and keep a copy of any song you care about before editing it.
 
-Not there yet: slash and numbered (jianpu) notation, printing and PDF export, and some of the less common symbols. Expect rough edges and differences from the original.
+Not there yet: numbered (jianpu) notation, MusicXML and SVG export, and showing some of the newer palette marks in Guitar Pro 8. Expect rough edges and differences from the original.
 
 Not planned for now: the original's recorded sound banks and effects, the pedalboard, audio tracks and line-in. These are about sound production rather than writing music, so they may never be added.
 

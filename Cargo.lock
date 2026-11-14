@@ -1482,11 +1482,13 @@ dependencies = [
  "cpal",
  "eframe",
  "egui",
+ "flate2",
  "image",
  "rfd",
  "roxmltree",
  "serde",
  "serde_json",
+ "windows-sys 0.61.2",
  "winit",
  "zip",
 ]

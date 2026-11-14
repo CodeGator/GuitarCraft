@@ -210,6 +210,12 @@ pub struct BeatFx {
     /// Pick scrape: 0 none, 1 upwards, 2 downwards.
     pub scrape: u8,
     pub dead_slap: bool,
+    /// Arpeggio duration, counted 480 to the quarter note as Guitar Pro does
+    /// (0 = the usual quarter note).
+    pub arp_len: u16,
+    /// How far the arpeggio falls on time instead of starting on it: 0 starts
+    /// on the beat (the usual), 1 ends on the beat.
+    pub arp_falls: f32,
     pub whammy: bool,
     /// Bridge vibrato: 0 none, 1 slight, 2 wide.
     pub bridge_vibrato: u8,
