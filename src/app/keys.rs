@@ -34,7 +34,13 @@ impl App {
                     }
                     ctx.copy_text("guitarcraft-beats".into());
                 }
-                egui::Event::Paste(_) if !typing => self.paste_any(),
+                egui::Event::Paste(_) if !typing => {
+                    if ctx.input(|i| i.modifiers.shift) {
+                        self.open_special_paste();
+                    } else {
+                        self.paste_any();
+                    }
+                }
                 egui::Event::Text(t) if !typing => self.symbol_key(&t),
                 egui::Event::Key {
                     key,

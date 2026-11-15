@@ -101,16 +101,44 @@ impl App {
                 "Multitrack: every track with an open eye is shown.".into()
             };
         }
-        speaker_icon(
-            &p,
-            Rect::from_center_size(head.min + Vec2::new(220.0, 12.0), Vec2::splat(14.0)),
-            grey,
-        );
-        headphones_icon(
-            &p,
-            Rect::from_center_size(head.min + Vec2::new(244.0, 12.0), Vec2::splat(14.0)),
-            grey,
-        );
+        // The mute and solo buttons at the top: lit while any track is muted
+        // (or soloed); a click clears it for every track, as in Guitar Pro.
+        let any_mute = self.song.tracks.iter().any(|t| t.mute);
+        let any_solo = self.song.tracks.iter().any(|t| t.solo);
+        let hm = Rect::from_center_size(head.min + Vec2::new(220.0, 12.0), Vec2::splat(20.0));
+        let hm_resp = ui
+            .interact(hm, ui.id().with("mute-all"), Sense::click())
+            .on_hover_text(if any_mute { "Unmute all tracks" } else { "No track is muted" });
+        if any_mute {
+            p.rect_filled(hm, 3.0, Color32::from_rgb(200, 70, 70));
+        } else if hm_resp.hovered() {
+            p.rect_filled(hm, 3.0, Color32::from_gray(80));
+        }
+        speaker_icon(&p, hm.shrink(3.0), if any_mute { Color32::WHITE } else { grey });
+        if hm_resp.clicked() && any_mute {
+            for t in &mut self.song.tracks {
+                t.mute = false;
+            }
+            self.dirty = true;
+            self.status = "Every track unmuted.".into();
+        }
+        let hs = Rect::from_center_size(head.min + Vec2::new(244.0, 12.0), Vec2::splat(20.0));
+        let hs_resp = ui
+            .interact(hs, ui.id().with("solo-all"), Sense::click())
+            .on_hover_text(if any_solo { "Turn solo off for all tracks" } else { "No track is soloed" });
+        if any_solo {
+            p.rect_filled(hs, 3.0, Color32::from_rgb(220, 180, 50));
+        } else if hs_resp.hovered() {
+            p.rect_filled(hs, 3.0, Color32::from_gray(80));
+        }
+        headphones_icon(&p, hs.shrink(3.0), if any_solo { Color32::BLACK } else { grey });
+        if hs_resp.clicked() && any_solo {
+            for t in &mut self.song.tracks {
+                t.solo = false;
+            }
+            self.dirty = true;
+            self.status = "Solo turned off for every track.".into();
+        }
         p.text(
             head.min + Vec2::new(318.0, 12.0),
             Align2::CENTER_CENTER,
@@ -361,9 +389,20 @@ impl App {
                 let p = ui.painter();
                 let head = Rect::from_min_size(r.min, Vec2::new(r.width(), HEAD_H));
                 p.rect_filled(head, 0.0, Color32::from_rgb(46, 49, 57));
+                // The bar number under the mouse: its number is boxed and its
+                // column lights up in every track, as in Guitar Pro.
+                let hover_bar = resp
+                    .hover_pos()
+                    .or(self.bar_hover_demo.map(|b| Pos2::new(r.left() + (b as f32 + 0.5) * CELL, r.top() + 4.0)))
+                    .filter(|pp| head.contains(*pp))
+                    .map(|pp| (((pp.x - r.left()) / CELL).max(0.0) as usize).min(bars.saturating_sub(1)));
+                if let Some(b) = hover_bar {
+                    let hr = Rect::from_min_size(Pos2::new(r.left() + b as f32 * CELL, r.top()), Vec2::new(CELL, HEAD_H));
+                    p.rect_filled(hr, 0.0, Color32::from_rgb(98, 106, 132));
+                }
                 for b in 0..bars {
                     let x = r.left() + b as f32 * CELL;
-                    if b == 0 || (b + 1) % 4 == 0 {
+                    if b == 0 || (b + 1) % 4 == 0 || hover_bar == Some(b) {
                         p.text(
                             Pos2::new(x + 3.0, r.top() + 12.0),
                             Align2::LEFT_CENTER,
@@ -413,6 +452,9 @@ impl App {
                         }
                         if self.play_beat.map(|x| x.0) == Some(b) {
                             p.rect_filled(cr, 0.0, Color32::from_white_alpha(70));
+                        }
+                        if hover_bar == Some(b) {
+                            p.rect_filled(cr, 0.0, Color32::from_white_alpha(60));
                         }
                     }
                 }
@@ -755,9 +797,69 @@ impl App {
                         }
                     }
                 }
+                if resp.secondary_clicked()
+                    && let Some(pp) = resp.interact_pointer_pos()
+                    && let Some((page, rel)) = locate(pp)
+                    && let Some((ti, b, j, s)) = score::hit_test(&lay, &self.song, self.voice, page, rel)
+                {
+                    let inside = ti == self.track && self.selection().map(|(a, z)| (b, j) >= a && (b, j) <= z).unwrap_or(false);
+                    if !inside {
+                        self.sel_anchor = None;
+                        self.track = ti;
+                        self.bar = b;
+                        self.beat = j;
+                        if let Some(score::Hit::Tab(st)) = s {
+                            self.string = st;
+                            self.std_cursor = None;
+                        }
+                        self.clamp_cursor();
+                    }
+                }
+                resp.context_menu(|ui| self.score_context_menu(ui));
+                if self.ctx_menu_demo
+                    && let Some((page, r)) = lay.beat_rect(&self.song, self.bar, self.beat, self.voice)
+                {
+                    let o = lay.page_origin(page, left, rect.top());
+                    let at = r.translate(o.to_vec2()).right_bottom();
+                    let style = ui.style().clone();
+                    egui::Area::new(egui::Id::new("ctx-menu-demo")).order(egui::Order::Foreground).fixed_pos(at).show(ui.ctx(), |ui| {
+                        egui::Frame::menu(&style).show(ui, |ui| {
+                            ui.style_mut().visuals.button_frame = false;
+                            ui.set_max_width(230.0);
+                            self.score_context_menu(ui)
+                        });
+                    });
+                }
+                if self.playing && self.follow {
+                    // Follow playback: keep the whole line of music being played in
+                    // view (every track, with its section name above). When playback
+                    // reaches a new line low in the window, that line moves to the
+                    // top so the music coming next is visible below it.
+                    self.scroll_to_cursor = false;
+                    if let Some((pb, _)) = self.play_beat
+                        && let Some(&(si, bi)) = lay.bar_pos.get(pb)
+                        && let Some(sys) = lay.systems.get(si)
+                        && let Some(bl) = sys.bars.get(bi)
+                    {
+                        let o = lay.page_origin(sys.page, left, rect.top());
+                        let target = Rect::from_min_max(
+                            Pos2::new(o.x + bl.x - 12.0, o.y + sys.y - 24.0 * lay.z),
+                            Pos2::new(o.x + bl.x + bl.w + 12.0, o.y + sys.y + lay.sys_h),
+                        );
+                        let fully = clip.contains_rect(target);
+                        let new_line = self.follow_sys != Some(si);
+                        let low = target.top() > clip.top() + clip.height() * 0.45;
+                        if !fully || (new_line && low) {
+                            ui.scroll_to_rect(target, Some(egui::Align::Min));
+                        }
+                        self.follow_sys = Some(si);
+                    }
+                } else {
+                    self.follow_sys = None;
+                }
                 if self.scroll_to_cursor {
                     self.scroll_to_cursor = false;
-                    let target = self.play_beat.unwrap_or((self.bar, self.beat));
+                    let target = (self.bar, self.beat);
                     if let Some((page, r)) =
                         lay.beat_rect(&self.song, target.0, target.1, self.voice)
                     {

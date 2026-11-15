@@ -3,6 +3,7 @@
 
 mod actions;
 mod chordlib;
+mod clipmenu;
 mod automation;
 mod bottom;
 mod cursor;
@@ -202,6 +203,14 @@ pub struct App {
     export_dlg: Option<printing::ExportDlg>,
     /// The print preview window, while open.
     print_preview: Option<printing::PrintPreview>,
+    /// The Special Paste window, while open.
+    special_paste: Option<clipmenu::SpecialPaste>,
+    /// Pictures for checks: the score's right-click menu shown by the cursor.
+    ctx_menu_demo: bool,
+    /// Pictures for checks: a bar number shown as if the mouse were over it.
+    bar_hover_demo: Option<usize>,
+    /// During playback: the line of music the view last followed.
+    follow_sys: Option<usize>,
 }
 
 impl App {
@@ -344,6 +353,10 @@ impl App {
             chord_lib_open: false,
             export_dlg: None,
             print_preview: None,
+            special_paste: None,
+            ctx_menu_demo: false,
+            bar_hover_demo: None,
+            follow_sys: None,
         };
         if app.screenshot.is_none() {
             app.recent = home::load_recent();
@@ -434,6 +447,25 @@ impl App {
                 "chordlib" => app.chord_lib_open = true,
                 "exportpdf" => app.open_export(printing::ExportKind::Pdf),
                 "printpreview" => app.print_song(),
+                "ctxmenu" => app.ctx_menu_demo = true,
+                "barhover" => app.bar_hover_demo = Some(2),
+                // Playback part way through bar 9 (no sound), for checking that the view follows.
+                "playlate" => {
+                    app.playing = true;
+                    app.play_beat = Some((8, 1));
+                    app.play_tick = Some((8, 0.6 * crate::model::QUARTER as f32));
+                }
+                // A muted and a soloed track, for checking the header buttons.
+                "mutesolo" => {
+                    app.song.tracks[0].mute = true;
+                    if let Some(t) = app.song.tracks.get_mut(1) {
+                        t.solo = true;
+                    }
+                }
+                "specialpaste" => {
+                    app.copy();
+                    app.open_special_paste();
+                }
                 "exportpng" => app.open_export(printing::ExportKind::Png),
                 "arpup" => app.open_popup(popups::Popup::ArpeggioUp),
                 "arpdown" => app.open_popup(popups::Popup::ArpeggioDown),
