@@ -44,9 +44,50 @@ pub type PageImage = image::RgbaImage;
 pub fn render_pages(spec: &PrintSpec, pages: &[usize], dpi: f32, transparent: bool) -> Vec<PageImage> {
     let lay = spec.layout();
     let (w_mm, _) = spec.page_mm();
-    let px_w = (w_mm / 25.4 * dpi).round().max(16.0);
-    let ppp = px_w / lay.page_w();
     let size = Vec2::new(lay.page_w(), lay.page_h());
+    render_with(size, w_mm, pages, dpi, &mut |painter, page, music_font| {
+        let dc = score::DrawCtx {
+            song: spec.song,
+            ti: spec.track,
+            cursor: (usize::MAX, 0, 0),
+            selection: None,
+            play_tick: None,
+            music_font,
+            show_cursor: false,
+            voice: 0,
+            cursor_std: None,
+            printing: true,
+            transparent,
+        };
+        score::draw_page(painter, &lay, &dc, page, Pos2::ZERO);
+    })
+}
+
+/// Renders pages (0-based) of a chord chart at `dpi` dots per inch.
+pub fn render_chart(doc: &crate::chart::ChordChart, pages: &[usize], dpi: f32) -> Vec<PageImage> {
+    use crate::chart;
+    let size = Vec2::new(chart::PAGE_W, chart::PAGE_H);
+    render_with(size, chart::PAGE_MM.0, pages, dpi, &mut |painter, page, _| {
+        let lay = chart::layout(doc, &chart::painter_measure(painter));
+        chart::draw_page(painter, doc, &lay, page, Pos2::ZERO, 1.0, None, true);
+    })
+}
+
+/// The number of pages of a chord chart (measured with the real fonts).
+pub fn chart_page_count(doc: &crate::chart::ChordChart) -> usize {
+    use crate::chart;
+    let mut n = 1;
+    render_with(Vec2::new(chart::PAGE_W, chart::PAGE_H), chart::PAGE_MM.0, &[0], 24.0, &mut |painter, _, _| {
+        n = chart::layout(doc, &chart::painter_measure(painter)).len().max(1);
+    });
+    n
+}
+
+/// Renders pages of any kind: `size` is a page in points at zoom 1, `w_mm`
+/// its real width, and `draw` paints page `n` at the origin.
+pub fn render_with(size: Vec2, w_mm: f32, pages: &[usize], dpi: f32, draw: &mut dyn FnMut(&egui::Painter, usize, bool)) -> Vec<PageImage> {
+    let px_w = (w_mm / 25.4 * dpi).round().max(16.0);
+    let ppp = px_w / size.x;
     let ctx = egui::Context::default();
     let music_font = crate::setup_fonts(&ctx);
     let mut textures: HashMap<TextureId, ColorImage> = HashMap::new();
@@ -70,20 +111,7 @@ pub fn render_pages(spec: &PrintSpec, pages: &[usize], dpi: f32, transparent: bo
     for &page in pages {
         ctx.begin_pass(input());
         let painter = ctx.layer_painter(egui::LayerId::background());
-        let dc = score::DrawCtx {
-            song: spec.song,
-            ti: spec.track,
-            cursor: (usize::MAX, 0, 0),
-            selection: None,
-            play_tick: None,
-            music_font,
-            show_cursor: false,
-            voice: 0,
-            cursor_std: None,
-            printing: true,
-            transparent,
-        };
-        score::draw_page(&painter, &lay, &dc, page, Pos2::ZERO);
+        draw(&painter, page, music_font);
         let out = ctx.end_pass();
         apply_textures(&mut textures, out.textures_delta);
         let ppp = out.pixels_per_point;

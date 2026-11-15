@@ -12,9 +12,9 @@ use egui::{
 };
 use std::path::PathBuf;
 
-const BLUE: Color32 = Color32::from_rgb(61, 123, 224);
-const TAB_BG: Color32 = Color32::from_rgb(76, 82, 100);
-const BODY_BG: Color32 = Color32::from_rgb(38, 40, 48);
+pub(super) const BLUE: Color32 = Color32::from_rgb(61, 123, 224);
+pub(super) const TAB_BG: Color32 = Color32::from_rgb(76, 82, 100);
+pub(super) const BODY_BG: Color32 = Color32::from_rgb(38, 40, 48);
 const LABEL_W: f32 = 230.0;
 const WIN_W: f32 = 760.0;
 
@@ -82,7 +82,7 @@ fn load_style(p: &std::path::Path) -> Result<Stylesheet, String> {
 
 // ----- small widgets in the window's look -----
 
-fn heading(ui: &mut Ui, t: &str) {
+pub(super) fn heading(ui: &mut Ui, t: &str) {
     ui.add_space(10.0);
     ui.label(
         RichText::new(t)
@@ -93,17 +93,17 @@ fn heading(ui: &mut Ui, t: &str) {
     ui.add_space(4.0);
 }
 
-fn subheading(ui: &mut Ui, t: &str) {
+pub(super) fn subheading(ui: &mut Ui, t: &str) {
     ui.add_space(4.0);
     ui.label(RichText::new(t).size(14.0).color(Color32::from_gray(225)));
 }
 
 /// A settings row: the label right-aligned in a fixed column, then the controls.
-fn row(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui)) {
+pub(super) fn row(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui)) {
     row_w(ui, LABEL_W, label, add);
 }
 
-fn row_w(ui: &mut Ui, w: f32, label: &str, add: impl FnOnce(&mut Ui)) {
+pub(super) fn row_w(ui: &mut Ui, w: f32, label: &str, add: impl FnOnce(&mut Ui)) {
     ui.horizontal(|ui| {
         ui.allocate_ui_with_layout(
             Vec2::new(w, 22.0),
@@ -122,7 +122,7 @@ fn row_w(ui: &mut Ui, w: f32, label: &str, add: impl FnOnce(&mut Ui)) {
 }
 
 /// An On/Off switch. Returns true when flipped.
-fn switch(ui: &mut Ui, on: &mut bool) -> bool {
+pub(super) fn switch(ui: &mut Ui, on: &mut bool) -> bool {
     let (r, resp) = ui.allocate_exact_size(Vec2::new(32.0, 17.0), Sense::click());
     if resp.clicked() {
         *on = !*on;
@@ -144,7 +144,7 @@ fn switch(ui: &mut Ui, on: &mut bool) -> bool {
 }
 
 /// A drop-down list of choices.
-fn choice(ui: &mut Ui, id: &str, v: &mut u8, names: &[&str], width: f32) {
+pub(super) fn choice(ui: &mut Ui, id: &str, v: &mut u8, names: &[&str], width: f32) {
     let cur = names.get(*v as usize).copied().unwrap_or("");
     egui::ComboBox::from_id_salt(id)
         .selected_text(cur)

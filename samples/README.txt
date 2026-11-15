@@ -29,8 +29,10 @@ Written from public descriptions of the format, not yet checked with a file:
     Timer: the file only had one at the start of the song (time 0), so it
     isn't known yet whether Guitar Pro counts seconds or something finer.
 
-Still to test (GuitarCraft keeps these in its own hidden note in the file,
-which Guitar Pro 8 ignores, so Guitar Pro won't show them yet):
+Set aside for later (15 Nov 2026: the main question is answered; these
+couldn't be added in Guitar Pro 8, so they wait until a test file is made).
+Nothing is lost: GuitarCraft keeps them in its own hidden note in the file,
+which Guitar Pro 8 ignores, so only Guitar Pro won't show them yet:
     Barre ("BV", Notation section of the palette)
     Slash notation (Notation section)
     Stem direction and beaming (the row of note icons under the Notation section)
@@ -52,3 +54,9 @@ Tips for the hard ones (from the user guide and the palette pictures):
       (Bar menu for free time and repeats, Note or Effects menu for the rest).
 
 Check files from "--gp-tests" go to the shots folder.
+
+Chord charts
+------------
+Morning Walk chart.gcchart  A sample chord chart (made-up words). Open it with
+                            File > Open. Chord charts are saved only as .gcchart
+                            files, never as Guitar Pro files.

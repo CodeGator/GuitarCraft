@@ -1,6 +1,8 @@
 //! GuitarCraft: a guitar and bass tablature editor.
 
 mod app;
+mod chart;
+mod chordshape;
 mod audio;
 mod extras;
 mod fileio;
@@ -31,6 +33,31 @@ fn main() -> eframe::Result {
             let from = args.next().unwrap_or_default();
             let to = std::path::PathBuf::from(args.next().unwrap_or_default());
             let dpi = args.next().and_then(|d| d.parse::<f32>().ok()).unwrap_or(150.0);
+            // A chord chart ("chart" is the sample chart).
+            let is_chart = from == "chart" || from.to_ascii_lowercase().ends_with(&format!(".{}", chart::EXT));
+            if is_chart {
+                let doc = if from == "chart" { Ok(chart::ChordChart::sample()) } else { chart::ChordChart::load(std::path::Path::new(&from)) };
+                let r = doc.and_then(|doc| {
+                    let pages: Vec<usize> = (0..render::chart_page_count(&doc)).collect();
+                    if to.extension().map(|e| e.eq_ignore_ascii_case(chart::EXT)).unwrap_or(false) {
+                        // Saves the chart itself (for making sample files).
+                        return doc.save(&to);
+                    }
+                    let imgs = render::render_chart(&doc, &pages, dpi);
+                    if to.extension().map(|e| e.eq_ignore_ascii_case("png")).unwrap_or(false) {
+                        render::stack(&imgs).save(&to).map_err(|e| e.to_string())
+                    } else {
+                        std::fs::write(&to, render::pdf(&imgs, chart::PAGE_MM.0, chart::PAGE_MM.1, &doc.title)).map_err(|e| e.to_string())
+                    }
+                });
+                match r {
+                    Ok(()) => std::process::exit(0),
+                    Err(e) => {
+                        eprintln!("{e}");
+                        std::process::exit(1);
+                    }
+                }
+            }
             let song = if from == "demo" { Ok(model::Song::demo()) } else { fileio::load_song(std::path::Path::new(&from)) };
             let r = song.and_then(|song| {
                 let shown: Vec<usize> = (0..song.tracks.len()).filter(|&i| song.tracks[i].visible).collect();

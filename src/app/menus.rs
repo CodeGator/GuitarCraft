@@ -42,6 +42,10 @@ impl App {
             self.request(Pending::New);
             ui.close();
         }
+        if item(ui, "New Chord Chart", "Ctrl+Shift+N").clicked() {
+            self.request(Pending::NewChart);
+            ui.close();
+        }
         ui.menu_button("New from Template", |ui| {
             for (i, name) in super::home::TEMPLATES.iter().enumerate() {
                 if ui.button(*name).clicked() {

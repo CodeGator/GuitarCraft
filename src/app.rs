@@ -2,6 +2,9 @@
 //! The panels are drawn in `panels.rs`.
 
 mod actions;
+mod chartstyle;
+mod chartui;
+mod chartxpose;
 mod chordlib;
 mod clipmenu;
 mod automation;
@@ -57,6 +60,8 @@ enum Pending {
     Template(usize),
     Close,
     Quit,
+    /// A new chord chart.
+    NewChart,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -211,6 +216,8 @@ pub struct App {
     bar_hover_demo: Option<usize>,
     /// During playback: the line of music the view last followed.
     follow_sys: Option<usize>,
+    /// The chord chart being edited, when one is open (instead of a score).
+    chart: Option<chartui::ChartState>,
 }
 
 impl App {
@@ -357,6 +364,7 @@ impl App {
             ctx_menu_demo: false,
             bar_hover_demo: None,
             follow_sys: None,
+            chart: None,
         };
         if app.screenshot.is_none() {
             app.recent = home::load_recent();
@@ -448,6 +456,75 @@ impl App {
                 "exportpdf" => app.open_export(printing::ExportKind::Pdf),
                 "printpreview" => app.print_song(),
                 "ctxmenu" => app.ctx_menu_demo = true,
+                "chart3" => {
+                    let mut st = chartui::ChartState::new(crate::chart::ChordChart::sample());
+                    st.doc.look.columns = 3;
+                    st.tab = 0;
+                    app.chart = Some(st);
+                    app.show_home = false;
+                    app.status = "Three columns: lines flow down each column, then on to the next.".into();
+                }
+                "chartdiagrams" => {
+                    let mut st = chartui::ChartState::new(crate::chart::ChordChart::sample());
+                    st.tab = 0;
+                    st.doc.sections[1].text.push_str("\n[Badd9]Weird [F#m7b5]chords [G6/9]too [D/F#]");
+                    st.diagrams_open = true;
+                    app.chart = Some(st);
+                    app.show_home = false;
+                    app.status = "Chord diagrams are worked out from the chord names.".into();
+                }
+                "charttime" | "chartkey" => {
+                    let mut st = chartui::ChartState::new(crate::chart::ChordChart::sample());
+                    st.tab = 0;
+                    app.chart = Some(st);
+                    app.show_home = false;
+                    app.open_chart_sig(part == "charttime");
+                    app.status = "The chart's key and time use the score's editors.".into();
+                }
+                "charttempo" => {
+                    let mut st = chartui::ChartState::new(crate::chart::ChordChart::sample());
+                    // A slower bridge that picks up again into the last chorus.
+                    st.doc.set_tempo_points(&[(0, 63, false), (10, 58, true), (11, 66, false)]);
+                    st.tempo_open = true;
+                    st.tempo_ed.sel = 10;
+                    app.chart = Some(st);
+                    app.show_home = false;
+                    app.status = "The chart's BPM opens the same tempo editor as a score's.".into();
+                }
+                "chartmoved" => {
+                    let mut st = chartui::ChartState::new(crate::chart::ChordChart::sample());
+                    // Verse 2 one place earlier, as with the Sections list's up button.
+                    st.sel = st.doc.move_section(2, -1);
+                    app.chart = Some(st);
+                    app.show_home = false;
+                    app.status = "Verse 2 moved before Verse 1: the map and the chart follow.".into();
+                }
+                "transpose" => {
+                    app.chart = Some(chartui::ChartState::new(crate::chart::ChordChart::sample()));
+                    app.show_home = false;
+                    app.open_transpose(None);
+                    app.status = "Transpose: by half steps or to a key; the preview shows each chord's new name.".into();
+                }
+                "chartstyle" | "chartstyle2" | "chartstyle3" | "chartstage" => {
+                    let mut st = chartui::ChartState::new(crate::chart::ChordChart::sample());
+                    if part == "chartstage" {
+                        st.doc.look = crate::chart::ChartLook::stage();
+                    }
+                    app.chart = Some(st);
+                    app.show_home = false;
+                    match part.as_str() {
+                        "chartstyle" => app.open_chart_style(0),
+                        "chartstyle2" => app.open_chart_style(2),
+                        "chartstyle3" => app.open_chart_style(3),
+                        _ => {}
+                    }
+                    app.status = "The chart's stylesheet sets its fonts, colours and columns (F7).".into();
+                }
+                "chart" => {
+                    app.chart = Some(chartui::ChartState::new(crate::chart::ChordChart::sample()));
+                    app.show_home = false;
+                    app.status = "Click a section on the page to edit it; rearrange the song in the map.".into();
+                }
                 "barhover" => app.bar_hover_demo = Some(2),
                 // Playback part way through bar 9 (no sound), for checking that the view follows.
                 "playlate" => {
@@ -1106,6 +1183,8 @@ impl App {
     }
 
     fn reset_after_load(&mut self) {
+        // A score is open now, not a chord chart.
+        self.chart = None;
         self.dirty = false;
         self.undo.clear();
         self.redo.clear();
@@ -1145,7 +1224,9 @@ impl App {
         }
         let f = self
             .file_dialog()
+            .add_filter("Guitar Pro files and chord charts", &["gp", "gpx", "gp3", "gp4", "gp5", crate::chart::EXT])
             .add_filter("Guitar Pro files", &["gp", "gpx", "gp3", "gp4", "gp5"])
+            .add_filter("GuitarCraft chord charts", &[crate::chart::EXT])
             .pick_file();
         if let Some(p) = f {
             self.open_path(p);
@@ -1155,6 +1236,10 @@ impl App {
     fn open_path(&mut self, p: PathBuf) {
         // Kept as a full location, so later dialogs can start in its folder.
         let p = full_path(&p);
+        if p.extension().map(|e| e.eq_ignore_ascii_case(crate::chart::EXT)).unwrap_or(false) {
+            self.open_chart_path(p);
+            return;
+        }
         match fileio::load_song(&p) {
             Ok(song) => {
                 self.stop();
@@ -1184,6 +1269,12 @@ impl App {
     }
 
     fn save(&mut self, save_as: bool) {
+        // A chord chart is only ever saved as a chord chart (Guitar Pro has no
+        // place for one).
+        if self.chart.is_some() {
+            self.save_chart(save_as);
+            return;
+        }
         if self.screenshot.is_some() {
             return;
         }
@@ -1325,6 +1416,7 @@ impl App {
                 self.show_home = false;
             }
             Pending::Close => self.close_song(),
+            Pending::NewChart => self.new_chart(),
             Pending::Quit => {
                 self.dirty = false;
                 self.pending = None;
