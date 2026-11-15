@@ -18,6 +18,10 @@ impl App {
             || self.popup.is_some()
             || self.voices_open
             || self.auto_open
+            || self.special_paste.is_some()
+            || self.export_dlg.is_some()
+            || self.print_preview.is_some()
+            || self.style_dlg.is_some()
     }
 
     pub(super) fn check_bar_duration(&mut self) {

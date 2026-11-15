@@ -193,36 +193,7 @@ impl App {
             ui.close();
         }
         ui.separator();
-        if item(ui, "Cut", "Ctrl+X").clicked() {
-            self.copy();
-            self.last_copy_all = false;
-            self.delete_at_cursor();
-            ui.close();
-        }
-        if item(ui, "Copy", "Ctrl+C").clicked() {
-            self.copy();
-            self.last_copy_all = false;
-            ui.close();
-        }
-        if item_if(
-            ui,
-            !self.clipboard.is_empty() || !self.bar_clipboard.is_empty(),
-            "Paste",
-            "Ctrl+V",
-        )
-        .clicked()
-        {
-            self.paste_any();
-            ui.close();
-        }
-        if item(ui, "All-Track Cut", "Ctrl+Shift+X").clicked() {
-            self.all_track_cut();
-            ui.close();
-        }
-        if item(ui, "All-Track Copy", "Ctrl+Shift+C").clicked() {
-            self.all_track_copy();
-            ui.close();
-        }
+        self.clipboard_items(ui);
         ui.separator();
         ui.menu_button("Voices", |ui| {
             for v in 0..VOICES {
@@ -339,7 +310,7 @@ impl App {
         }
     }
 
-    fn bar_menu(&mut self, ui: &mut Ui) {
+    pub(super) fn bar_menu(&mut self, ui: &mut Ui) {
         let mb = self.song.master[self.bar].clone();
         if item(ui, "Insert Bar", "Ctrl+Ins").clicked() {
             self.insert_bar(self.bar);
@@ -401,7 +372,7 @@ impl App {
         }
     }
 
-    fn note_menu(&mut self, ui: &mut Ui) {
+    pub(super) fn note_menu(&mut self, ui: &mut Ui) {
         let cur = self.cur_beat().clone();
         let has = !cur.is_rest();
         let n = cur
@@ -551,7 +522,7 @@ impl App {
         });
     }
 
-    fn effects_menu(&mut self, ui: &mut Ui) {
+    pub(super) fn effects_menu(&mut self, ui: &mut Ui) {
         let cur = self.cur_beat().clone();
         let has = !cur.is_rest();
         let n = cur
