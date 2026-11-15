@@ -402,7 +402,11 @@ impl App {
                 .resizable(false)
                 .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
                 .show(ctx, |ui| {
-                    ui.label("This song has changes that haven't been saved.");
+                    ui.label(if self.chart.is_some() {
+                        "This chord chart has changes that haven't been saved."
+                    } else {
+                        "This song has changes that haven't been saved."
+                    });
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
                         if ui.button("Save first").clicked() {
@@ -458,14 +462,14 @@ impl App {
     }
 
     fn update_title(&mut self, ctx: &egui::Context) {
+        let name = match &self.chart {
+            Some(st) => st.doc.title.clone(),
+            None => self.song.title.clone(),
+        };
         let t = format!(
             "{}{} - GuitarCraft",
             if self.dirty { "* " } else { "" },
-            if self.song.title.is_empty() {
-                "Untitled"
-            } else {
-                &self.song.title
-            }
+            if name.is_empty() { "Untitled" } else { &name }
         );
         if t != self.title_cache {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(t.clone()));
@@ -523,7 +527,9 @@ impl eframe::App for App {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.pending = Some(Pending::Quit);
         }
-        if !self.show_home {
+        if !self.show_home && self.chart.is_some() {
+            self.handle_chart_keys(&ctx);
+        } else if !self.show_home {
             self.handle_keys(&ctx);
         } else {
             self.handle_global_keys(&ctx);
@@ -544,12 +550,28 @@ impl eframe::App for App {
                     .fill(Color32::from_rgb(32, 34, 40))
                     .inner_margin(egui::Margin::symmetric(6, 2)),
             )
-            .show(ui, |ui| self.menu_bar(ui));
+            .show(ui, |ui| {
+                if self.chart.is_some() && !self.show_home {
+                    self.chart_menu_bar(ui)
+                } else {
+                    self.menu_bar(ui)
+                }
+            });
         if self.show_home {
             egui::CentralPanel::default()
                 .frame(egui::Frame::NONE)
                 .show(ui, |ui| self.home_ui(ui));
             self.dialogs(&ctx);
+            return;
+        }
+        if self.chart.is_some() {
+            // A chord chart: its own screen, without the score's tools.
+            let area = ctx.content_rect();
+            self.chart_screen(ui);
+            self.toast_ui(&ctx, area);
+            self.dialogs(&ctx);
+            self.export_window(&ctx);
+            self.print_preview_window(&ctx);
             return;
         }
         egui::Panel::top("toolbar")

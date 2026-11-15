@@ -1,0 +1,402 @@
+{
+  "format": "GuitarCraft chord chart 2",
+  "title": "Morning Walk",
+  "artist": "GuitarCraft demo",
+  "capo": "None",
+  "tuning": "-1 whole step",
+  "bpm": 63,
+  "time": "4/4",
+  "key": "E",
+  "sections": [
+    {
+      "id": 1,
+      "name": "Intro",
+      "kind": "Intro",
+      "text": "| E /// | B //// | C#m /// | A /// | E /// |",
+      "color": [
+        255,
+        242,
+        204
+      ],
+      "new_column": false
+    },
+    {
+      "id": 2,
+      "name": "Verse 1",
+      "kind": "Verse",
+      "text": "[E]Out along the river road\n[B]Where the morning light is slow\n[C#m]Every step a quiet song\n[A]Walking where the [E]day be[B]longs",
+      "color": [
+        244,
+        204,
+        204
+      ],
+      "new_column": false
+    },
+    {
+      "id": 3,
+      "name": "Verse 2",
+      "kind": "Verse",
+      "text": "[E]Birds are calling from the trees\n[B]Carried on the open breeze\n[C#m]Nothing here I need to find\n[A]Leave the noise [E]behind",
+      "color": [
+        244,
+        204,
+        204
+      ],
+      "new_column": false
+    },
+    {
+      "id": 4,
+      "name": "Chorus",
+      "kind": "Chorus",
+      "text": "And the [A]sun comes up a[E]gain\nOver [A]hills and through the [E]rain\nWe keep [A]walk[B]ing [C#m]on and [E]on [B]",
+      "color": null,
+      "new_column": false
+    },
+    {
+      "id": 5,
+      "name": "Interlude",
+      "kind": "Interlude",
+      "text": "| E /// | B //// | C# /// | A /// |",
+      "color": [
+        255,
+        242,
+        204
+      ],
+      "new_column": false
+    },
+    {
+      "id": 6,
+      "name": "Verse 3",
+      "kind": "Verse",
+      "text": "[E]When the evening settles in\n[B]And the road comes round again\n[C#m]I will keep this morning near\n[A]Every step still [E]clear",
+      "color": [
+        244,
+        204,
+        204
+      ],
+      "new_column": false
+    },
+    {
+      "id": 7,
+      "name": "Bridge",
+      "kind": "Bridge",
+      "text": "[C#m]Step by step and side by [E]side\n[A]Open road and open [E]sky\n[E]Here we go, here we [B]go",
+      "color": [
+        208,
+        224,
+        227
+      ],
+      "new_column": false
+    },
+    {
+      "id": 8,
+      "name": "Verse 4",
+      "kind": "Verse",
+      "text": "[C#m]Lanterns hanging in the square\n[B]Music drifting through the air\n[A]Every window, every [E]light",
+      "color": [
+        244,
+        204,
+        204
+      ],
+      "new_column": false
+    },
+    {
+      "id": 9,
+      "name": "Verse 5",
+      "kind": "Verse",
+      "text": "Walk with [A]me until the [E]dawn\nSing a[A]long the road we're [E]on\nWe will [A]go where [B]rivers [A]bend and [E]never [B]stop",
+      "color": [
+        244,
+        204,
+        204
+      ],
+      "new_column": false
+    },
+    {
+      "id": 10,
+      "name": "Interlude 2",
+      "kind": "Interlude",
+      "text": "| C#m /// //// | A /// //// |",
+      "color": [
+        255,
+        242,
+        204
+      ],
+      "new_column": false
+    }
+  ],
+  "map": [
+    {
+      "section": 1,
+      "repeat": 1,
+      "label": "",
+      "color": null
+    },
+    {
+      "section": 2,
+      "repeat": 1,
+      "label": "",
+      "color": null
+    },
+    {
+      "section": 3,
+      "repeat": 1,
+      "label": "",
+      "color": null
+    },
+    {
+      "section": 4,
+      "repeat": 1,
+      "label": "",
+      "color": null
+    },
+    {
+      "section": 5,
+      "repeat": 1,
+      "label": "",
+      "color": null
+    },
+    {
+      "section": 6,
+      "repeat": 1,
+      "label": "",
+      "color": null
+    },
+    {
+      "section": 8,
+      "repeat": 1,
+      "label": "",
+      "color": null
+    },
+    {
+      "section": 4,
+      "repeat": 1,
+      "label": "",
+      "color": null
+    },
+    {
+      "section": 9,
+      "repeat": 1,
+      "label": "",
+      "color": null
+    },
+    {
+      "section": 10,
+      "repeat": 1,
+      "label": "",
+      "color": null
+    },
+    {
+      "section": 7,
+      "repeat": 2,
+      "label": "",
+      "color": null
+    },
+    {
+      "section": 4,
+      "repeat": 1,
+      "label": "",
+      "color": null
+    },
+    {
+      "section": 9,
+      "repeat": 1,
+      "label": "",
+      "color": null
+    }
+  ],
+  "diagrams": [
+    "E5",
+    "A",
+    "C#",
+    "B"
+  ],
+  "copyright": "© 2026 GuitarCraft demo. Words and music made up for this example.",
+  "look": {
+    "title": {
+      "family": "Arial",
+      "size": 22.0,
+      "bold": false,
+      "italic": false,
+      "color": [
+        20,
+        20,
+        24
+      ]
+    },
+    "info": {
+      "family": "Arial",
+      "size": 10.5,
+      "bold": false,
+      "italic": false,
+      "color": [
+        20,
+        20,
+        24
+      ]
+    },
+    "map": {
+      "family": "Arial",
+      "size": 10.5,
+      "bold": true,
+      "italic": false,
+      "color": [
+        20,
+        20,
+        24
+      ]
+    },
+    "heading": {
+      "family": "Arial",
+      "size": 10.5,
+      "bold": true,
+      "italic": false,
+      "color": [
+        153,
+        0,
+        255
+      ]
+    },
+    "repeat": {
+      "family": "Arial",
+      "size": 10.5,
+      "bold": true,
+      "italic": false,
+      "color": [
+        153,
+        0,
+        255
+      ]
+    },
+    "chords": {
+      "family": "Arial",
+      "size": 10.5,
+      "bold": true,
+      "italic": false,
+      "color": [
+        20,
+        20,
+        24
+      ]
+    },
+    "lyrics": {
+      "family": "Arial",
+      "size": 10.5,
+      "bold": false,
+      "italic": false,
+      "color": [
+        20,
+        20,
+        24
+      ]
+    },
+    "bars": {
+      "family": "Arial",
+      "size": 10.5,
+      "bold": true,
+      "italic": false,
+      "color": [
+        20,
+        20,
+        24
+      ]
+    },
+    "copyright": {
+      "family": "Arial",
+      "size": 7.5,
+      "bold": false,
+      "italic": false,
+      "color": [
+        90,
+        90,
+        90
+      ]
+    },
+    "shade": true,
+    "columns": 2,
+    "show_diagrams": true,
+    "show_map": true,
+    "kind_colors": [
+      [
+        "Intro",
+        [
+          255,
+          242,
+          204
+        ]
+      ],
+      [
+        "Verse",
+        [
+          244,
+          204,
+          204
+        ]
+      ],
+      [
+        "PreChorus",
+        [
+          217,
+          234,
+          211
+        ]
+      ],
+      [
+        "Chorus",
+        null
+      ],
+      [
+        "Bridge",
+        [
+          208,
+          224,
+          227
+        ]
+      ],
+      [
+        "Interlude",
+        [
+          255,
+          242,
+          204
+        ]
+      ],
+      [
+        "Instrumental",
+        [
+          255,
+          242,
+          204
+        ]
+      ],
+      [
+        "Solo",
+        [
+          255,
+          242,
+          204
+        ]
+      ],
+      [
+        "Outro",
+        [
+          252,
+          229,
+          205
+        ]
+      ],
+      [
+        "Tag",
+        [
+          234,
+          209,
+          220
+        ]
+      ],
+      [
+        "Other",
+        null
+      ]
+    ]
+  }
+}

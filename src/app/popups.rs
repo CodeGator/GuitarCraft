@@ -156,49 +156,7 @@ impl App {
                 match kind {
                     Popup::TimeSig => {
                         ui.label(RichText::new(format!("Bar {bar_no}")).weak());
-                        ui.horizontal(|ui| {
-                            let r =
-                                ui.add(egui::DragValue::new(&mut self.pop_bar.num).range(1..=32));
-                            if ui.memory(|m| m.focused().is_none()) {
-                                r.request_focus();
-                            }
-                            ui.label(RichText::new("/").size(18.0));
-                            egui::ComboBox::from_id_salt("pop_den")
-                                .width(50.0)
-                                .selected_text(format!("{}", self.pop_bar.den))
-                                .show_ui(ui, |ui| {
-                                    for d in [1u8, 2, 4, 8, 16, 32] {
-                                        ui.selectable_value(
-                                            &mut self.pop_bar.den,
-                                            d,
-                                            format!("{d}"),
-                                        );
-                                    }
-                                });
-                        });
-                        ui.horizontal_wrapped(|ui| {
-                            for (n, d) in [
-                                (2u8, 4u8),
-                                (3, 4),
-                                (4, 4),
-                                (5, 4),
-                                (6, 8),
-                                (7, 8),
-                                (9, 8),
-                                (12, 8),
-                            ] {
-                                if ui
-                                    .selectable_label(
-                                        self.pop_bar.num == n && self.pop_bar.den == d,
-                                        format!("{n}/{d}"),
-                                    )
-                                    .clicked()
-                                {
-                                    self.pop_bar.num = n;
-                                    self.pop_bar.den = d;
-                                }
-                            }
-                        });
+                        time_sig_body(ui, &mut self.pop_bar.num, &mut self.pop_bar.den);
                         ui.checkbox(&mut self.pop_until_next, "Until the next change");
                     }
                     Popup::KeySig => {
@@ -206,51 +164,7 @@ impl App {
                         ui.label(RichText::new(format!("Bar {bar_no}")).weak());
                         // The key on a staff, as it will look in the score.
                         let bass = self.song.tracks[self.track].instrument.is_bass();
-                        key_staff(ui, self.pop_bar.key, bass, self.music_font);
-                        egui::Grid::new("keysig")
-                            .num_columns(2)
-                            .spacing(Vec2::new(10.0, 8.0))
-                            .show(ui, |ui| {
-                                ui.label("Mode:");
-                                ui.horizontal(|ui| {
-                                    ui.spacing_mut().item_spacing.x = 0.0;
-                                    for (minor, lab) in [(true, "Minor"), (false, "Major")] {
-                                        let on = self.pop_bar.key_minor == minor;
-                                        let b =
-                                            egui::Button::new(RichText::new(lab).color(if on {
-                                                egui::Color32::WHITE
-                                            } else {
-                                                egui::Color32::from_gray(200)
-                                            }))
-                                            .fill(if on {
-                                                egui::Color32::from_rgb(61, 123, 224)
-                                            } else {
-                                                egui::Color32::from_rgb(60, 64, 74)
-                                            })
-                                            .min_size(Vec2::new(54.0, 24.0));
-                                        if ui.add(b).clicked() {
-                                            self.pop_bar.key_minor = minor;
-                                        }
-                                    }
-                                });
-                                ui.end_row();
-                                ui.label("Note:");
-                                let minor = self.pop_bar.key_minor;
-                                egui::ComboBox::from_id_salt("pop_key")
-                                    .width(150.0)
-                                    .selected_text(key_label(self.pop_bar.key, minor))
-                                    .show_ui(ui, |ui| {
-                                        for k in -7i8..=7 {
-                                            ui.selectable_value(
-                                                &mut self.pop_bar.key,
-                                                k,
-                                                key_label(k, minor),
-                                            );
-                                        }
-                                    });
-                                ui.end_row();
-                            });
-                        ui.label(RichText::new(key_name(self.pop_bar.key)).weak());
+                        key_sig_body(ui, &mut self.pop_bar.key, &mut self.pop_bar.key_minor, bass, self.music_font);
                         ui.checkbox(&mut self.pop_until_next, "Until the next change");
                     }
                     Popup::Section => {
@@ -569,6 +483,67 @@ impl App {
 }
 
 /// "G (#)", "Bb (bb)", "F#m (######)": the key's tonic and its accidentals, like the original's list.
+/// The time signature editor's controls (the score's popup and the chord
+/// chart's): beats, beat value and the common signatures.
+pub(super) fn time_sig_body(ui: &mut egui::Ui, num: &mut u8, den: &mut u8) {
+    ui.horizontal(|ui| {
+        let r = ui.add(egui::DragValue::new(num).range(1..=32));
+        if ui.memory(|m| m.focused().is_none()) {
+            r.request_focus();
+        }
+        ui.label(RichText::new("/").size(18.0));
+        egui::ComboBox::from_id_salt("pop_den").width(50.0).selected_text(format!("{den}")).show_ui(ui, |ui| {
+            for d in [1u8, 2, 4, 8, 16, 32] {
+                ui.selectable_value(den, d, format!("{d}"));
+            }
+        });
+    });
+    ui.horizontal_wrapped(|ui| {
+        for (n, d) in [(2u8, 4u8), (3, 4), (4, 4), (5, 4), (6, 8), (7, 8), (9, 8), (12, 8)] {
+            if ui.selectable_label(*num == n && *den == d, format!("{n}/{d}")).clicked() {
+                *num = n;
+                *den = d;
+            }
+        }
+    });
+}
+
+/// The key signature editor's controls (the score's popup and the chord
+/// chart's): the key on a staff, major or minor, and the key note.
+pub(super) fn key_sig_body(ui: &mut egui::Ui, key: &mut i8, key_minor: &mut bool, bass: bool, music_font: bool) {
+    key_staff(ui, *key, bass, music_font);
+    egui::Grid::new("keysig").num_columns(2).spacing(Vec2::new(10.0, 8.0)).show(ui, |ui| {
+        ui.label("Mode:");
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 0.0;
+            for (minor, lab) in [(true, "Minor"), (false, "Major")] {
+                let on = *key_minor == minor;
+                let b = egui::Button::new(RichText::new(lab).color(if on { egui::Color32::WHITE } else { egui::Color32::from_gray(200) }))
+                    .fill(if on { egui::Color32::from_rgb(61, 123, 224) } else { egui::Color32::from_rgb(60, 64, 74) })
+                    .min_size(Vec2::new(54.0, 24.0));
+                if ui.add(b).clicked() {
+                    *key_minor = minor;
+                }
+            }
+        });
+        ui.end_row();
+        ui.label("Note:");
+        let minor = *key_minor;
+        egui::ComboBox::from_id_salt("pop_key").width(150.0).selected_text(key_label(*key, minor)).show_ui(ui, |ui| {
+            for k in -7i8..=7 {
+                ui.selectable_value(key, k, key_label(k, minor));
+            }
+        });
+        ui.end_row();
+    });
+    ui.label(RichText::new(key_name(*key)).weak());
+}
+
+/// A key's name without its sharps or flats: "E", "C#m".
+pub fn key_short(k: i8, minor: bool) -> String {
+    key_label(k, minor).split(' ').next().unwrap_or("").to_string()
+}
+
 pub fn key_label(k: i8, minor: bool) -> String {
     const MAJOR: [&str; 15] = [
         "Cb", "Gb", "Db", "Ab", "Eb", "Bb", "F", "C", "G", "D", "A", "E", "B", "F#", "C#",

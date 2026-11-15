@@ -314,12 +314,16 @@ impl App {
         y += 92.0;
         let mut open_new = false;
         let mut open_file = false;
+        let mut open_chart = false;
         let r_new = Rect::from_center_size(Pos2::new(full.center().x, y), Vec2::new(220.0, 26.0));
         let r_open =
             Rect::from_center_size(Pos2::new(full.center().x, y + 36.0), Vec2::new(220.0, 26.0));
+        let r_chart =
+            Rect::from_center_size(Pos2::new(full.center().x, y + 72.0), Vec2::new(220.0, 26.0));
         for (r, label, key, which) in [
             (r_new, "New File", "(Ctrl+N)", 0),
             (r_open, "Open File…", "(Ctrl+O)", 1),
+            (r_chart, "New Chord Chart", "", 2),
         ] {
             let resp = ui.interact(r, ui.id().with(("home_btn", which)), Sense::click());
             let p = ui.painter();
@@ -328,7 +332,15 @@ impl App {
             }
             let ic =
                 Rect::from_center_size(Pos2::new(r.left() + 30.0, r.center().y), Vec2::splat(14.0));
-            if which == 0 {
+            if which == 2 {
+                // A little page of lines.
+                let c = Color32::from_gray(220);
+                p.rect_stroke(ic, 1.0, egui::Stroke::new(1.2, c), egui::StrokeKind::Inside);
+                for k in 0..3 {
+                    let yy = ic.top() + 4.0 + k as f32 * 3.0;
+                    p.line_segment([Pos2::new(ic.left() + 3.0, yy), Pos2::new(ic.right() - 3.0, yy)], egui::Stroke::new(1.0, c));
+                }
+            } else if which == 0 {
                 super::widgets::icon_new(p, ic, Color32::from_gray(220));
             } else {
                 super::widgets::icon_open(p, ic, Color32::from_gray(220));
@@ -348,14 +360,14 @@ impl App {
                 Color32::from_gray(150),
             );
             if resp.clicked() {
-                if which == 0 {
-                    open_new = true;
-                } else {
-                    open_file = true;
+                match which {
+                    0 => open_new = true,
+                    1 => open_file = true,
+                    _ => open_chart = true,
                 }
             }
         }
-        y += 76.0;
+        y += 112.0;
         // Search.
         let sr = Rect::from_center_size(Pos2::new(full.center().x, y), Vec2::new(320.0, 28.0));
         ui.painter()
@@ -589,6 +601,9 @@ impl App {
         }
         if open_file {
             self.request(Pending::Open);
+        }
+        if open_chart {
+            self.request(Pending::NewChart);
         }
     }
 }

@@ -53,6 +53,7 @@ impl App {
                             Key::S if modifiers.shift => self.save(true),
                             Key::S => self.save(false),
                             Key::O | Key::B => self.request(Pending::Open),
+                            Key::N if modifiers.shift => self.request(Pending::NewChart),
                             Key::N => self.request(Pending::New),
                             Key::W => self.request(Pending::Close),
                             Key::E => {

@@ -89,8 +89,39 @@ impl App {
         PrintSpec { song: &self.song, shown: self.shown_tracks(), track: self.track, notation: self.notation }
     }
 
+    /// The number of pages of what's open (a score or a chord chart).
+    fn doc_pages(&self) -> usize {
+        match &self.chart {
+            Some(st) => st.page_count.max(1),
+            None => self.print_spec().pages(),
+        }
+    }
+
+    /// The page size of what's open, in millimetres.
+    fn doc_mm(&self) -> (f32, f32) {
+        match &self.chart {
+            Some(_) => crate::chart::PAGE_MM,
+            None => self.print_spec().page_mm(),
+        }
+    }
+
+    fn doc_title(&self) -> String {
+        match &self.chart {
+            Some(st) => st.doc.title.clone(),
+            None => self.song.title.clone(),
+        }
+    }
+
+    /// Pictures of the given pages of what's open.
+    fn doc_render(&self, pages: &[usize], dpi: f32, transparent: bool) -> Vec<render::PageImage> {
+        match &self.chart {
+            Some(st) => render::render_chart(&st.doc, pages, dpi),
+            None => render::render_pages(&self.print_spec(), pages, dpi, transparent),
+        }
+    }
+
     pub(super) fn open_export(&mut self, kind: ExportKind) {
-        let pages = self.print_spec().pages();
+        let pages = self.doc_pages();
         let folder = self
             .path
             .as_ref()
@@ -113,13 +144,18 @@ impl App {
 
     pub(super) fn export_window(&mut self, ctx: &egui::Context) {
         let Some(mut dlg) = self.export_dlg.take() else { return };
-        let pages = self.print_spec().pages();
-        let has_sel = self.selection().is_some();
-        let file_name = format!(
-            "{}.{}",
-            fill_name(&dlg.name, &self.song.title, &self.tr().name, self.track + 1, self.song.tracks.len()),
-            dlg.kind.ext()
-        );
+        let pages = self.doc_pages();
+        let charting = self.chart.is_some();
+        let has_sel = !charting && self.selection().is_some();
+        let file_name = if charting {
+            format!("{}.{}", fill_name(&dlg.name, &self.doc_title(), "", 1, 1), dlg.kind.ext())
+        } else {
+            format!(
+                "{}.{}",
+                fill_name(&dlg.name, &self.song.title, &self.tr().name, self.track + 1, self.song.tracks.len()),
+                dlg.kind.ext()
+            )
+        };
         let mut open = true;
         let (mut go, mut cancel) = (false, false);
         let title = match dlg.kind {
@@ -175,11 +211,14 @@ impl App {
                             });
                         });
                         ui.add_enabled_ui(has_sel, |ui| {
+                            if charting {
+                                return;
+                            }
                             ui.radio_value(&mut dlg.scope, 2, "Selection").on_disabled_hover_text("Select some beats on the score first.");
                         });
                     });
                     ui.end_row();
-                    if dlg.kind == ExportKind::Png {
+                    if dlg.kind == ExportKind::Png && !charting {
                         ui.label("");
                         ui.checkbox(&mut dlg.transparent, "Transparent background");
                         ui.end_row();
@@ -228,11 +267,10 @@ impl App {
         if self.screenshot.is_some() {
             return;
         }
-        let spec = self.print_spec();
-        let imgs = render::render_pages(&spec, pages, dpi, transparent && kind == ExportKind::Png);
-        let (w, h) = spec.page_mm();
+        let imgs = self.doc_render(pages, dpi, transparent && kind == ExportKind::Png);
+        let (w, h) = self.doc_mm();
         let r = match kind {
-            ExportKind::Pdf => std::fs::write(path, render::pdf(&imgs, w, h, &self.song.title)).map_err(|e| e.to_string()),
+            ExportKind::Pdf => std::fs::write(path, render::pdf(&imgs, w, h, &self.doc_title())).map_err(|e| e.to_string()),
             ExportKind::Png => render::stack(&imgs).save(path).map_err(|e| e.to_string()),
         };
         self.status = match r {
@@ -254,7 +292,7 @@ impl App {
     /// of the original).
     pub(super) fn print_preview_window(&mut self, ctx: &egui::Context) {
         let Some(mut pv) = self.print_preview.take() else { return };
-        let pages = self.print_spec().pages().max(1);
+        let pages = self.doc_pages().max(1);
         pv.page = pv.page.min(pages - 1);
         let mut open = true;
         let mut print = false;
@@ -263,7 +301,7 @@ impl App {
             .path
             .as_ref()
             .and_then(|p| p.file_name().map(|f| f.to_string_lossy().to_string()))
-            .unwrap_or_else(|| self.song.title.clone());
+            .unwrap_or_else(|| self.doc_title());
         let size = Vec2::new((screen.width() * 0.7).clamp(600.0, 1000.0), (screen.height() - 40.0).max(400.0));
         let bar_bg = Color32::from_rgb(38, 41, 50);
         let blue = Color32::from_rgb(61, 123, 224);
@@ -356,6 +394,26 @@ impl App {
                 });
                 // ---- the page
                 let avail = ui.available_size();
+                if let Some(st) = &self.chart {
+                    // A chord chart's page.
+                    let (cw, ch) = (crate::chart::PAGE_W, crate::chart::PAGE_H);
+                    if !pv.fixed {
+                        pv.zoom = if pv.fit_width { (avail.x - 60.0) / cw } else { ((avail.x - 60.0) / cw).min((avail.y - 50.0) / ch) }.clamp(0.2, 4.0);
+                    }
+                    let z = pv.zoom;
+                    let lay = crate::chart::layout(&st.doc, &crate::chart::painter_measure(ui.painter()));
+                    egui::ScrollArea::both().id_salt(("pv", pv.page)).auto_shrink([false, false]).show(ui, |ui| {
+                        let total = Vec2::new((cw * z).max(avail.x - 20.0) + 40.0, ch * z + 50.0);
+                        let (rect, _) = ui.allocate_exact_size(total, egui::Sense::hover());
+                        let origin = egui::Pos2::new(rect.center().x - cw * z * 0.5, rect.top() + 25.0);
+                        let p = ui.painter();
+                        p.rect_filled(egui::Rect::from_min_size(origin, Vec2::new(cw * z, ch * z)).translate(Vec2::new(3.0, 4.0)), 0.0, Color32::from_black_alpha(90));
+                        crate::chart::draw_page(p, &st.doc, &lay, pv.page, origin, z, None, true);
+                    });
+                    let esc = ui.ctx().input(|i| i.key_pressed(egui::Key::Escape));
+                    let close = class != egui::ViewportClass::EmbeddedWindow && ui.ctx().input(|i| i.viewport().close_requested());
+                    return esc || close;
+                }
                 let base = crate::score::layout_ex(&self.song, &self.shown_tracks(), self.track, 1.0, self.notation, None, false);
                 if !pv.fixed {
                     pv.zoom = if pv.fit_width {
@@ -409,7 +467,7 @@ impl App {
         if self.screenshot.is_some() {
             return;
         }
-        let pages = self.print_spec().pages();
+        let pages = self.doc_pages();
         #[cfg(target_os = "windows")]
         {
             self.status = match print_windows(self, pages) {
@@ -421,7 +479,7 @@ impl App {
         #[cfg(not(target_os = "windows"))]
         {
             // Elsewhere: a PDF opened in the system's viewer, to print from there.
-            let path = std::env::temp_dir().join(format!("{}.pdf", super::widgets::sanitize(&self.song.title)));
+            let path = std::env::temp_dir().join(format!("{}.pdf", super::widgets::sanitize(&self.doc_title())));
             let list: Vec<usize> = (0..pages).collect();
             self.export_pages(ExportKind::Pdf, &path, &list, 300.0, false, false);
             #[cfg(target_os = "macos")]
@@ -494,8 +552,7 @@ fn print_windows(app: &App, pages: usize) -> Result<Option<usize>, String> {
             GetDeviceCaps(hdc, VERTRES as i32).max(1) as f32,
         )
     };
-    let spec = app.print_spec();
-    let (w_mm, h_mm) = spec.page_mm();
+    let (w_mm, h_mm) = app.doc_mm();
     // The page at its real size, shrunk only if the printable area is smaller.
     let (mut pw, mut ph) = (w_mm / 25.4 * dpi_x, h_mm / 25.4 * dpi_y);
     let fit = (area_w / pw).min(area_h / ph).min(1.0);
@@ -504,7 +561,7 @@ fn print_windows(app: &App, pages: usize) -> Result<Option<usize>, String> {
     let (ox, oy) = (((area_w - pw) * 0.5).max(0.0), ((area_h - ph) * 0.5).max(0.0));
     // Pictures at up to 300 dpi; the printer scales them to its own.
     let render_dpi = dpi_x.min(300.0);
-    let title: Vec<u16> = app.song.title.encode_utf16().chain(std::iter::once(0)).collect();
+    let title: Vec<u16> = app.doc_title().encode_utf16().chain(std::iter::once(0)).collect();
     let di = DOCINFOW { cbSize: std::mem::size_of::<DOCINFOW>() as i32, lpszDocName: title.as_ptr(), lpszOutput: std::ptr::null(), lpszDatatype: std::ptr::null(), fwType: 0 };
     if unsafe { StartDocW(hdc, &di) } <= 0 {
         free(&pd);
@@ -513,7 +570,7 @@ fn print_windows(app: &App, pages: usize) -> Result<Option<usize>, String> {
     let mut sent = 0;
     'outer: for _ in 0..copies {
         for &page in &list {
-            let img = render::render_pages(&spec, &[page], render_dpi, false).remove(0);
+            let img = app.doc_render(&[page], render_dpi, false).remove(0);
             let (iw, ih) = img.dimensions();
             // Windows wants blue, green, red, then padding, top row first.
             let mut bgra = Vec::with_capacity((iw * ih * 4) as usize);
