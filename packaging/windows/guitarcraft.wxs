@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- GuitarCraft's Windows installer (WiX v5). Built by package.ps1; adapted from storytold's
+     soundcraft.wxs. The UpgradeCode is fixed forever: changing it makes Windows treat the next
+     release as a different product that installs beside the old one. -->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package Name="GuitarCraft" Manufacturer="CodeGator" Version="$(var.Version)" UpgradeCode="82E6056C-F62C-41C2-A2C2-DE5F329175D9" Scope="perUserOrMachine" Compressed="yes" Language="1033">
+    <SummaryInformation Description="GuitarCraft guitar tablature and notation editor" Manufacturer="CodeGator" />
+    <?include $(sys.SOURCEFILEDIR)install-policy.wxi?>
+    <!-- Same-version upgrades let successive pre-releases of one X.Y.Z replace each other
+         (MSI versions are numeric, so 1.2.3-rc.1 and 1.2.3-rc.2 are both 1.2.3). -->
+    <MajorUpgrade AllowSameVersionUpgrades="yes" DowngradeErrorMessage="A newer version of GuitarCraft is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Icon Id="GuitarcraftIcon.ico" SourceFile="$(var.IconPath)" />
+    <Property Id="ARPPRODUCTICON" Value="GuitarcraftIcon.ico" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/CodeGator/GuitarCraft" />
+    <Property Id="ARPURLUPDATEINFO" Value="https://github.com/CodeGator/GuitarCraft/releases" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/CodeGator/GuitarCraft/issues" />
+
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="CraftSuiteFolder" Name="CodeGator">
+        <Directory Id="INSTALLFOLDER" Name="GuitarCraft" />
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+
+    <Feature Id="Main" Title="GuitarCraft" Level="1">
+      <ComponentGroupRef Id="GuitarcraftFiles" />
+    </Feature>
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <UI>
+      <!-- Skip the licence page: GPL software needs no agreement to use. LICENSE is installed beside the app. -->
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="InstallDirDlg" Order="2" Condition="NOT Installed" />
+      <Publish Dialog="InstallDirDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="2" Condition="NOT Installed" />
+    </UI>
+  </Package>
+
+  <Fragment>
+    <ComponentGroup Id="GuitarcraftFiles" Directory="INSTALLFOLDER">
+      <Component Id="GuitarcraftLicense">
+        <File Id="GuitarcraftLicenseFile" Source="$(var.BinDir)\LICENSE" KeyPath="yes" />
+      </Component>
+      <Component Id="GuitarcraftApp" Guid="7D357326-2977-4016-8E70-F77921D1B030">
+        <File Id="GuitarcraftExe" Source="$(var.BinDir)\guitarcraft.exe" KeyPath="yes">
+          <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="GuitarCraft" Description="Write, edit and play guitar music" WorkingDirectory="INSTALLFOLDER" Advertise="yes" Icon="GuitarcraftIcon.ico" IconIndex="0" />
+        </File>
+
+        <!-- .chart: GuitarCraft's own chord-chart format; GuitarCraft is its default app. -->
+        <ProgId Id="GuitarCraft.Chart" Description="GuitarCraft Chord Chart" Icon="GuitarcraftExe" IconIndex="0">
+          <Extension Id="chart" ContentType="application/x-guitarcraft-chart">
+            <Verb Id="open" Command="Open" TargetFile="GuitarcraftExe" Argument="&quot;%1&quot;" />
+          </Extension>
+        </ProgId>
+        <!-- Guitar Pro and MIDI files, and old .gcchart charts: offered under "Open with", never
+             forced as the default, so an installed Guitar Pro keeps its files. -->
+        <ProgId Id="GuitarCraft.Song" Description="Guitar Pro File" Icon="GuitarcraftExe" IconIndex="0" />
+        <RegistryValue Root="HKMU" Key="Software\Classes\GuitarCraft.Song\shell\open\command" Value="&quot;[#GuitarcraftExe]&quot; &quot;%1&quot;" Type="string" />
+        <ProgId Id="GuitarCraft.Midi" Description="MIDI File" Icon="GuitarcraftExe" IconIndex="0" />
+        <RegistryValue Root="HKMU" Key="Software\Classes\GuitarCraft.Midi\shell\open\command" Value="&quot;[#GuitarcraftExe]&quot; &quot;%1&quot;" Type="string" />
+        <RegistryValue Root="HKMU" Key="Software\Classes\.gp\OpenWithProgids" Name="GuitarCraft.Song" Value="" Type="string" />
+        <RegistryValue Root="HKMU" Key="Software\Classes\.gp5\OpenWithProgids" Name="GuitarCraft.Song" Value="" Type="string" />
+        <RegistryValue Root="HKMU" Key="Software\Classes\.gpx\OpenWithProgids" Name="GuitarCraft.Song" Value="" Type="string" />
+        <RegistryValue Root="HKMU" Key="Software\Classes\.gp4\OpenWithProgids" Name="GuitarCraft.Song" Value="" Type="string" />
+        <RegistryValue Root="HKMU" Key="Software\Classes\.gp3\OpenWithProgids" Name="GuitarCraft.Song" Value="" Type="string" />
+        <RegistryValue Root="HKMU" Key="Software\Classes\.gcchart\OpenWithProgids" Name="GuitarCraft.Chart" Value="" Type="string" />
+        <RegistryValue Root="HKMU" Key="Software\Classes\.mid\OpenWithProgids" Name="GuitarCraft.Midi" Value="" Type="string" />
+        <RegistryValue Root="HKMU" Key="Software\Classes\.midi\OpenWithProgids" Name="GuitarCraft.Midi" Value="" Type="string" />
+
+        <!-- "Open with" app list and the Run dialog (Win+R "guitarcraft"). -->
+        <RegistryValue Root="HKMU" Key="Software\Classes\Applications\guitarcraft.exe" Name="FriendlyAppName" Value="GuitarCraft" Type="string" />
+        <RegistryValue Root="HKMU" Key="Software\Classes\Applications\guitarcraft.exe\shell\open\command" Value="&quot;[#GuitarcraftExe]&quot; &quot;%1&quot;" Type="string" />
+        <RegistryValue Root="HKMU" Key="Software\Classes\Applications\guitarcraft.exe\SupportedTypes" Name=".chart" Value="" Type="string" />
+        <RegistryValue Root="HKMU" Key="Software\Classes\Applications\guitarcraft.exe\SupportedTypes" Name=".gcchart" Value="" Type="string" />
+        <RegistryValue Root="HKMU" Key="Software\Classes\Applications\guitarcraft.exe\SupportedTypes" Name=".gp" Value="" Type="string" />
+        <RegistryValue Root="HKMU" Key="Software\Classes\Applications\guitarcraft.exe\SupportedTypes" Name=".gp5" Value="" Type="string" />
+        <RegistryValue Root="HKMU" Key="Software\Classes\Applications\guitarcraft.exe\SupportedTypes" Name=".gpx" Value="" Type="string" />
+        <RegistryValue Root="HKMU" Key="Software\Classes\Applications\guitarcraft.exe\SupportedTypes" Name=".gp4" Value="" Type="string" />
+        <RegistryValue Root="HKMU" Key="Software\Classes\Applications\guitarcraft.exe\SupportedTypes" Name=".gp3" Value="" Type="string" />
+        <RegistryValue Root="HKMU" Key="Software\Classes\Applications\guitarcraft.exe\SupportedTypes" Name=".mid" Value="" Type="string" />
+        <RegistryValue Root="HKMU" Key="Software\Classes\Applications\guitarcraft.exe\SupportedTypes" Name=".midi" Value="" Type="string" />
+        <RegistryValue Root="HKMU" Key="Software\Microsoft\Windows\CurrentVersion\App Paths\guitarcraft.exe" Value="[#GuitarcraftExe]" Type="string" />
+        <!-- Remembered so an update keeps the folder the first install chose (install-policy.wxi). -->
+        <RegistryValue Root="HKMU" Key="Software\GuitarCraft" Name="InstallDir" Value="[INSTALLFOLDER]" Type="string" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+</Wix>

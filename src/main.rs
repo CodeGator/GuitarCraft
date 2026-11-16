@@ -1,5 +1,9 @@
 //! GuitarCraft: a guitar and bass tablature editor.
 
+// A Windows GUI app: no console window opens with it. Command-line runs (--export, --convert)
+// reattach to the terminal they were started from; see `attach_parent_console`.
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
+
 mod app;
 mod chart;
 mod chordshape;
@@ -24,6 +28,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 fn main() -> eframe::Result {
+    attach_parent_console();
     let mut launch = app::LaunchOptions::default();
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
@@ -127,6 +132,9 @@ fn main() -> eframe::Result {
         .with_title("GuitarCraft")
         .with_inner_size([1440.0, 900.0])
         .with_min_inner_size([900.0, 600.0]);
+    if let Some(icon) = app_icon() {
+        viewport = viewport.with_icon(icon);
+    }
     if screenshot {
         // Taking a picture for a check: open without taking focus, behind other windows on Windows.
         viewport = viewport.with_active(false);
@@ -152,6 +160,24 @@ fn main() -> eframe::Result {
         options,
         Box::new(move |cc| Ok(Box::new(app::App::new(cc, launch)))),
     )
+}
+
+/// The window, taskbar and Alt-Tab icon. Regenerate it with `cargo xtask icons`.
+fn app_icon() -> Option<egui::IconData> {
+    let png: &[u8] = include_bytes!("../assets/app-icon/guitarcraft-256.png");
+    eframe::icon_data::from_png_bytes(png).ok()
+}
+
+/// On Windows the app has no console of its own, so when it is started from a terminal it
+/// borrows that terminal's console. Messages from command-line runs (`--export`, `--convert`)
+/// then appear there. Started from Explorer or the Start menu there is no parent console, and
+/// this does nothing.
+fn attach_parent_console() {
+    #[cfg(target_os = "windows")]
+    // SAFETY: AttachConsole only takes a process id; failing (no parent console) is harmless.
+    unsafe {
+        windows_sys::Win32::System::Console::AttachConsole(windows_sys::Win32::System::Console::ATTACH_PARENT_PROCESS);
+    }
 }
 
 fn font_file(name: &str) -> Option<Vec<u8>> {
