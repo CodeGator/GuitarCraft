@@ -185,10 +185,11 @@ impl App {
                     ui.horizontal(|ui| {
                         let shown = dlg.folder.display().to_string();
                         ui.add(egui::Label::new(RichText::new(&shown)).truncate()).on_hover_text(&shown);
-                        if ui.button("Choose\u{2026}").clicked() && self.screenshot.is_none() {
-                            if let Some(d) = rfd::FileDialog::new().set_directory(&dlg.folder).pick_folder() {
-                                dlg.folder = d;
-                            }
+                        if ui.button("Choose\u{2026}").clicked()
+                            && self.screenshot.is_none()
+                            && let Some(d) = rfd::FileDialog::new().set_directory(&dlg.folder).pick_folder()
+                        {
+                            dlg.folder = d;
                         }
                     });
                     ui.end_row();

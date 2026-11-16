@@ -259,10 +259,11 @@ impl Section {
     /// The short name used in the map: "V1" for "Verse 1", otherwise the name.
     pub fn short(&self) -> String {
         let n = self.name.trim();
-        if let Some(rest) = n.strip_prefix("Verse ") {
-            if !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit()) {
-                return format!("V{rest}");
-            }
+        if let Some(rest) = n.strip_prefix("Verse ")
+            && !rest.is_empty()
+            && rest.chars().all(|c| c.is_ascii_digit())
+        {
+            return format!("V{rest}");
         }
         n.to_string()
     }
@@ -865,8 +866,11 @@ fn header(chart: &ChordChart) -> Header {
     Header { artist_y, rule1, map_y: rule1 + 8.0, map_line: l.map.head() }
 }
 
-/// The map's words: (x, row, text, colour behind, followed by a comma).
-fn map_words(chart: &ChordChart, m: Measure) -> (f32, Vec<(f32, usize, String, Option<Rgb>, bool)>) {
+/// One word of the map: x, row, text, colour behind, followed by a comma.
+type MapWord = (f32, usize, String, Option<Rgb>, bool);
+
+/// The map's words.
+fn map_words(chart: &ChordChart, m: Measure) -> (f32, Vec<MapWord>) {
     let f = chart.look.map.font(1.0);
     let width = PAGE_W - 2.0 * MARGIN;
     let label_w = m("Map:", &f) + 5.0;
@@ -1128,6 +1132,7 @@ const PURPLE: Color32 = Color32::from_rgb(153, 0, 255);
 /// Draws page `page` at `origin`, `z` screen points per page point. With
 /// `selected`, that section gets a light frame (on screen only). Returns the
 /// screen rectangle of each line with its section, for clicks.
+#[allow(clippy::too_many_arguments)]
 pub fn draw_page(p: &Painter, chart: &ChordChart, pages: &[Page], page: usize, origin: Pos2, z: f32, selected: Option<usize>, printing: bool) -> Vec<(usize, Rect)> {
     let at = |x: f32, y: f32| Pos2::new(origin.x + x * z, origin.y + y * z);
     let page_rect = Rect::from_min_size(origin, Vec2::new(PAGE_W * z, PAGE_H * z));

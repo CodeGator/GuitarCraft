@@ -183,7 +183,7 @@ fn rasterize(prims: &[ClippedPrimitive], ppp: f32, w: usize, h: usize, textures:
         let cy0 = (cp.clip_rect.min.y * ppp).floor().max(0.0) as i64;
         let cx1 = ((cp.clip_rect.max.x * ppp).ceil() as i64).min(w as i64);
         let cy1 = ((cp.clip_rect.max.y * ppp).ceil() as i64).min(h as i64);
-        for tri in mesh.indices.chunks_exact(3) {
+        for tri in mesh.indices.as_chunks::<3>().0 {
             let v = [&mesh.vertices[tri[0] as usize], &mesh.vertices[tri[1] as usize], &mesh.vertices[tri[2] as usize]];
             let p = [v[0].pos * ppp, v[1].pos * ppp, v[2].pos * ppp];
             let edge = |a: Pos2, b: Pos2, x: f32, y: f32| (b.x - a.x) * (y - a.y) - (b.y - a.y) * (x - a.x);
@@ -257,7 +257,7 @@ pub fn pdf(pages: &[PageImage], w_mm: f32, h_mm: f32, title: &str) -> Vec<u8> {
     let obj = |out: &mut Vec<u8>, offsets: &mut Vec<usize>, body: &[u8]| {
         offsets.push(out.len());
         let id = offsets.len();
-        let _ = write!(out, "{id} 0 obj\n");
+        let _ = writeln!(out, "{id} 0 obj");
         out.extend_from_slice(body);
         out.extend_from_slice(b"\nendobj\n");
     };
@@ -303,7 +303,7 @@ pub fn pdf(pages: &[PageImage], w_mm: f32, h_mm: f32, title: &str) -> Vec<u8> {
     let xref = out.len();
     let _ = write!(out, "xref\n0 {}\n0000000000 65535 f \n", offsets.len() + 1);
     for o in &offsets {
-        let _ = write!(out, "{o:010} 00000 n \n");
+        let _ = writeln!(out, "{o:010} 00000 n ");
     }
     let _ = write!(out, "trailer\n<< /Size {} /Root 1 0 R /Info 3 0 R >>\nstartxref\n{xref}\n%%EOF\n", offsets.len() + 1);
     out
