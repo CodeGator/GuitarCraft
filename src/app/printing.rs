@@ -233,7 +233,7 @@ impl App {
                         if ui.button("Cancel").clicked() {
                             cancel = true;
                         }
-                        if ui.add(egui::Button::new(RichText::new("Export").color(Color32::WHITE)).fill(Color32::from_rgb(61, 123, 224))).clicked() {
+                        if ui.add(egui::Button::new(RichText::new("Export").color(Color32::WHITE)).fill(super::panels::BLUE)).clicked() {
                             go = true;
                         }
                     });
@@ -304,7 +304,7 @@ impl App {
             .unwrap_or_else(|| self.doc_title());
         let size = Vec2::new((screen.width() * 0.7).clamp(600.0, 1000.0), (screen.height() - 40.0).max(400.0));
         let bar_bg = Color32::from_rgb(38, 41, 50);
-        let blue = Color32::from_rgb(61, 123, 224);
+        let blue = super::panels::BLUE;
         // A window of its own, so it can be moved and resized beyond the main
         // window, as in Guitar Pro. (Pictures taken for checks keep it inside.)
         if self.screenshot.is_some() {

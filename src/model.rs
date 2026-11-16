@@ -955,6 +955,11 @@ pub fn tuning_name(t: &[u8]) -> String {
         .join(" ")
 }
 
+/// Seconds as m:ss (rounded down).
+pub fn fmt_time(s: f32) -> String {
+    format!("{}:{:02}", (s / 60.0) as u32, (s % 60.0) as u32)
+}
+
 pub fn note_name(midi: u8) -> String {
     const N: [&str; 12] = [
         "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",

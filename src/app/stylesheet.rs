@@ -12,7 +12,7 @@ use egui::{
 };
 use std::path::PathBuf;
 
-pub(super) const BLUE: Color32 = Color32::from_rgb(61, 123, 224);
+pub(super) use super::panels::BLUE;
 pub(super) const TAB_BG: Color32 = Color32::from_rgb(76, 82, 100);
 pub(super) const BODY_BG: Color32 = Color32::from_rgb(38, 40, 48);
 const LABEL_W: f32 = 230.0;

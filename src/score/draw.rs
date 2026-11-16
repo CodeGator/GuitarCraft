@@ -2022,14 +2022,13 @@ fn draw_beat_marks(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32, my: 
         label(p, my, "d.s.".into(), italic(9.0 * fz));
     }
     if fx.barre > 0 {
-        let t = format!("{}B{}", if fx.barre_half { "\u{00BD}" } else { "" }, roman_numeral(fx.barre));
+        let t = format!("{}B{}", if fx.barre_half { "\u{00BD}" } else { "" }, roman(fx.barre));
         p.text(Pos2::new(x - 4.0 * z, *my), Align2::LEFT_CENTER, t, serif(10.5 * fz), ink);
         *my -= 11.0 * z;
     }
     if fx.timer {
-        let secs = time_at(c.song, c.bi, beat_start(c.vbar, bj));
-        let t = format!("{}:{:02}", (secs / 60.0) as u32, (secs % 60.0) as u32);
-        let r = p.text(Pos2::new(x - 4.0 * z, *my), Align2::LEFT_CENTER, t, st.font_timer.id(fz), ink);
+        let secs = time_at(c.song, c.bi, c.vbar.beat_start(0, bj));
+        let r = p.text(Pos2::new(x - 4.0 * z, *my), Align2::LEFT_CENTER, fmt_time(secs),st.font_timer.id(fz), ink);
         p.rect_stroke(r.expand(2.0 * z), 0.0, PStroke::new(0.8 * z, ink), egui::StrokeKind::Outside);
         *my -= 13.0 * z;
     }
@@ -2071,18 +2070,14 @@ fn draw_beat_marks(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32, my: 
     }
 }
 
-/// Ticks from the start of the bar to beat `bj`.
-fn beat_start(bar: &Bar, bj: usize) -> u32 {
-    bar.beats.iter().take(bj).map(|b| b.ticks()).sum()
-}
-
 /// Seconds from the start of the song (first time through) to a point in bar `bi`.
 fn time_at(song: &Song, bi: usize, tick: u32) -> f32 {
     let secs = |b: usize, ticks: u32| ticks as f32 / QUARTER as f32 * 60.0 / song.tempo_at(b).max(1) as f32;
     (0..bi).map(|b| secs(b, song.master[b].ticks())).sum::<f32>() + secs(bi, tick)
 }
 
-fn roman_numeral(n: u8) -> &'static str {
+/// Roman numerals for barre frets (1 to 24).
+pub fn roman(n: u8) -> &'static str {
     const R: [&str; 25] = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "XVII", "XVIII", "XIX", "XX", "XXI", "XXII", "XXIII", "XXIV"];
     R.get(n as usize).copied().unwrap_or("")
 }

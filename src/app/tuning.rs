@@ -8,7 +8,7 @@ use crate::audio;
 use crate::model::*;
 use egui::{Align2, Color32, FontId, Pos2, Rect, RichText, Sense, Stroke, Vec2};
 
-const BLUE: Color32 = Color32::from_rgb(61, 123, 224);
+use super::panels::BLUE;
 const BOX: Color32 = Color32::from_rgb(28, 30, 36);
 
 /// The settings being changed, applied only when a fingering button is pressed.

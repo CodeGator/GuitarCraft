@@ -2,7 +2,7 @@
 
 use super::widgets::*;
 use super::{App, Pending};
-use crate::model::Dur;
+use crate::model::{Dur, fmt_time};
 use crate::score::Notation;
 use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Ui, Vec2};
 

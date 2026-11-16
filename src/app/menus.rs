@@ -10,8 +10,9 @@ fn item(ui: &mut Ui, label: &str, sc: &str) -> Response {
     ui.add(egui::Button::new(label).shortcut_text(sc))
 }
 
-fn item_if(ui: &mut Ui, on: bool, label: &str, sc: &str) -> Response {
-    ui.add_enabled(on, egui::Button::new(label).shortcut_text(sc))
+/// A menu item that can be greyed out; true when clicked.
+pub(super) fn item_if(ui: &mut Ui, on: bool, label: &str, sc: &str) -> bool {
+    ui.add_enabled(on, egui::Button::new(label).shortcut_text(sc)).clicked()
 }
 
 fn check(ui: &mut Ui, on: bool, label: &str, sc: &str) -> Response {
@@ -126,7 +127,7 @@ impl App {
             self.save_as_template();
             ui.close();
         }
-        if item_if(ui, self.path.is_some(), "Open Containing Folder", "").clicked() {
+        if item_if(ui, self.path.is_some(), "Open Containing Folder", "") {
             self.open_containing_folder();
             ui.close();
         }
@@ -188,11 +189,11 @@ impl App {
     }
 
     fn edit_menu(&mut self, ui: &mut Ui) {
-        if item_if(ui, !self.undo.is_empty(), "Undo", "Ctrl+Z").clicked() {
+        if item_if(ui, !self.undo.is_empty(), "Undo", "Ctrl+Z") {
             self.do_undo();
             ui.close();
         }
-        if item_if(ui, !self.redo.is_empty(), "Redo", "Ctrl+Y").clicked() {
+        if item_if(ui, !self.redo.is_empty(), "Redo", "Ctrl+Y") {
             self.do_redo();
             ui.close();
         }
@@ -221,7 +222,6 @@ impl App {
                     &format!("Move Note to Voice {}", v + 1),
                     &format!("Alt+{}", v + 1),
                 )
-                .clicked()
                 {
                     self.move_to_voice(v);
                     ui.close();
@@ -251,7 +251,7 @@ impl App {
             self.addtrack_open = true;
             ui.close();
         }
-        if item_if(ui, self.song.tracks.len() > 1, "Delete", "Ctrl+Shift+Del").clicked() {
+        if item_if(ui, self.song.tracks.len() > 1, "Delete", "Ctrl+Shift+Del") {
             self.remove_track();
             ui.close();
         }
@@ -260,7 +260,7 @@ impl App {
             ui.close();
         }
         ui.separator();
-        if item_if(ui, self.track > 0, "Move Up", "Ctrl+Alt+Up").clicked() {
+        if item_if(ui, self.track > 0, "Move Up", "Ctrl+Alt+Up") {
             self.move_track(-1);
             ui.close();
         }
@@ -270,7 +270,6 @@ impl App {
             "Move Down",
             "Ctrl+Alt+Down",
         )
-        .clicked()
         {
             self.move_track(1);
             ui.close();
@@ -301,13 +300,12 @@ impl App {
             "Next Track",
             "Ctrl+Down",
         )
-        .clicked()
         {
             self.track += 1;
             self.clamp_cursor();
             ui.close();
         }
-        if item_if(ui, self.track > 0, "Previous Track", "Ctrl+Up").clicked() {
+        if item_if(ui, self.track > 0, "Previous Track", "Ctrl+Up") {
             self.track -= 1;
             self.clamp_cursor();
             ui.close();
@@ -320,7 +318,7 @@ impl App {
             self.insert_bar(self.bar);
             ui.close();
         }
-        if item_if(ui, self.song.bar_count() > 1, "Delete Bar", "Ctrl+Del").clicked() {
+        if item_if(ui, self.song.bar_count() > 1, "Delete Bar", "Ctrl+Del") {
             self.delete_bar(self.bar);
             ui.close();
         }

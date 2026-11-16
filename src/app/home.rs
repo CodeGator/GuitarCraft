@@ -531,7 +531,8 @@ impl App {
             }
             if let Some((_, song)) = &self.preview {
                 let avail = prev_r.shrink(14.0);
-                let zoom = (avail.height() / score::PAGE_H).min(avail.width() / score::PAGE_W);
+                let (pw, ph) = song.style.page_mm();
+                let zoom = (avail.height() / (ph * crate::style::MM)).min(avail.width() / (pw * crate::style::MM));
                 let shown: Vec<usize> = (0..song.tracks.len()).collect();
                 let lay = score::layout(song, &shown, 0, zoom, Notation::Both);
                 let o = Pos2::new(

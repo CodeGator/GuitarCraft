@@ -523,10 +523,10 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
                         };
                         ids.legato_dest = prev.map(|p| p.notes.iter().any(|n| n.fx.legato)).unwrap_or(false);
                         if beat.fx.timer {
-                            let before: u32 = bar.voice(v).iter().take(j).map(|b| b.ticks()).sum();
+                            let before = bar.beat_start(v, j);
                             ids.beat_secs = seconds_at(song, bi, before);
                         }
-                        beat_ids.push(write_beat(
+                        beat_ids.push(write_beat_ex(
                             &mut ids,
                             t,
                             beat,
@@ -534,6 +534,7 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
                             chords,
                             key,
                             v == 0 && low != Some(true),
+                            false,
                         ));
                     }
                     let vid = ids.nvoices;
@@ -738,18 +739,6 @@ pub fn direction_jump_name(j: u8) -> Option<&'static str> {
         10 => Some("DaDoubleCoda"),
         _ => None,
     }
-}
-
-fn write_beat(
-    ids: &mut Ids,
-    t: &Track,
-    beat: &Beat,
-    notes: &[&Note],
-    chords: &[&String],
-    key: i8,
-    marks: bool,
-) -> usize {
-    write_beat_ex(ids, t, beat, notes, chords, key, marks, false)
 }
 
 #[allow(clippy::too_many_arguments)]

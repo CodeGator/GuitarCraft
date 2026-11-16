@@ -339,7 +339,7 @@ impl App {
                                 cancel = true;
                             }
                             if ui
-                                .add(egui::Button::new(RichText::new("OK").color(egui::Color32::WHITE)).fill(egui::Color32::from_rgb(61, 123, 224)).min_size(Vec2::new(36.0, 24.0)))
+                                .add(egui::Button::new(RichText::new("OK").color(egui::Color32::WHITE)).fill(super::panels::BLUE).min_size(Vec2::new(36.0, 24.0)))
                                 .clicked()
                             {
                                 ok = true;
@@ -519,7 +519,7 @@ pub(super) fn key_sig_body(ui: &mut egui::Ui, key: &mut i8, key_minor: &mut bool
             for (minor, lab) in [(true, "Minor"), (false, "Major")] {
                 let on = *key_minor == minor;
                 let b = egui::Button::new(RichText::new(lab).color(if on { egui::Color32::WHITE } else { egui::Color32::from_gray(200) }))
-                    .fill(if on { egui::Color32::from_rgb(61, 123, 224) } else { egui::Color32::from_rgb(60, 64, 74) })
+                    .fill(if on { super::panels::BLUE } else { egui::Color32::from_rgb(60, 64, 74) })
                     .min_size(Vec2::new(54.0, 24.0));
                 if ui.add(b).clicked() {
                     *key_minor = minor;

@@ -2,7 +2,7 @@
 //! with every shown track stacked in each system (a full score).
 
 mod draw;
-pub use draw::{draw_diagram, key_positions, note_staff_pos, staff_pos_name, staff_pos_pitch, written_name};
+pub use draw::{draw_diagram, key_positions, note_staff_pos, roman, staff_pos_name, staff_pos_pitch, written_name};
 
 use crate::model::*;
 use draw::*;
@@ -21,8 +21,6 @@ pub fn tab_rhythm_pos(st: &Stylesheet, v: usize, has_std: bool) -> u8 {
 }
 use std::collections::BTreeMap;
 
-pub const PAGE_W: f32 = 820.0;
-pub const PAGE_H: f32 = 1160.0;
 pub const PAGE_GAP: f32 = 24.0;
 use crate::style::{FontSpec, HeaderItem, MM, Stylesheet, Tokens};
 
