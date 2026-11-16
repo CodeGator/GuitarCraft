@@ -5,6 +5,7 @@
 //! with Apply or OK.
 
 use super::App;
+use super::home::{app_dir, files_with_ext};
 use crate::style::{FONTS, FontSpec, HeaderItem, PAGE_FORMATS, STYLE_NAMES, Stylesheet, TOKENS};
 use egui::{
     Align, Align2, Color32, FontFamily, FontId, Layout, Pos2, Rect, RichText, Sense, Stroke, Ui,
@@ -38,17 +39,11 @@ pub struct StyleDlg {
 }
 
 fn styles_dir() -> Option<PathBuf> {
-    let base = std::env::var_os("APPDATA").or_else(|| std::env::var_os("HOME"))?;
-    Some(PathBuf::from(base).join("GuitarCraft").join("Styles"))
+    Some(app_dir()?.join("Styles"))
 }
 
 fn default_style_file() -> Option<PathBuf> {
-    let base = std::env::var_os("APPDATA").or_else(|| std::env::var_os("HOME"))?;
-    Some(
-        PathBuf::from(base)
-            .join("GuitarCraft")
-            .join("default-style.json"),
-    )
+    Some(app_dir()?.join("default-style.json"))
 }
 
 /// The style chosen for new songs (the standard one unless the person set another).
@@ -61,16 +56,7 @@ pub fn default_style() -> Stylesheet {
 }
 
 fn saved_styles() -> Vec<PathBuf> {
-    let Some(d) = styles_dir() else { return vec![] };
-    let mut v: Vec<PathBuf> = std::fs::read_dir(d)
-        .map(|r| {
-            r.filter_map(|e| e.ok().map(|e| e.path()))
-                .filter(|p| p.extension().map(|e| e == "json").unwrap_or(false))
-                .collect()
-        })
-        .unwrap_or_default();
-    v.sort();
-    v
+    files_with_ext(styles_dir(), "json")
 }
 
 fn load_style(p: &std::path::Path) -> Result<Stylesheet, String> {
@@ -123,21 +109,27 @@ pub(super) fn row_w(ui: &mut Ui, w: f32, label: &str, add: impl FnOnce(&mut Ui))
 
 /// An On/Off switch. Returns true when flipped.
 pub(super) fn switch(ui: &mut Ui, on: &mut bool) -> bool {
-    let (r, resp) = ui.allocate_exact_size(Vec2::new(32.0, 17.0), Sense::click());
+    switch_of(ui, on, Vec2::new(32.0, 17.0))
+}
+
+/// An on/off switch of the given size, followed by "On" or "Off"; true when clicked.
+pub(super) fn switch_of(ui: &mut Ui, on: &mut bool, size: Vec2) -> bool {
+    let (r, resp) = ui.allocate_exact_size(size, Sense::click());
     if resp.clicked() {
         *on = !*on;
     }
+    let rad = size.y * 0.5;
     let p = ui.painter();
     p.rect_filled(
         r,
-        8.5,
+        rad,
         if *on {
             BLUE
         } else {
             Color32::from_rgb(70, 74, 84)
         },
     );
-    let cx = if *on { r.right() - 8.5 } else { r.left() + 8.5 };
+    let cx = if *on { r.right() - rad } else { r.left() + rad };
     p.circle_filled(Pos2::new(cx, r.center().y), 6.0, Color32::WHITE);
     ui.label(if *on { "On" } else { "Off" });
     resp.clicked()
@@ -462,16 +454,18 @@ impl App {
 }
 
 /// The five big tabs with their pictures.
-fn tab_strip(ui: &mut Ui, tab: &mut usize) {
+/// A row of tabs, each a picture over its name. `icon` draws tab `i`'s
+/// picture centred on the given point, in the given colour.
+pub(super) fn tab_row(ui: &mut Ui, names: &[&str], salt: &str, tab: &mut usize, icon: impl Fn(&egui::Painter, usize, Pos2, Color32)) {
     let full = ui.available_rect_before_wrap();
-    let w = full.width() / TABS.len() as f32;
+    let w = full.width() / names.len() as f32;
     let (strip, _) = ui.allocate_exact_size(Vec2::new(full.width(), 64.0), Sense::hover());
-    for (i, name) in TABS.iter().enumerate() {
+    for (i, name) in names.iter().enumerate() {
         let r = Rect::from_min_size(
             Pos2::new(strip.left() + i as f32 * w, strip.top()),
             Vec2::new(w - 1.0, 64.0),
         );
-        let resp = ui.interact(r, ui.id().with(("ss-tab", i)), Sense::click());
+        let resp = ui.interact(r, ui.id().with((salt, i)), Sense::click());
         if resp.clicked() {
             *tab = i;
         }
@@ -489,7 +483,20 @@ fn tab_strip(ui: &mut Ui, tab: &mut usize) {
             },
         );
         let c = Color32::WHITE;
-        let ic = Pos2::new(r.center().x, r.top() + 22.0);
+        icon(p, i, Pos2::new(r.center().x, r.top() + 22.0), c);
+        p.text(
+            Pos2::new(r.center().x, r.bottom() - 13.0),
+            Align2::CENTER_CENTER,
+            *name,
+            FontId::proportional(13.5),
+            c,
+        );
+    }
+}
+
+/// The tabs with their pictures.
+fn tab_strip(ui: &mut Ui, tab: &mut usize) {
+    tab_row(ui, &TABS, "ss-tab", tab, |p, i, ic, c| {
         let st = Stroke::new(1.3, c);
         match i {
             0 => {
@@ -562,14 +569,7 @@ fn tab_strip(ui: &mut Ui, tab: &mut usize) {
                 );
             }
         }
-        p.text(
-            Pos2::new(r.center().x, r.bottom() - 13.0),
-            Align2::CENTER_CENTER,
-            *name,
-            FontId::proportional(13.5),
-            c,
-        );
-    }
+    });
 }
 
 fn page_tab(ui: &mut Ui, s: &mut Stylesheet) {

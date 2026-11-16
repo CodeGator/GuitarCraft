@@ -960,11 +960,18 @@ pub fn fmt_time(s: f32) -> String {
     format!("{}:{:02}", (s / 60.0) as u32, (s % 60.0) as u32)
 }
 
+/// The twelve note names, spelled with sharps and with flats.
+pub const SHARPS: [&str; 12] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+pub const FLATS: [&str; 12] = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
+
+/// A note's name without its octave, using flats or sharps.
+pub fn pitch_name(midi: u8, flat: bool) -> &'static str {
+    let names = if flat { FLATS } else { SHARPS };
+    names[(midi % 12) as usize]
+}
+
 pub fn note_name(midi: u8) -> String {
-    const N: [&str; 12] = [
-        "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
-    ];
-    N[(midi % 12) as usize].to_string()
+    SHARPS[(midi % 12) as usize].to_string()
 }
 
 pub fn note_name_oct(midi: u8) -> String {

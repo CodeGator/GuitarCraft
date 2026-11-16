@@ -27,14 +27,7 @@ pub struct TuningDlg {
 
 /// A note's name with its octave, using flats or sharps.
 pub fn named(midi: u8, flat: bool) -> String {
-    const S: [&str; 12] = [
-        "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
-    ];
-    const F: [&str; 12] = [
-        "C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B",
-    ];
-    let n = if flat { F } else { S }[(midi % 12) as usize];
-    format!("{}{}", n, midi as i32 / 12 - 1)
+    format!("{}{}", pitch_name(midi, flat), midi as i32 / 12 - 1)
 }
 
 /// The instrument families of the tuning library.
@@ -667,23 +660,5 @@ fn spin(ui: &mut egui::Ui, v: &mut u8, min: u8, max: u8, width: f32, text: &str)
 
 /// An on/off switch with its state written beside it.
 fn switch(ui: &mut egui::Ui, on: &mut bool) -> bool {
-    let (r, resp) = ui.allocate_exact_size(Vec2::new(30.0, 16.0), Sense::click());
-    let p = ui.painter();
-    p.rect_filled(
-        r,
-        8.0,
-        if *on {
-            BLUE
-        } else {
-            Color32::from_rgb(70, 74, 84)
-        },
-    );
-    let cx = if *on { r.right() - 8.0 } else { r.left() + 8.0 };
-    p.circle_filled(Pos2::new(cx, r.center().y), 6.0, Color32::WHITE);
-    ui.label(if *on { "On" } else { "Off" });
-    if resp.clicked() {
-        *on = !*on;
-        return true;
-    }
-    false
+    super::stylesheet::switch_of(ui, on, Vec2::new(30.0, 16.0))
 }

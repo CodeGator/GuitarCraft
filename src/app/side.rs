@@ -508,28 +508,7 @@ impl App {
 
 /// A small on/off switch with a label, like the original's settings toggles.
 fn toggle_switch(ui: &mut Ui, on: &mut bool) -> bool {
-    let mut changed = false;
-    ui.horizontal(|ui| {
-        let (r, resp) = ui.allocate_exact_size(Vec2::new(30.0, 16.0), Sense::click());
-        if resp.clicked() {
-            *on = !*on;
-            changed = true;
-        }
-        let p = ui.painter();
-        p.rect_filled(
-            r,
-            8.0,
-            if *on {
-                BLUE
-            } else {
-                Color32::from_rgb(70, 74, 84)
-            },
-        );
-        let cx = if *on { r.right() - 8.0 } else { r.left() + 8.0 };
-        p.circle_filled(Pos2::new(cx, r.center().y), 6.0, Color32::WHITE);
-        ui.label(if *on { "On" } else { "Off" });
-    });
-    changed
+    ui.horizontal(|ui| super::stylesheet::switch_of(ui, on, Vec2::new(30.0, 16.0))).inner
 }
 
 

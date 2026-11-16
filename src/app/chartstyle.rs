@@ -5,10 +5,11 @@
 //! a copy and reach the chart with Apply or OK.
 
 use super::App;
-use super::stylesheet::{BLUE, BODY_BG, TAB_BG, choice, heading, row, subheading, switch};
+use super::home::{app_dir, files_with_ext};
+use super::stylesheet::{BLUE, BODY_BG, choice, heading, row, subheading, switch, tab_row};
 use crate::chart::{self, ChartLook, TextLook};
 use crate::style::{FONTS, STYLE_NAMES};
-use egui::{Align, Align2, Color32, FontFamily, FontId, Layout, Pos2, Rect, RichText, Sense, Stroke, Ui, Vec2};
+use egui::{Align, Align2, Color32, FontFamily, FontId, Layout, Pos2, Rect, RichText, Stroke, Ui, Vec2};
 use std::path::PathBuf;
 
 pub const TABS: [&str; 4] = ["Page & Columns", "Header & Footer", "Sections", "Chords & Lyrics"];
@@ -23,13 +24,11 @@ pub struct ChartStyleDlg {
 }
 
 fn styles_dir() -> Option<PathBuf> {
-    let base = std::env::var_os("APPDATA").or_else(|| std::env::var_os("HOME"))?;
-    Some(PathBuf::from(base).join("GuitarCraft").join("Chart Styles"))
+    Some(app_dir()?.join("Chart Styles"))
 }
 
 fn default_file() -> Option<PathBuf> {
-    let base = std::env::var_os("APPDATA").or_else(|| std::env::var_os("HOME"))?;
-    Some(PathBuf::from(base).join("GuitarCraft").join("default-chart-style.json"))
+    Some(app_dir()?.join("default-chart-style.json"))
 }
 
 fn read_style(p: &std::path::Path) -> Result<ChartLook, String> {
@@ -53,12 +52,7 @@ pub fn default_chart_style() -> ChartLook {
 }
 
 fn saved_styles() -> Vec<PathBuf> {
-    let Some(d) = styles_dir() else { return vec![] };
-    let mut v: Vec<PathBuf> = std::fs::read_dir(d)
-        .map(|r| r.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().map(|e| e == "json").unwrap_or(false)).collect())
-        .unwrap_or_default();
-    v.sort();
-    v
+    files_with_ext(styles_dir(), "json")
 }
 
 /// A kind of text: font with a preview, size, style and colour.
@@ -161,19 +155,7 @@ fn chords_tab(ui: &mut Ui, s: &mut ChartLook) {
 
 /// The tabs with their pictures.
 fn tab_strip(ui: &mut Ui, tab: &mut usize) {
-    let full = ui.available_rect_before_wrap();
-    let w = full.width() / TABS.len() as f32;
-    let (strip, _) = ui.allocate_exact_size(Vec2::new(full.width(), 64.0), Sense::hover());
-    for (i, name) in TABS.iter().enumerate() {
-        let r = Rect::from_min_size(Pos2::new(strip.left() + i as f32 * w, strip.top()), Vec2::new(w - 1.0, 64.0));
-        let resp = ui.interact(r, ui.id().with(("cs-tab", i)), Sense::click());
-        if resp.clicked() {
-            *tab = i;
-        }
-        let p = ui.painter();
-        p.rect_filled(r, 0.0, if *tab == i { BLUE } else if resp.hovered() { Color32::from_rgb(90, 96, 116) } else { TAB_BG });
-        let c = Color32::WHITE;
-        let ic = Pos2::new(r.center().x, r.top() + 22.0);
+    tab_row(ui, &TABS, "cs-tab", tab, |p, i, ic, c| {
         let st = Stroke::new(1.3, c);
         let thin = Stroke::new(1.0, c);
         let pr = Rect::from_center_size(ic, Vec2::new(18.0, 22.0));
@@ -208,8 +190,7 @@ fn tab_strip(ui: &mut Ui, tab: &mut usize) {
                 p.line_segment([Pos2::new(pr.left(), ic.y + 10.0), Pos2::new(pr.right() - 5.0, ic.y + 10.0)], thin);
             }
         }
-        p.text(Pos2::new(r.center().x, r.bottom() - 13.0), Align2::CENTER_CENTER, *name, FontId::proportional(13.5), c);
-    }
+    });
 }
 
 impl App {

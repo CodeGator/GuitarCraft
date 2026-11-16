@@ -631,9 +631,6 @@ pub fn shape(name: &str) -> Option<[i8; 6]> {
 
 // ----- transposing -----
 
-const SHARP_NAMES: [&str; 12] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-const FLAT_NAMES: [&str; 12] = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
-
 /// How transposed chords are spelled.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Spelling {
@@ -683,8 +680,7 @@ pub fn split_chord(name: &str) -> Option<(i32, String, Option<i32>)> {
 }
 
 fn note_name(pc: i32, flats: bool) -> &'static str {
-    let k = pc.rem_euclid(12) as usize;
-    if flats { FLAT_NAMES[k] } else { SHARP_NAMES[k] }
+    crate::model::pitch_name(pc.rem_euclid(12) as u8, flats)
 }
 
 /// Whether a key is written with flats (F, Bb, Eb ... and their relative minors).
