@@ -1,6 +1,6 @@
 //! Chord charts: a song written as sections of lyrics with chord names above
 //! them (or bars of chords), played in the order of a "map". Saved as this
-//! app's own .gcchart files (Guitar Pro has no such document), printed and
+//! app's own .chart files (Guitar Pro has no such document), printed and
 //! exported like scores. No playback.
 //!
 //! A section's text uses inline chords: `[E]Let my heart be a [B]temple`.
@@ -9,7 +9,14 @@
 use egui::{Align2, Color32, FontFamily, FontId, Painter, Pos2, Rect, Stroke, Vec2};
 use serde::{Deserialize, Serialize};
 
-pub const EXT: &str = "gcchart";
+pub const EXT: &str = "chart";
+/// The ending chord charts had before (16 Nov 2026); such files still open.
+pub const OLD_EXT: &str = "gcchart";
+
+/// Whether a file is a chord chart (by its ending, old or new).
+pub fn is_chart_path(p: &std::path::Path) -> bool {
+    p.extension().map(|e| e.eq_ignore_ascii_case(EXT) || e.eq_ignore_ascii_case(OLD_EXT)).unwrap_or(false)
+}
 
 /// A chart page in points at zoom 1 (A4, as score pages).
 pub const PAGE_W: f32 = 820.0;
@@ -92,10 +99,8 @@ pub fn color(c: Rgb) -> Color32 {
     Color32::from_rgb(c[0], c[1], c[2])
 }
 
-/// The file format written now. Version 1 had no colours of its own: its
-/// sections took the colour suggested for their kind.
+/// The file format written now.
 pub const FORMAT: &str = "GuitarCraft chord chart 2";
-const FORMAT_1: &str = "GuitarCraft chord chart 1";
 
 /// How one kind of text on the chart looks: font, size (points at 100 %),
 /// bold, italic and colour.
@@ -192,7 +197,7 @@ impl ChartLook {
             copyright: TextLook::new("Arial", 7.5, false, Color32::from_gray(90)),
             shade: true,
             columns: 2,
-            show_diagrams: true,
+            show_diagrams: false,
             show_map: true,
             kind_colors: standard_kind_colors(),
         }
@@ -212,7 +217,7 @@ impl ChartLook {
             copyright: TextLook::new("Arial", 8.0, false, Color32::from_gray(70)),
             shade: true,
             columns: 1,
-            show_diagrams: true,
+            show_diagrams: false,
             show_map: true,
             kind_colors: standard_kind_colors(),
         }
@@ -375,7 +380,8 @@ impl ChordChart {
             map: vec![m(1, 1), m(2, 1), m(3, 1), m(4, 1), m(5, 1), m(6, 1), m(8, 1), m(4, 1), m(9, 1), m(10, 1), m(7, 2), m(4, 1), m(9, 1)],
             diagrams: vec!["E5".into(), "A".into(), "C#".into(), "B".into()],
             copyright: "\u{00A9} 2026 GuitarCraft demo. Words and music made up for this example.".into(),
-            look: ChartLook::standard(),
+            // As in the person's picture: with chord diagrams.
+            look: ChartLook { show_diagrams: true, ..ChartLook::standard() },
         }
     }
 
@@ -534,29 +540,8 @@ impl ChordChart {
 
     pub fn load(path: &std::path::Path) -> Result<ChordChart, String> {
         let data = std::fs::read(path).map_err(|e| e.to_string())?;
-        let v: serde_json::Value = serde_json::from_slice(&data).map_err(|e| format!("Not a chord chart: {e}"))?;
-        let first = v.get("format").and_then(|f| f.as_str()) == Some(FORMAT_1);
-        // Charts saved before the stylesheet kept these beside it.
-        let columns = v.get("columns").and_then(|c| c.as_u64());
-        let diagrams = v.get("show_diagrams").and_then(|c| c.as_bool());
-        let in_look = v.get("look").map(|l| l.get("columns").is_some()).unwrap_or(false);
-        let mut c: ChordChart = serde_json::from_value(v).map_err(|e| format!("Not a chord chart: {e}"))?;
-        if !in_look {
-            if let Some(n) = columns {
-                c.look.columns = (n as u8).clamp(1, MAX_COLUMNS);
-            }
-            if let Some(d) = diagrams {
-                c.look.show_diagrams = d;
-            }
-        }
+        let mut c: ChordChart = serde_json::from_slice(&data).map_err(|e| format!("Not a chord chart: {e}"))?;
         c.look.fix_kind_colors();
-        if first {
-            // Charts saved before sections had colours of their own.
-            for s in &mut c.sections {
-                s.color = s.kind.tint().map(rgb);
-            }
-            c.format = FORMAT.into();
-        }
         Ok(c)
     }
 
@@ -623,9 +608,6 @@ pub fn shape(name: &str) -> Option<[i8; 6]> {
 
 // ----- transposing -----
 
-const SHARP_NAMES: [&str; 12] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-const FLAT_NAMES: [&str; 12] = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
-
 /// How transposed chords are spelled.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Spelling {
@@ -675,8 +657,7 @@ pub fn split_chord(name: &str) -> Option<(i32, String, Option<i32>)> {
 }
 
 fn note_name(pc: i32, flats: bool) -> &'static str {
-    let k = pc.rem_euclid(12) as usize;
-    if flats { FLAT_NAMES[k] } else { SHARP_NAMES[k] }
+    crate::model::pitch_name(pc.rem_euclid(12) as u8, flats)
 }
 
 /// Whether a key is written with flats (F, Bb, Eb ... and their relative minors).
@@ -1350,14 +1331,9 @@ mod tests {
     }
 
     #[test]
-    fn first_format_gets_kind_colours_and_new_one_keeps_choices() {
-        let p = std::env::temp_dir().join(format!("guitarcraft-chart-v1-{}.gcchart", std::process::id()));
-        std::fs::write(&p, r#"{"format":"GuitarCraft chord chart 1","title":"Old","sections":[{"id":1,"name":"Verse 1","kind":"Verse","text":"[E]x"},{"id":2,"name":"Chorus","kind":"Chorus","text":"y"}],"map":[{"section":1,"repeat":1}]}"#).unwrap();
-        let c = ChordChart::load(&p).unwrap();
-        assert_eq!(c.sections[0].color, Kind::Verse.tint().map(rgb));
-        assert_eq!(c.sections[1].color, None);
-        assert_eq!(c.look, ChartLook::standard());
-        // A chart of the new format keeps a section without colour, and its look.
+    fn saved_chart_keeps_its_choices() {
+        let p = std::env::temp_dir().join(format!("guitarcraft-chart-v2-{}.chart", std::process::id()));
+        // A chart keeps a section without colour, and its look.
         let mut d = ChordChart::sample();
         d.sections[1].color = None;
         d.look = ChartLook::stage();
@@ -1434,13 +1410,11 @@ mod tests {
     }
 
     #[test]
-    fn page_settings_from_before_the_stylesheet_are_kept() {
-        let p = std::env::temp_dir().join(format!("guitarcraft-chart-cols-{}.gcchart", std::process::id()));
-        std::fs::write(&p, r#"{"format":"GuitarCraft chord chart 2","title":"T","columns":3,"show_diagrams":false,"look":{"shade":true},"sections":[],"map":[]}"#).unwrap();
+    fn loading_fills_in_kind_colours() {
+        let p = std::env::temp_dir().join(format!("guitarcraft-chart-kinds-{}.chart", std::process::id()));
+        std::fs::write(&p, r#"{"format":"GuitarCraft chord chart 2","title":"T","look":{"shade":true},"sections":[],"map":[]}"#).unwrap();
         let c = ChordChart::load(&p).unwrap();
         let _ = std::fs::remove_file(&p);
-        assert_eq!(c.look.columns, 3);
-        assert!(!c.look.show_diagrams);
         assert_eq!(c.look.kind_colors.len(), Kind::ALL.len());
         assert_eq!(c.look.kind_color(Kind::Verse), Kind::Verse.tint().map(rgb));
     }
@@ -1570,9 +1544,20 @@ mod tests {
     }
 
     #[test]
+    fn diagrams_start_off() {
+        // New charts and both ready-made styles print no diagrams until asked.
+        assert!(!ChordChart::new_blank().look.show_diagrams);
+        assert!(!ChartLook::standard().show_diagrams && !ChartLook::stage().show_diagrams);
+        let blank = ChordChart::new_blank();
+        assert!(!layout(&blank, &rough_measure).iter().flatten().any(|l| matches!(l.item, Item::Diagrams { .. })));
+        // The sample, like the person's picture, has them on.
+        assert!(ChordChart::sample().look.show_diagrams);
+    }
+
+    #[test]
     fn saves_and_reads_back() {
         let c = ChordChart::sample();
-        let p = std::env::temp_dir().join(format!("guitarcraft-chart-{}.gcchart", std::process::id()));
+        let p = std::env::temp_dir().join(format!("guitarcraft-chart-{}.chart", std::process::id()));
         c.save(&p).unwrap();
         assert_eq!(ChordChart::load(&p).unwrap(), c);
         let _ = std::fs::remove_file(&p);

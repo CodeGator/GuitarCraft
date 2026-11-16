@@ -34,7 +34,7 @@ fn main() -> eframe::Result {
             let to = std::path::PathBuf::from(args.next().unwrap_or_default());
             let dpi = args.next().and_then(|d| d.parse::<f32>().ok()).unwrap_or(150.0);
             // A chord chart ("chart" is the sample chart).
-            let is_chart = from == "chart" || from.to_ascii_lowercase().ends_with(&format!(".{}", chart::EXT));
+            let is_chart = from == "chart" || chart::is_chart_path(std::path::Path::new(&from));
             if is_chart {
                 let doc = if from == "chart" { Ok(chart::ChordChart::sample()) } else { chart::ChordChart::load(std::path::Path::new(&from)) };
                 let r = doc.and_then(|doc| {
@@ -50,13 +50,7 @@ fn main() -> eframe::Result {
                         std::fs::write(&to, render::pdf(&imgs, chart::PAGE_MM.0, chart::PAGE_MM.1, &doc.title)).map_err(|e| e.to_string())
                     }
                 });
-                match r {
-                    Ok(()) => std::process::exit(0),
-                    Err(e) => {
-                        eprintln!("{e}");
-                        std::process::exit(1);
-                    }
-                }
+                exit_with(r);
             }
             let song = if from == "demo" { Ok(model::Song::demo()) } else { fileio::load_song(std::path::Path::new(&from)) };
             let r = song.and_then(|song| {
@@ -72,13 +66,7 @@ fn main() -> eframe::Result {
                     std::fs::write(&to, render::pdf(&imgs, w, h, &song.title)).map_err(|e| e.to_string())
                 }
             });
-            match r {
-                Ok(()) => std::process::exit(0),
-                Err(e) => {
-                    eprintln!("{e}");
-                    std::process::exit(1);
-                }
-            }
+            exit_with(r);
         }
         if a == "--convert" {
             // Save a song (or "demo") in another format and exit: --convert <from> <to>.
@@ -97,13 +85,7 @@ fn main() -> eframe::Result {
             } else {
                 fileio::load_song(std::path::Path::new(&from))
             };
-            match song.and_then(|s| fileio::export_song(&s, std::path::Path::new(&to))) {
-                Ok(()) => std::process::exit(0),
-                Err(e) => {
-                    eprintln!("{e}");
-                    std::process::exit(1);
-                }
-            }
+            exit_with(song.and_then(|s| fileio::export_song(&s, std::path::Path::new(&to))));
         }
         if a == "--gp-tests" {
             // Files for checking which parts Guitar Pro 8 accepts.
@@ -267,4 +249,13 @@ pub fn setup_style(ctx: &egui::Context) {
         s.visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(56, 60, 67);
         s.visuals.extreme_bg_color = egui::Color32::from_rgb(26, 28, 32);
     });
+}
+
+/// Ends a command-line run: exit code 0, or print the error and exit with 1.
+fn exit_with(r: Result<(), String>) -> ! {
+    if let Err(e) = r {
+        eprintln!("{e}");
+        std::process::exit(1);
+    }
+    std::process::exit(0)
 }

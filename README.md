@@ -14,7 +14,7 @@ GuitarCraft opens and saves Guitar Pro files (`.gp` and `.gp5`) and also opens `
 
 **Version 0.1.0, an early version for trying out (November 2026).** It is usable for writing and playing songs, but it is young: please save your work often, and keep a copy of any song you care about before editing it.
 
-Not there yet: numbered (jianpu) notation, MusicXML and SVG export, and showing some of the newer palette marks in Guitar Pro 8. Expect rough edges and differences from the original.
+Not there yet: numbered (jianpu) notation, and MusicXML and SVG export. Expect rough edges and differences from the original.
 
 Not planned for now: the original's recorded sound banks and effects, the pedalboard, audio tracks and line-in. These are about sound production rather than writing music, so they may never be added.
 
@@ -24,6 +24,17 @@ Not planned for now: the original's recorded sound banks and effects, the pedalb
 <img src="docs/readme/band.png" alt="A five-track band song: vocals with lyrics, piano on a grand staff, guitar and bass with tablature, and drums on a percussion staff" width="395">
 <img src="docs/readme/tuning.png" alt="The Tuning window: a tuning chosen from the library, each string with its note and a play button, flats or sharps, capo and partial capo" width="395">
 </p>
+
+## What's new
+
+- **Chord charts** (File > New Chord Chart, Ctrl+Shift+N): a second kind of document for lead sheets. You write sections of lyrics with chords inline (`[E]Let my heart be a [B]temple`) or as bars of chords (`| E /// | B //// |`), and a map sets the order the sections are played in. The chord diagrams are worked out from the chord names. Transpose (Ctrl+T, or the ♭ and ♯ buttons) moves the whole chart or a single section into another key, with sharps or flats. Charts have their own stylesheet (F7), with Standard and Stage styles, and they print and export like scores. They are saved as `.chart` files; older `.gcchart` files still open. There is a sample in `samples/`.
+- **Edition palette:** more note and beat marks (legato, wah, arpeggio, golpe, pick scrape, fingering, timer and more) and bar repeat signs. GuitarCraft writes and reads them the way Guitar Pro 8 stores them.
+- **Chord library** for the chords used in a track, and reworked track icons and styles.
+- **Printing and export:** File > Print (Ctrl+P), and export to PDF or PNG.
+- **Score context menu:** right-click the score for cut, copy and paste (also on all tracks at once), Special Paste, and the Bar, Note and Effects menus.
+- **Special Paste** (Ctrl+Shift+V) pastes a selection several times over and lets you pick which extras come with it.
+- **Playback follow:** during playback the view scrolls with the line of music being played.
+- **Mixer and tracks:** the mute and solo header buttons light up and clear every track at once, and hovering a bar number highlights that bar in every track.
 
 ## Install
 
@@ -74,6 +85,7 @@ A few command-line options help with checking and converting:
 | Option | What it does |
 | --- | --- |
 | `--convert <from> <to>` | Opens a song (or `demo`) and saves it in the format of `<to>`, e.g. `.gp` or `.gp5` |
+| `--export <from> <to.pdf\|to.png> [dpi]` | Prints a song, chord chart, `demo` or `chart` (the sample chart) to a PDF or PNG |
 | `--screenshot <file.png>` | Draws the app, saves a picture and exits |
 | `--gp-tests <folder>` | Writes the demo song as several `.gp` test files |
 

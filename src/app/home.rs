@@ -7,13 +7,24 @@ use crate::score::{self, Notation};
 use egui::{Align2, Color32, FontId, Pos2, Rect, RichText, Sense, Stroke as PStroke, Ui, Vec2};
 use std::path::PathBuf;
 
-fn config_dir(app: &str) -> Option<PathBuf> {
+/// GuitarCraft's settings folder: in APPDATA, otherwise in HOME.
+pub(super) fn app_dir() -> Option<PathBuf> {
     let base = std::env::var_os("APPDATA").or_else(|| std::env::var_os("HOME"))?;
-    Some(PathBuf::from(base).join(app))
+    Some(PathBuf::from(base).join("GuitarCraft"))
+}
+
+/// The files in `dir` ending in `.ext`, sorted (none if there is no folder).
+pub(super) fn files_with_ext(dir: Option<PathBuf>, ext: &str) -> Vec<PathBuf> {
+    let Some(d) = dir else { return vec![] };
+    let mut v: Vec<PathBuf> = std::fs::read_dir(d)
+        .map(|r| r.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().map(|e| e == ext).unwrap_or(false)).collect())
+        .unwrap_or_default();
+    v.sort();
+    v
 }
 
 fn config_file() -> Option<PathBuf> {
-    Some(config_dir("GuitarCraft")?.join("recent.json"))
+    Some(app_dir()?.join("recent.json"))
 }
 
 pub fn load_recent() -> Vec<PathBuf> {
@@ -531,7 +542,8 @@ impl App {
             }
             if let Some((_, song)) = &self.preview {
                 let avail = prev_r.shrink(14.0);
-                let zoom = (avail.height() / score::PAGE_H).min(avail.width() / score::PAGE_W);
+                let (pw, ph) = song.style.page_mm();
+                let zoom = (avail.height() / (ph * crate::style::MM)).min(avail.width() / (pw * crate::style::MM));
                 let shown: Vec<usize> = (0..song.tracks.len()).collect();
                 let lay = score::layout(song, &shown, 0, zoom, Notation::Both);
                 let o = Pos2::new(

@@ -16,9 +16,7 @@ pub struct SpecialPaste {
     pub tempo: bool,
 }
 
-fn item(ui: &mut Ui, on: bool, label: &str, sc: &str) -> bool {
-    ui.add_enabled(on, egui::Button::new(label).shortcut_text(sc)).clicked()
-}
+use super::menus::item_if as item;
 
 impl App {
     fn has_clipboard(&self) -> bool {
@@ -112,7 +110,7 @@ impl App {
                         if ui.button("Cancel").clicked() {
                             cancel = true;
                         }
-                        if ui.add(egui::Button::new(RichText::new("OK").color(Color32::WHITE)).fill(Color32::from_rgb(61, 123, 224))).clicked() {
+                        if ui.add(egui::Button::new(RichText::new("OK").color(Color32::WHITE)).fill(super::panels::BLUE)).clicked() {
                             ok = true;
                         }
                     });

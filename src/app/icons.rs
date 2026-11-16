@@ -4,7 +4,7 @@ use super::widgets::Icon;
 use crate::model::Dur;
 use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Stroke as PStroke, Ui, Vec2};
 
-const SEL_BLUE: Color32 = Color32::from_rgb(61, 123, 224);
+use super::panels::BLUE as SEL_BLUE;
 
 pub fn icon_toggle(ui: &mut Ui, on: bool, tip: &str, icon: Icon) -> egui::Response {
     let (r, resp) = ui.allocate_exact_size(Vec2::new(30.0, 30.0), Sense::click());

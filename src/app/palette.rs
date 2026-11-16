@@ -827,7 +827,7 @@ impl App {
                 ui.horizontal_wrapped(|ui| {
                     ui.set_max_width(170.0);
                     for f in 1..=12u8 {
-                        if ui.selectable_label(cur.fx.barre == f, roman(f)).clicked() {
+                        if ui.selectable_label(cur.fx.barre == f, crate::score::roman(f)).clicked() {
                             self.beat_edit(move |b| b.fx.barre = f);
                         }
                     }
@@ -914,10 +914,4 @@ impl App {
         divider(ui);
         ui.label(RichText::new("Click a string on the score and type fret numbers. Arrow keys move, F1 lists every shortcut.").size(11.0).color(Color32::from_gray(140)));
     }
-}
-
-/// Roman numerals for barre frets.
-pub fn roman(n: u8) -> String {
-    const R: [&str; 25] = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "XVII", "XVIII", "XIX", "XX", "XXI", "XXII", "XXIII", "XXIV"];
-    R.get(n as usize).copied().unwrap_or("").to_string()
 }

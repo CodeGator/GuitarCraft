@@ -1224,9 +1224,9 @@ impl App {
         }
         let f = self
             .file_dialog()
-            .add_filter("Guitar Pro files and chord charts", &["gp", "gpx", "gp3", "gp4", "gp5", crate::chart::EXT])
+            .add_filter("Guitar Pro files and chord charts", &["gp", "gpx", "gp3", "gp4", "gp5", crate::chart::EXT, crate::chart::OLD_EXT])
             .add_filter("Guitar Pro files", &["gp", "gpx", "gp3", "gp4", "gp5"])
-            .add_filter("GuitarCraft chord charts", &[crate::chart::EXT])
+            .add_filter("GuitarCraft chord charts", &[crate::chart::EXT, crate::chart::OLD_EXT])
             .pick_file();
         if let Some(p) = f {
             self.open_path(p);
@@ -1236,7 +1236,7 @@ impl App {
     fn open_path(&mut self, p: PathBuf) {
         // Kept as a full location, so later dialogs can start in its folder.
         let p = full_path(&p);
-        if p.extension().map(|e| e.eq_ignore_ascii_case(crate::chart::EXT)).unwrap_or(false) {
+        if crate::chart::is_chart_path(&p) {
             self.open_chart_path(p);
             return;
         }

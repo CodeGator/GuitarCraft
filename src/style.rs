@@ -199,9 +199,7 @@ pub const SYM_PULL: usize = 4;
 pub const SYM_SLAP: usize = 5;
 pub const SYM_POP: usize = 6;
 pub const SYM_SCRAPE: usize = 7;
-#[allow(dead_code)] // Names a slot in the table; no drawing code reads it yet.
 pub const SYM_RASG: usize = 8;
-#[allow(dead_code)] // Names a slot in the table; no drawing code reads it yet.
 pub const SYM_WHAMMY: usize = 9;
 
 /// Page formats: name and size in millimetres (portrait).

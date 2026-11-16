@@ -1,17 +1,18 @@
 //! The screen for chord charts: the score tools give way to a sections list
 //! and the map (the playing order, which can be rearranged) on the left, the
 //! chart's pages in the middle, and the chart's details and the selected
-//! section's text on the right. Charts are saved as .gcchart files.
+//! section's text on the right. Charts are saved as .chart files.
 
 use super::icons::{icon_home, icon_toggle};
 use super::widgets::{icon_redo, icon_undo};
+use super::menus::item_if as item;
+use super::panels::BLUE;
 use super::{App, Pending};
 use crate::chart::{self, ChordChart, Kind, MapEntry, Rgb, Section};
 use egui::{Align2, Color32, FontFamily, FontId, RichText, Sense, Ui, Vec2};
 use std::path::PathBuf;
 
 const PANEL_BG: Color32 = Color32::from_rgb(44, 47, 54);
-const BLUE: Color32 = Color32::from_rgb(61, 123, 224);
 
 pub struct ChartState {
     pub doc: ChordChart,
@@ -372,7 +373,6 @@ impl App {
 
     /// The menus while a chord chart is open: only what works for charts.
     pub(super) fn chart_menu_bar(&mut self, ui: &mut Ui) {
-        let item = |ui: &mut Ui, on: bool, label: &str, sc: &str| ui.add_enabled(on, egui::Button::new(label).shortcut_text(sc)).clicked();
         egui::MenuBar::new().ui(ui, |ui| {
             ui.menu_button("File", |ui| {
                 if item(ui, true, "New Song", "Ctrl+N") {

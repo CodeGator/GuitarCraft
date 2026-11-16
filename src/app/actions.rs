@@ -224,29 +224,11 @@ impl App {
     }
 
     fn templates_dir() -> Option<PathBuf> {
-        let base = std::env::var_os("APPDATA").or_else(|| std::env::var_os("HOME"))?;
-        Some(PathBuf::from(base).join("GuitarCraft").join("Templates"))
+        Some(super::home::app_dir()?.join("Templates"))
     }
 
     pub(super) fn user_templates() -> Vec<PathBuf> {
-        let Some(d) = Self::templates_dir() else {
-            return vec![];
-        };
-        let mut v: Vec<PathBuf> = std::fs::read_dir(d)
-            .map(|r| {
-                r.filter_map(|e| e.ok().map(|e| e.path()))
-                    .filter(|p| {
-                        p.extension()
-                            .map(|e| {
-                                e == fileio::GP_EXT
-                            })
-                            .unwrap_or(false)
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        v.sort();
-        v
+        super::home::files_with_ext(Self::templates_dir(), fileio::GP_EXT)
     }
 
     pub(super) fn save_as_template(&mut self) {

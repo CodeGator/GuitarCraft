@@ -20,10 +20,6 @@ pub fn sanitize(s: &str) -> String {
     }
 }
 
-pub fn fmt_time(s: f32) -> String {
-    format!("{}:{:02}", (s / 60.0) as u32, (s % 60.0) as u32)
-}
-
 pub type Icon = fn(&egui::Painter, Rect, Color32);
 
 pub fn icon_new(p: &egui::Painter, r: Rect, c: Color32) {
