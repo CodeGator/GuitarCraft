@@ -1,7 +1,7 @@
 //! The screen for chord charts: the score tools give way to a sections list
 //! and the map (the playing order, which can be rearranged) on the left, the
 //! chart's pages in the middle, and the chart's details and the selected
-//! section's text on the right. Charts are saved as .gcchart files.
+//! section's text on the right. Charts are saved as .chart files.
 
 use super::icons::{icon_home, icon_toggle};
 use super::widgets::{icon_redo, icon_undo};

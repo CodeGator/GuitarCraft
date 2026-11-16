@@ -34,7 +34,7 @@ fn main() -> eframe::Result {
             let to = std::path::PathBuf::from(args.next().unwrap_or_default());
             let dpi = args.next().and_then(|d| d.parse::<f32>().ok()).unwrap_or(150.0);
             // A chord chart ("chart" is the sample chart).
-            let is_chart = from == "chart" || from.to_ascii_lowercase().ends_with(&format!(".{}", chart::EXT));
+            let is_chart = from == "chart" || chart::is_chart_path(std::path::Path::new(&from));
             if is_chart {
                 let doc = if from == "chart" { Ok(chart::ChordChart::sample()) } else { chart::ChordChart::load(std::path::Path::new(&from)) };
                 let r = doc.and_then(|doc| {
