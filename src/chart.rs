@@ -99,10 +99,8 @@ pub fn color(c: Rgb) -> Color32 {
     Color32::from_rgb(c[0], c[1], c[2])
 }
 
-/// The file format written now. Version 1 had no colours of its own: its
-/// sections took the colour suggested for their kind.
+/// The file format written now.
 pub const FORMAT: &str = "GuitarCraft chord chart 2";
-const FORMAT_1: &str = "GuitarCraft chord chart 1";
 
 /// How one kind of text on the chart looks: font, size (points at 100 %),
 /// bold, italic and colour.
@@ -542,29 +540,8 @@ impl ChordChart {
 
     pub fn load(path: &std::path::Path) -> Result<ChordChart, String> {
         let data = std::fs::read(path).map_err(|e| e.to_string())?;
-        let v: serde_json::Value = serde_json::from_slice(&data).map_err(|e| format!("Not a chord chart: {e}"))?;
-        let first = v.get("format").and_then(|f| f.as_str()) == Some(FORMAT_1);
-        // Charts saved before the stylesheet kept these beside it.
-        let columns = v.get("columns").and_then(|c| c.as_u64());
-        let diagrams = v.get("show_diagrams").and_then(|c| c.as_bool());
-        let in_look = v.get("look").map(|l| l.get("columns").is_some()).unwrap_or(false);
-        let mut c: ChordChart = serde_json::from_value(v).map_err(|e| format!("Not a chord chart: {e}"))?;
-        if !in_look {
-            if let Some(n) = columns {
-                c.look.columns = (n as u8).clamp(1, MAX_COLUMNS);
-            }
-            if let Some(d) = diagrams {
-                c.look.show_diagrams = d;
-            }
-        }
+        let mut c: ChordChart = serde_json::from_slice(&data).map_err(|e| format!("Not a chord chart: {e}"))?;
         c.look.fix_kind_colors();
-        if first {
-            // Charts saved before sections had colours of their own.
-            for s in &mut c.sections {
-                s.color = s.kind.tint().map(rgb);
-            }
-            c.format = FORMAT.into();
-        }
         Ok(c)
     }
 
@@ -1354,14 +1331,9 @@ mod tests {
     }
 
     #[test]
-    fn first_format_gets_kind_colours_and_new_one_keeps_choices() {
-        let p = std::env::temp_dir().join(format!("guitarcraft-chart-v1-{}.chart", std::process::id()));
-        std::fs::write(&p, r#"{"format":"GuitarCraft chord chart 1","title":"Old","sections":[{"id":1,"name":"Verse 1","kind":"Verse","text":"[E]x"},{"id":2,"name":"Chorus","kind":"Chorus","text":"y"}],"map":[{"section":1,"repeat":1}]}"#).unwrap();
-        let c = ChordChart::load(&p).unwrap();
-        assert_eq!(c.sections[0].color, Kind::Verse.tint().map(rgb));
-        assert_eq!(c.sections[1].color, None);
-        assert_eq!(c.look, ChartLook::standard());
-        // A chart of the new format keeps a section without colour, and its look.
+    fn saved_chart_keeps_its_choices() {
+        let p = std::env::temp_dir().join(format!("guitarcraft-chart-v2-{}.chart", std::process::id()));
+        // A chart keeps a section without colour, and its look.
         let mut d = ChordChart::sample();
         d.sections[1].color = None;
         d.look = ChartLook::stage();
@@ -1438,13 +1410,11 @@ mod tests {
     }
 
     #[test]
-    fn page_settings_from_before_the_stylesheet_are_kept() {
-        let p = std::env::temp_dir().join(format!("guitarcraft-chart-cols-{}.chart", std::process::id()));
-        std::fs::write(&p, r#"{"format":"GuitarCraft chord chart 2","title":"T","columns":3,"show_diagrams":false,"look":{"shade":true},"sections":[],"map":[]}"#).unwrap();
+    fn loading_fills_in_kind_colours() {
+        let p = std::env::temp_dir().join(format!("guitarcraft-chart-kinds-{}.chart", std::process::id()));
+        std::fs::write(&p, r#"{"format":"GuitarCraft chord chart 2","title":"T","look":{"shade":true},"sections":[],"map":[]}"#).unwrap();
         let c = ChordChart::load(&p).unwrap();
         let _ = std::fs::remove_file(&p);
-        assert_eq!(c.look.columns, 3);
-        assert!(!c.look.show_diagrams);
         assert_eq!(c.look.kind_colors.len(), Kind::ALL.len());
         assert_eq!(c.look.kind_color(Kind::Verse), Kind::Verse.tint().map(rgb));
     }

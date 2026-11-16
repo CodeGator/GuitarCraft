@@ -1,6 +1,6 @@
 # GuitarCraft codebase audit: simplification plan
 
-15 Nov 2026 · Branch: `audit` · Status: proposed (nothing changed yet)
+15 Nov 2026 · Branch: `audit` · Status: done (16 Nov 2026), see Outcome at the end
 
 ## Summary
 
@@ -99,3 +99,13 @@ The code is in good shape. The build gives no warnings, clippy reports only 11 m
 3. A3 and A4 once they're decided.
 
 After each step, run `cargo test` (baseline: 73 passed, 1 ignored) and take a quick look at the app.
+
+## Outcome
+
+16 Nov 2026. The tests ended as they started (74 passed, 1 ignored; the 73 above was a miscount), with no build warnings and the same 11 clippy lints. Each step was checked in the app.
+
+- **Step 1 (done):** A1, A2, B1, B6 and B7. In B6, the third copy of the menu item (a closure in `chartui.rs`) and the third copy of "ticks before a beat" (in `gpifwrite.rs`) were merged too.
+- **Step 2 (done):** B2, B3, B4 and B5. B2 is a single `stylesheet::switch_of(ui, on, size)`; B5 added `model::pitch_name(midi, flat)` beside `SHARPS` and `FLATS`.
+- **A3 (kept):** `--gp-tests` is still used to check files in Guitar Pro.
+- **A4 (done):** the format-1 and pre-stylesheet chart upgrade is gone. The two tests keep their parts that still apply: a saved chart reloads unchanged, and loading fills in the kind colours.
+- **Timer (kept):** `draw.rs time_at` and `gpifwrite.rs seconds_at` stay separate, because merging them could move the score timer by a second.
