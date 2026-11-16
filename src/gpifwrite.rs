@@ -680,10 +680,10 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
     }
     // This app's stylesheet rides along as an XML comment inside the score, so
     // the file holds nothing other programs don't expect. Left out when standard.
-    if song.style != crate::style::Stylesheet::standard() {
-        if let Ok(json) = serde_json::to_string(&song.style) {
-            let _ = write!(x, "<!--{STYLE_MARK}{}-->\n", hex(json.as_bytes()));
-        }
+    if song.style != crate::style::Stylesheet::standard()
+        && let Ok(json) = serde_json::to_string(&song.style)
+    {
+        let _ = writeln!(x, "<!--{STYLE_MARK}{}-->", hex(json.as_bytes()));
     }
     // Marks only this app keeps, also as a hidden note.
     if let Some(c) = crate::extras::comment(song) {

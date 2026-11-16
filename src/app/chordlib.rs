@@ -15,10 +15,10 @@ impl App {
         let mut out: Vec<(String, Beat)> = vec![];
         for bar in &self.tr().bars {
             for b in &bar.beats {
-                if let Some(name) = &b.chord {
-                    if !out.iter().any(|(n, _)| n == name) {
-                        out.push((name.clone(), b.clone()));
-                    }
+                if let Some(name) = &b.chord
+                    && !out.iter().any(|(n, _)| n == name)
+                {
+                    out.push((name.clone(), b.clone()));
                 }
             }
         }
@@ -98,20 +98,18 @@ impl App {
         if add {
             self.open_chord_tool();
         }
-        if remove {
-            if let Some(name) = selected {
-                self.edit(move |s, t, _, _, _| {
-                    for bar in &mut s.tracks[t].bars {
-                        for b in &mut bar.beats {
-                            if b.chord.as_deref() == Some(name.as_str()) {
-                                b.chord = None;
-                                b.chord_diagram = false;
-                            }
+        if remove && let Some(name) = selected {
+            self.edit(move |s, t, _, _, _| {
+                for bar in &mut s.tracks[t].bars {
+                    for b in &mut bar.beats {
+                        if b.chord.as_deref() == Some(name.as_str()) {
+                            b.chord = None;
+                            b.chord_diagram = false;
                         }
                     }
-                });
-                self.status = "Chord removed from the track.".into();
-            }
+                }
+            });
+            self.status = "Chord removed from the track.".into();
         }
         self.chord_lib_open = open;
     }
