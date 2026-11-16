@@ -1,0 +1,10 @@
+[package]
+name = "xtask"
+version = "0.0.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+publish = false
+
+[dependencies]
+# Renders assets/app-icon/icon.svg for `cargo xtask icons`.
+resvg = "0.45"

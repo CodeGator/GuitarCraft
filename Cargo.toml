@@ -1,5 +1,11 @@
+# The app is the root package; xtask holds the repo's helper commands (`cargo xtask …`).
+[workspace]
+members = [".", "xtask"]
+
 [package]
 name = "guitarcraft"
+# The one place the version lives. Change it with `cargo xtask version set X.Y.Z`; the app,
+# the .exe's version info and the installer all read it from here.
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.95"
@@ -21,6 +27,10 @@ roxmltree = "0.21"
 flate2 = "1"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 
+[build-dependencies]
+# Icon + VERSIONINFO for guitarcraft.exe; build.rs only uses it when the target is Windows.
+winresource = "0.1"
+
 [profile.dev]
 opt-level = 1
 
@@ -31,4 +41,4 @@ opt-level = 2
 winit = "0.30"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Storage_Xps", "Win32_UI_Controls_Dialogs"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_Console","Win32_Storage_Xps", "Win32_UI_Controls_Dialogs"] }

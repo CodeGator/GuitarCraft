@@ -38,7 +38,9 @@ Not planned for now: the original's recorded sound banks and effects, the pedalb
 
 ## Install
 
-There are no ready-made downloads yet, so for now you build GuitarCraft yourself. It only takes a few minutes:
+On Windows, download the installer (`guitarcraft-<version>-windows-x64.msi`) from the [Releases page](https://github.com/CodeGator/GuitarCraft/releases) and run it. It installs just for you, with no administrator needed, unless you choose to install it for everyone. There is also a portable zip to run without installing. The installer isn't signed yet, so Windows may warn that the publisher is unknown: choose **More info → Run anyway**.
+
+Or build GuitarCraft yourself. It only takes a few minutes:
 
 1. Install Rust from <https://rustup.rs> (accept the defaults). On Windows, the installer also offers the Microsoft C++ build tools it needs.
 2. Download this repository (**Code → Download ZIP** on GitHub, then unzip it), or clone it with git.
@@ -75,7 +77,7 @@ I'm a .NET developer, and I'm using GuitarCraft as a way to learn Rust. The proj
 
 ```sh
 cargo build --release   # the program, in target/release/
-cargo test              # the tests
+cargo test --workspace  # the tests, including the xtask helper commands
 ```
 
 The tests check, among other things, that songs survive a round trip through `.gp` and `.gp5` files, and that GuitarCraft writes the score-view part of a `.gp` file exactly as Guitar Pro 8 does (`samples/Empty.gp` is a song saved by Guitar Pro 8 for this).
@@ -88,6 +90,12 @@ A few command-line options help with checking and converting:
 | `--export <from> <to.pdf\|to.png> [dpi]` | Prints a song, chord chart, `demo` or `chart` (the sample chart) to a PDF or PNG |
 | `--screenshot <file.png>` | Draws the app, saves a picture and exits |
 | `--gp-tests <folder>` | Writes the demo song as several `.gp` test files |
+
+On Windows, GuitarCraft is a windowed app, so a terminal doesn't wait for it: its messages appear after the prompt returns. To wait for a run and get its exit code, use `Start-Process -Wait` in PowerShell or `start /wait` in cmd.
+
+## Releasing
+
+The version is kept in one place, `Cargo.toml`, and is changed with `cargo xtask version set X.Y.Z`. `packaging/windows/package.ps1` builds the Windows installer and a portable zip. See [docs/releasing.md](docs/releasing.md).
 
 ## About the clean room
 

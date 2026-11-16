@@ -12,3 +12,6 @@ shots/
 samples/Test *.gp
 samples/Check *.gp
 samples/MorningWalk*.gp
+
+# Installers and zips made by packaging/windows/package.ps1
+dist/
