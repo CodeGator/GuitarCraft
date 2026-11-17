@@ -106,26 +106,6 @@ pub fn chart_key(k: &str) -> Option<(i8, bool)> {
     found.first().map(|&s| (s, minor))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn chart_key_and_time_read_as_signatures() {
-        assert_eq!(chart_key("E"), Some((4, false)));
-        assert_eq!(chart_key("C#m"), Some((4, true)));
-        assert_eq!(chart_key("F#"), Some((6, false)));
-        assert_eq!(chart_key("Gb"), Some((-6, false)));
-        assert_eq!(chart_key("Bb major"), Some((-2, false)));
-        assert_eq!(chart_key("D minor"), Some((-1, true)));
-        assert_eq!(chart_key(""), None);
-        assert_eq!(super::super::popups::key_short(4, false), "E");
-        assert_eq!(super::super::popups::key_short(-3, true), "Cm");
-        assert_eq!(chart_time("6/8"), (6, 8));
-        assert_eq!(chart_time("Free"), (4, 4));
-    }
-}
-
 /// A small square button with a drawn icon (dimmed when it can't be used).
 fn icon_button(ui: &mut Ui, enabled: bool, tip: &str, draw: impl Fn(&egui::Painter, egui::Rect, Color32)) -> egui::Response {
     let sense = if enabled { Sense::click() } else { Sense::hover() };
@@ -1198,5 +1178,25 @@ impl App {
             st.sel = i;
             st.tab = 1;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn chart_key_and_time_read_as_signatures() {
+        assert_eq!(chart_key("E"), Some((4, false)));
+        assert_eq!(chart_key("C#m"), Some((4, true)));
+        assert_eq!(chart_key("F#"), Some((6, false)));
+        assert_eq!(chart_key("Gb"), Some((-6, false)));
+        assert_eq!(chart_key("Bb major"), Some((-2, false)));
+        assert_eq!(chart_key("D minor"), Some((-1, true)));
+        assert_eq!(chart_key(""), None);
+        assert_eq!(super::super::popups::key_short(4, false), "E");
+        assert_eq!(super::super::popups::key_short(-3, true), "Cm");
+        assert_eq!(chart_time("6/8"), (6, 8));
+        assert_eq!(chart_time("Free"), (4, 4));
     }
 }

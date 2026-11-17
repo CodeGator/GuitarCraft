@@ -30,6 +30,9 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 [build-dependencies]
 # Icon + VERSIONINFO for guitarcraft.exe; build.rs only uses it when the target is Windows.
 winresource = "0.1"
+# The About window's list of open-source components: read from Cargo.lock, stored compressed.
+serde_json = "1"
+flate2 = "1"
 
 [profile.dev]
 opt-level = 1

@@ -1044,7 +1044,7 @@ fn write_note(ids: &mut Ids, t: &Track, beat: &Beat, n: &Note, key: i8) -> usize
 
 /// Which staves each track shows, for Guitar Pro's part settings: one view of
 /// all tracks, then one view per track. Each track: 1 notation, 2 tablature.
-fn part_configuration(song: &Song) -> Vec<u8> {
+pub(crate) fn part_configuration(song: &Song) -> Vec<u8> {
     let flags: Vec<u8> = song
         .tracks
         .iter()

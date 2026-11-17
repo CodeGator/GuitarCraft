@@ -13,6 +13,8 @@ use std::path::PathBuf;
 pub enum ExportKind {
     Pdf,
     Png,
+    /// Vector pages (scores only): one .svg file per page.
+    Svg,
 }
 
 impl ExportKind {
@@ -20,8 +22,20 @@ impl ExportKind {
         match self {
             ExportKind::Pdf => "pdf",
             ExportKind::Png => "png",
+            ExportKind::Svg => "svg",
         }
     }
+}
+
+/// Where page `k` (counting from 0) of an export goes: the chosen name for a
+/// single page, otherwise "Name-1.svg", "Name-2.svg" ...
+fn page_file(path: &std::path::Path, k: usize, count: usize) -> std::path::PathBuf {
+    if count <= 1 {
+        return path.to_path_buf();
+    }
+    let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let ext = path.extension().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    path.with_file_name(format!("{stem}-{}.{ext}", k + 1))
 }
 
 /// The print preview's state.
@@ -161,6 +175,7 @@ impl App {
         let title = match dlg.kind {
             ExportKind::Pdf => "Export PDF",
             ExportKind::Png => "Export PNG",
+            ExportKind::Svg => "Export SVG",
         };
         egui::Window::new(title)
             .open(&mut open)
@@ -193,13 +208,20 @@ impl App {
                         }
                     });
                     ui.end_row();
-                    ui.label("Resolution:");
-                    egui::ComboBox::from_id_salt("export-dpi").selected_text(format!("{} dpi", dlg.dpi)).show_ui(ui, |ui| {
-                        for d in [72u32, 150, 300, 600] {
-                            ui.selectable_value(&mut dlg.dpi, d, format!("{d} dpi"));
-                        }
-                    });
-                    ui.end_row();
+                    if dlg.kind == ExportKind::Svg {
+                        // Vector drawings have no resolution.
+                        ui.label("");
+                        ui.label(RichText::new("One .svg file per page (Name-1.svg, Name-2.svg ... when there are several).").weak());
+                        ui.end_row();
+                    } else {
+                        ui.label("Resolution:");
+                        egui::ComboBox::from_id_salt("export-dpi").selected_text(format!("{} dpi", dlg.dpi)).show_ui(ui, |ui| {
+                            for d in [72u32, 150, 300, 600] {
+                                ui.selectable_value(&mut dlg.dpi, d, format!("{d} dpi"));
+                            }
+                        });
+                        ui.end_row();
+                    }
                     ui.label("Export:");
                     ui.vertical(|ui| {
                         ui.radio_value(&mut dlg.scope, 0, format!("All pages ({pages})"));
@@ -268,11 +290,17 @@ impl App {
         if self.screenshot.is_some() {
             return;
         }
-        let imgs = self.doc_render(pages, dpi, transparent && kind == ExportKind::Png);
-        let (w, h) = self.doc_mm();
-        let r = match kind {
-            ExportKind::Pdf => std::fs::write(path, render::pdf(&imgs, w, h, &self.doc_title())).map_err(|e| e.to_string()),
-            ExportKind::Png => render::stack(&imgs).save(path).map_err(|e| e.to_string()),
+        let r = if kind == ExportKind::Svg {
+            let svgs = render::svg_pages(&self.print_spec(), pages);
+            let n = svgs.len();
+            svgs.iter().enumerate().try_for_each(|(k, s)| std::fs::write(page_file(path, k, n), s).map_err(|e| e.to_string()))
+        } else {
+            let imgs = self.doc_render(pages, dpi, transparent && kind == ExportKind::Png);
+            let (w, h) = self.doc_mm();
+            match kind {
+                ExportKind::Pdf => std::fs::write(path, render::pdf(&imgs, w, h, &self.doc_title())).map_err(|e| e.to_string()),
+                _ => render::stack(&imgs).save(path).map_err(|e| e.to_string()),
+            }
         };
         self.status = match r {
             Ok(()) => format!("Exported {} page(s) to {}.", pages.len(), path.display()),

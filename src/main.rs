@@ -5,9 +5,9 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
 mod app;
+mod audio;
 mod chart;
 mod chordshape;
-mod audio;
 mod extras;
 mod fileio;
 mod fretboard;
@@ -16,8 +16,10 @@ mod gpif;
 mod gpifwrite;
 mod gpimport;
 mod gpstyle;
+mod gpx;
 mod gpsv;
 mod model;
+mod musicxml;
 mod render;
 mod score;
 mod style;
@@ -37,38 +39,72 @@ fn main() -> eframe::Result {
             // --export <from> <to.pdf|to.png> [dpi]
             let from = args.next().unwrap_or_default();
             let to = std::path::PathBuf::from(args.next().unwrap_or_default());
-            let dpi = args.next().and_then(|d| d.parse::<f32>().ok()).unwrap_or(150.0);
+            let dpi = args
+                .next()
+                .and_then(|d| d.parse::<f32>().ok())
+                .unwrap_or(150.0);
             // A chord chart ("chart" is the sample chart).
             let is_chart = from == "chart" || chart::is_chart_path(std::path::Path::new(&from));
             if is_chart {
-                let doc = if from == "chart" { Ok(chart::ChordChart::sample()) } else { chart::ChordChart::load(std::path::Path::new(&from)) };
+                let doc = if from == "chart" {
+                    Ok(chart::ChordChart::sample())
+                } else {
+                    chart::ChordChart::load(std::path::Path::new(&from))
+                };
                 let r = doc.and_then(|doc| {
                     let pages: Vec<usize> = (0..render::chart_page_count(&doc)).collect();
-                    if to.extension().map(|e| e.eq_ignore_ascii_case(chart::EXT)).unwrap_or(false) {
+                    if to
+                        .extension()
+                        .map(|e| e.eq_ignore_ascii_case(chart::EXT))
+                        .unwrap_or(false)
+                    {
                         // Saves the chart itself (for making sample files).
                         return doc.save(&to);
                     }
                     let imgs = render::render_chart(&doc, &pages, dpi);
-                    if to.extension().map(|e| e.eq_ignore_ascii_case("png")).unwrap_or(false) {
+                    if to
+                        .extension()
+                        .map(|e| e.eq_ignore_ascii_case("png"))
+                        .unwrap_or(false)
+                    {
                         render::stack(&imgs).save(&to).map_err(|e| e.to_string())
                     } else {
-                        std::fs::write(&to, render::pdf(&imgs, chart::PAGE_MM.0, chart::PAGE_MM.1, &doc.title)).map_err(|e| e.to_string())
+                        std::fs::write(
+                            &to,
+                            render::pdf(&imgs, chart::PAGE_MM.0, chart::PAGE_MM.1, &doc.title),
+                        )
+                        .map_err(|e| e.to_string())
                     }
                 });
                 exit_with(r);
             }
-            let song = if from == "demo" { Ok(model::Song::demo()) } else { fileio::load_song(std::path::Path::new(&from)) };
+            let song = if from == "demo" {
+                Ok(model::Song::demo())
+            } else {
+                fileio::load_song(std::path::Path::new(&from))
+            };
             let r = song.and_then(|song| {
-                let shown: Vec<usize> = (0..song.tracks.len()).filter(|&i| song.tracks[i].visible).collect();
-                let spec = render::PrintSpec { song: &song, shown, track: 0, notation: score::Notation::Both };
+                let shown: Vec<usize> = (0..song.tracks.len())
+                    .filter(|&i| song.tracks[i].visible)
+                    .collect();
+                let spec = render::PrintSpec {
+                    song: &song,
+                    shown,
+                    track: 0,
+                    notation: score::Notation::Both,
+                };
                 let pages: Vec<usize> = (0..spec.pages()).collect();
-                let png = to.extension().map(|e| e.eq_ignore_ascii_case("png")).unwrap_or(false);
+                let png = to
+                    .extension()
+                    .map(|e| e.eq_ignore_ascii_case("png"))
+                    .unwrap_or(false);
                 let imgs = render::render_pages(&spec, &pages, dpi, false);
                 if png {
                     render::stack(&imgs).save(&to).map_err(|e| e.to_string())
                 } else {
                     let (w, h) = spec.page_mm();
-                    std::fs::write(&to, render::pdf(&imgs, w, h, &song.title)).map_err(|e| e.to_string())
+                    std::fs::write(&to, render::pdf(&imgs, w, h, &song.title))
+                        .map_err(|e| e.to_string())
                 }
             });
             exit_with(r);
@@ -94,7 +130,8 @@ fn main() -> eframe::Result {
         }
         if a == "--gp-tests" {
             // Files for checking which parts Guitar Pro 8 accepts.
-            let dir = std::path::PathBuf::from(args.next().unwrap_or_else(|| "shots/gp-checks".into()));
+            let dir =
+                std::path::PathBuf::from(args.next().unwrap_or_else(|| "shots/gp-checks".into()));
             let _ = std::fs::create_dir_all(&dir);
             let demo = model::Song::demo();
             let blank = model::Song::new_blank();
@@ -103,8 +140,14 @@ fn main() -> eframe::Result {
                 ("Check 3 - new format, no chord names", &demo, false),
                 ("Check 4 - blank song, new format", &blank, false),
             ] {
-                let data = gpifwrite::export_gp_with(song, gpifwrite::GpOptions { chords, views: false })
-                    .unwrap_or_default();
+                let data = gpifwrite::export_gp_with(
+                    song,
+                    gpifwrite::GpOptions {
+                        chords,
+                        views: false,
+                    },
+                )
+                .unwrap_or_default();
                 let _ = std::fs::write(dir.join(format!("{name}.gp")), data);
             }
             std::process::exit(0);
@@ -176,7 +219,9 @@ fn attach_parent_console() {
     #[cfg(target_os = "windows")]
     // SAFETY: AttachConsole only takes a process id; failing (no parent console) is harmless.
     unsafe {
-        windows_sys::Win32::System::Console::AttachConsole(windows_sys::Win32::System::Console::ATTACH_PARENT_PROCESS);
+        windows_sys::Win32::System::Console::AttachConsole(
+            windows_sys::Win32::System::Console::ATTACH_PARENT_PROCESS,
+        );
     }
 }
 

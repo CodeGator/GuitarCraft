@@ -1,14 +1,16 @@
 //! The main window: state, editing commands, playback and keyboard input.
 //! The panels are drawn in `panels.rs`.
 
+mod about;
 mod actions;
+mod batch;
+mod automation;
+mod bottom;
 mod chartstyle;
 mod chartui;
 mod chartxpose;
 mod chordlib;
 mod clipmenu;
-mod automation;
-mod bottom;
 mod cursor;
 mod home;
 mod icons;
@@ -117,6 +119,12 @@ pub struct App {
     pending: Option<Pending>,
     show_help: bool,
     show_about: bool,
+    /// Pictures for checks: the File menu open on Import (false) or Export (true).
+    file_menu_demo: Option<bool>,
+    /// The Batch Converter window, when open.
+    batch: Option<batch::BatchDlg>,
+    /// The About window's tab and the Open Source list.
+    about: about::AboutState,
     title_cache: String,
     show_home: bool,
     single_track: bool,
@@ -233,6 +241,9 @@ impl App {
         } = launch;
         let music_font = crate::setup_fonts(&cc.egui_ctx);
         crate::setup_style(&cc.egui_ctx);
+        // Open on the start screen (File > Browse), as Guitar Pro 8 does. Screenshot runs
+        // keep starting in the score; they ask for the start screen with --home.
+        let start_on_home = screenshot.is_none();
         let mut app = App {
             song: Song::demo(),
             path: None,
@@ -279,8 +290,11 @@ impl App {
             pending: None,
             show_help: false,
             show_about: false,
+            file_menu_demo: None,
+            batch: None,
+            about: Default::default(),
             title_cache: String::new(),
-            show_home: false,
+            show_home: start_on_home,
             single_track: false,
             toast: (String::new(), 0.0),
             recent: vec![],
@@ -462,12 +476,15 @@ impl App {
                     st.tab = 0;
                     app.chart = Some(st);
                     app.show_home = false;
-                    app.status = "Three columns: lines flow down each column, then on to the next.".into();
+                    app.status =
+                        "Three columns: lines flow down each column, then on to the next.".into();
                 }
                 "chartdiagrams" => {
                     let mut st = chartui::ChartState::new(crate::chart::ChordChart::sample());
                     st.tab = 0;
-                    st.doc.sections[1].text.push_str("\n[Badd9]Weird [F#m7b5]chords [G6/9]too [D/F#]");
+                    st.doc.sections[1]
+                        .text
+                        .push_str("\n[Badd9]Weird [F#m7b5]chords [G6/9]too [D/F#]");
                     st.diagrams_open = true;
                     app.chart = Some(st);
                     app.show_home = false;
@@ -484,20 +501,32 @@ impl App {
                 "charttempo" => {
                     let mut st = chartui::ChartState::new(crate::chart::ChordChart::sample());
                     // A slower bridge that picks up again into the last chorus.
-                    st.doc.set_tempo_points(&[(0, 63, false), (10, 58, true), (11, 66, false)]);
+                    st.doc
+                        .set_tempo_points(&[(0, 63, false), (10, 58, true), (11, 66, false)]);
                     st.tempo_open = true;
                     st.tempo_ed.sel = 10;
                     app.chart = Some(st);
                     app.show_home = false;
                     app.status = "The chart's BPM opens the same tempo editor as a score's.".into();
                 }
+                "about" | "about2" | "about3" => {
+                    app.show_about = true;
+                    app.about.tab = match part.as_str() {
+                        "about2" => 1,
+                        "about3" => 2,
+                        _ => 0,
+                    };
+                }
+                "batch" => app.open_batch(),
+                "importmenu" | "exportmenu" => app.file_menu_demo = Some(part == "exportmenu"),
                 "chartmoved" => {
                     let mut st = chartui::ChartState::new(crate::chart::ChordChart::sample());
                     // Verse 2 one place earlier, as with the Sections list's up button.
                     st.sel = st.doc.move_section(2, -1);
                     app.chart = Some(st);
                     app.show_home = false;
-                    app.status = "Verse 2 moved before Verse 1: the map and the chart follow.".into();
+                    app.status =
+                        "Verse 2 moved before Verse 1: the map and the chart follow.".into();
                 }
                 "transpose" => {
                     app.chart = Some(chartui::ChartState::new(crate::chart::ChordChart::sample()));
@@ -518,12 +547,15 @@ impl App {
                         "chartstyle3" => app.open_chart_style(3),
                         _ => {}
                     }
-                    app.status = "The chart's stylesheet sets its fonts, colours and columns (F7).".into();
+                    app.status =
+                        "The chart's stylesheet sets its fonts, colours and columns (F7).".into();
                 }
                 "chart" => {
                     app.chart = Some(chartui::ChartState::new(crate::chart::ChordChart::sample()));
                     app.show_home = false;
-                    app.status = "Click a section on the page to edit it; rearrange the song in the map.".into();
+                    app.status =
+                        "Click a section on the page to edit it; rearrange the song in the map."
+                            .into();
                 }
                 "barhover" => app.bar_hover_demo = Some(2),
                 // Playback part way through bar 9 (no sound), for checking that the view follows.
@@ -551,12 +583,18 @@ impl App {
                     let t = &mut app.song.tracks[0];
                     t.bars[0].beats[0].fx.timer = true;
                     t.bars[0].beats[1].fx.wah = 1;
-                    t.bars[0].beats[2].notes.iter_mut().for_each(|n| n.fx.ornament = 1);
+                    t.bars[0].beats[2]
+                        .notes
+                        .iter_mut()
+                        .for_each(|n| n.fx.ornament = 1);
                     t.bars[0].beats[3].fx.stem = 2;
                     t.bars[0].beats[4].fx.barre = 5;
                     t.bars[0].beats[5].fx.slash = true;
                     t.bars[0].beats[6].fx.pedal = 1;
-                    t.bars[0].beats[6].notes.iter_mut().for_each(|n| n.fx.lh_finger = 3);
+                    t.bars[0].beats[6]
+                        .notes
+                        .iter_mut()
+                        .for_each(|n| n.fx.lh_finger = 3);
                     t.bars[0].beats[7].notes.iter_mut().for_each(|n| {
                         n.fx.string_number = true;
                         n.fx.legato = true;
@@ -1224,9 +1262,23 @@ impl App {
         }
         let f = self
             .file_dialog()
-            .add_filter("Guitar Pro files and chord charts", &["gp", "gpx", "gp3", "gp4", "gp5", crate::chart::EXT, crate::chart::OLD_EXT])
+            .add_filter(
+                "Guitar Pro files and chord charts",
+                &[
+                    "gp",
+                    "gpx",
+                    "gp3",
+                    "gp4",
+                    "gp5",
+                    crate::chart::EXT,
+                    crate::chart::OLD_EXT,
+                ],
+            )
             .add_filter("Guitar Pro files", &["gp", "gpx", "gp3", "gp4", "gp5"])
-            .add_filter("GuitarCraft chord charts", &[crate::chart::EXT, crate::chart::OLD_EXT])
+            .add_filter(
+                "GuitarCraft chord charts",
+                &[crate::chart::EXT, crate::chart::OLD_EXT],
+            )
             .pick_file();
         if let Some(p) = f {
             self.open_path(p);
@@ -1261,7 +1313,10 @@ impl App {
                 self.reset_after_load();
                 self.add_recent(&p);
                 self.show_home = false;
-                let name = p.file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default();
+                let name = p
+                    .file_name()
+                    .map(|f| f.to_string_lossy().to_string())
+                    .unwrap_or_default();
                 self.status = format!("Opened {name}.");
             }
             Err(e) => self.status = format!("Couldn't open the file: {e}"),
@@ -1365,6 +1420,31 @@ impl App {
     fn export_ascii(&mut self) {
         if let Some(p) = self.export_path("Text file", "txt") {
             self.write_export(&p, fileio::export_ascii(&self.song, self.track));
+        }
+    }
+
+    /// File > Export > GPX: a Guitar Pro 6 file.
+    fn export_gpx(&mut self) {
+        if let Some(p) = self.export_path("Guitar Pro 6 file", "gpx") {
+            self.write_export(&p, crate::gpx::export_gpx(&self.song));
+        }
+    }
+
+    /// File > Export > GP5: a Guitar Pro 5 file, saying what that older format can't keep.
+    fn export_gp5(&mut self) {
+        if let Some(p) = self.export_path("Guitar Pro 5 file", "gp5") {
+            self.write_export(&p, crate::gp5write::export_gp5(&self.song));
+            let lost = fileio::gp5_losses(&self.song);
+            if !lost.is_empty() && self.status.starts_with("Exported") {
+                self.status = format!("{} (Guitar Pro 5 can't keep: {}.)", self.status, lost.join(", "));
+            }
+        }
+    }
+
+    /// File > Export > MusicXML.
+    fn export_musicxml(&mut self) {
+        if let Some(p) = self.export_path("MusicXML file", "musicxml") {
+            self.write_export(&p, crate::musicxml::export_musicxml(&self.song));
         }
     }
 
@@ -1705,7 +1785,11 @@ impl App {
 /// The full location of a file (a path typed or passed in short form is made
 /// complete), without Windows' "\\?\" prefix that dialogs don't accept.
 fn full_path(p: &std::path::Path) -> PathBuf {
-    let full = std::fs::canonicalize(p).unwrap_or_else(|_| std::env::current_dir().map(|d| d.join(p)).unwrap_or_else(|_| p.to_path_buf()));
+    let full = std::fs::canonicalize(p).unwrap_or_else(|_| {
+        std::env::current_dir()
+            .map(|d| d.join(p))
+            .unwrap_or_else(|_| p.to_path_buf())
+    });
     let text = full.to_string_lossy();
     match text.strip_prefix(r"\\?\") {
         Some(rest) if !rest.starts_with("UNC") => PathBuf::from(rest),

@@ -8,7 +8,10 @@ use std::process::ExitCode;
 
 /// The repository root (the parent of `xtask/`).
 pub fn root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."))
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."))
 }
 
 fn main() -> ExitCode {
@@ -18,7 +21,10 @@ fn main() -> ExitCode {
         Some("version") => version::run(rest),
         Some("icons") => icons::run(rest),
         Some("ico") => icons::run_ico(rest),
-        _ => Err("usage: cargo xtask <version [set X.Y.Z[-pre]] | icons | ico <out.ico> <in.png>…>".into()),
+        _ => Err(
+            "usage: cargo xtask <version [set X.Y.Z[-pre]] | icons | ico <out.ico> <in.png>…>"
+                .into(),
+        ),
     };
     match r {
         Ok(()) => ExitCode::SUCCESS,

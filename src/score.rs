@@ -2,7 +2,10 @@
 //! with every shown track stacked in each system (a full score).
 
 mod draw;
-pub use draw::{draw_diagram, key_positions, note_staff_pos, roman, staff_pos_name, staff_pos_pitch, written_name};
+pub use draw::{
+    draw_diagram, key_positions, note_staff_pos, roman, staff_pos_name, staff_pos_pitch,
+    written_name,
+};
 
 use crate::model::*;
 use draw::*;
@@ -513,9 +516,7 @@ pub fn tuning_lines(st: &Stylesheet, t: &Track) -> Vec<String> {
         return vec![name_line()];
     }
     let circled = |s: usize| char::from_u32(0x2460 + s as u32).unwrap_or('?');
-    let cell = |s: usize| {
-        format!("{}={}", circled(s), pitch_name(t.tuning[s], t.tuning_flat))
-    };
+    let cell = |s: usize| format!("{}={}", circled(s), pitch_name(t.tuning[s], t.tuning_flat));
     let mut out = vec![];
     if st.tuning_mode == 1 {
         out.push(name_line());
@@ -1150,8 +1151,19 @@ pub fn draw_page(p: &Painter, lay: &Layout, dc: &DrawCtx, page: usize, origin: P
                 x += w * pz;
             }
         }
-        let first_note = lay.systems.first().and_then(|s| s.bars.first()).and_then(|b| b.beats_x.first()).and_then(|v| v.first()).copied();
-        let tp = Pos2::new(first_note.map(|x| origin.x + x - 2.0 * lay.z).unwrap_or(left + 30.0 * pz), origin.y + lay.head.tempo_y * pz);
+        let first_note = lay
+            .systems
+            .first()
+            .and_then(|s| s.bars.first())
+            .and_then(|b| b.beats_x.first())
+            .and_then(|v| v.first())
+            .copied();
+        let tp = Pos2::new(
+            first_note
+                .map(|x| origin.x + x - 2.0 * lay.z)
+                .unwrap_or(left + 30.0 * pz),
+            origin.y + lay.head.tempo_y * pz,
+        );
         draw_small_note(p, tp, pz, INK);
         let r = p.text(
             Pos2::new(tp.x + 9.0 * pz, tp.y),
@@ -1208,11 +1220,17 @@ pub fn draw_page(p: &Painter, lay: &Layout, dc: &DrawCtx, page: usize, origin: P
 /// names and texts when the bar has some, as Guitar Pro places it.
 fn section_anchor(song: &Song, lay: &Layout, bl: &BarLay, y0: f32, z: f32) -> (f32, f32) {
     let g0 = lay.blocks[0].g;
-    let first = bl.beats_x.first().and_then(|v| v.first()).copied().unwrap_or(bl.x + 10.0 * z);
+    let first = bl
+        .beats_x
+        .first()
+        .and_then(|v| v.first())
+        .copied()
+        .unwrap_or(bl.x + 10.0 * z);
     let x = first - 5.0 * z;
     let beats = &song.tracks[lay.blocks[0].ti].bars[bl.bar].beats;
     let above = beats.iter().any(|b| b.chord.is_some() || b.text.is_some());
-    let diagram = beats.iter().any(|b| b.chord_diagram && !b.is_rest()) && song.style.chords_in_score;
+    let diagram =
+        beats.iter().any(|b| b.chord_diagram && !b.is_rest()) && song.style.chords_in_score;
     let y = if diagram {
         y0 + g0.chord_y - 46.0 * z * song.style.chords_in_score_size / 9.0 - 18.0 * z
     } else if above {
@@ -1572,10 +1590,7 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
                 "Straight feel"
             };
             p.text(
-                Pos2::new(
-                    bx + 4.0 * z,
-                    y0 + 7.0 * z,
-                ),
+                Pos2::new(bx + 4.0 * z, y0 + 7.0 * z),
                 Align2::LEFT_TOP,
                 lab,
                 serif_bi(11.0 * z),
@@ -1610,7 +1625,11 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
         if mb.direction_target != 0 {
             let tx = bx + 6.0 * z;
             // Above the section name when the bar has one.
-            let ty = if mb.marker.is_some() { section_anchor(song, lay, bl, y0, z).1 - 22.0 * z } else { top0 - 16.0 * z };
+            let ty = if mb.marker.is_some() {
+                section_anchor(song, lay, bl, y0, z).1 - 22.0 * z
+            } else {
+                top0 - 16.0 * z
+            };
             match mb.direction_target {
                 DIR_FINE => {
                     p.text(
@@ -1798,7 +1817,12 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
                     spans.push((y0 + g.tab_top, y0 + g.string_y(g.strings - 1)));
                 }
                 for (a, b) in spans {
-                    p.add(egui::Shape::dashed_line(&[Pos2::new(ex, a), Pos2::new(ex, b)], line, 2.5 * z, 2.0 * z));
+                    p.add(egui::Shape::dashed_line(
+                        &[Pos2::new(ex, a), Pos2::new(ex, b)],
+                        line,
+                        2.5 * z,
+                        2.0 * z,
+                    ));
                 }
             } else {
                 if g.std {
@@ -1955,19 +1979,33 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
             }
             // A repeat sign for the previous bar (or two) stands in for the notes.
             if bar.simile > 0 {
-                let first_note = bl.beats_x.get(k).and_then(|v| v.first()).copied().unwrap_or(bl.x + 20.0 * z);
+                let first_note = bl
+                    .beats_x
+                    .get(k)
+                    .and_then(|v| v.first())
+                    .copied()
+                    .unwrap_or(bl.x + 20.0 * z);
                 let cx = o.x + (first_note + bl.x + bl.w) * 0.5 - 4.0 * z;
                 let mut mids = vec![];
                 for (sy, _) in g.std_staves() {
                     mids.push((y0 + sy + 2.0 * g.ls, g.ls));
                 }
                 if g.tab {
-                    mids.push((y0 + g.tab_top + (g.strings as f32 - 1.0) * g.ts * 0.5, g.ts * 0.8));
+                    mids.push((
+                        y0 + g.tab_top + (g.strings as f32 - 1.0) * g.ts * 0.5,
+                        g.ts * 0.8,
+                    ));
                 }
                 for (my, sp) in mids {
                     for s in 0..bar.simile {
                         let dx = s as f32 * 7.0 * z - (bar.simile as f32 - 1.0) * 3.5 * z;
-                        p.line_segment([Pos2::new(cx - 5.0 * z + dx, my + sp), Pos2::new(cx + 5.0 * z + dx, my - sp)], PStroke::new(3.0 * z, INK));
+                        p.line_segment(
+                            [
+                                Pos2::new(cx - 5.0 * z + dx, my + sp),
+                                Pos2::new(cx + 5.0 * z + dx, my - sp),
+                            ],
+                            PStroke::new(3.0 * z, INK),
+                        );
                     }
                     let half = (bar.simile as f32) * 3.5 * z + 4.0 * z;
                     p.circle_filled(Pos2::new(cx - half, my - sp * 0.5), 1.8 * z, INK);
@@ -2217,9 +2255,16 @@ pub fn hit_test(
                 // The section name sits just above the bar number, from the first note.
                 let on_section = bk == 0 && song.master[bl.bar].marker.is_some() && {
                     let (sx, sy) = section_anchor(song, lay, bl, 0.0, lay.z);
-                    ry <= sy + 2.0 * lay.z && ry >= sy - 18.0 * lay.z && rel.x >= sx - 4.0 * lay.z && rel.x <= sx + 90.0 * lay.z
+                    ry <= sy + 2.0 * lay.z
+                        && ry >= sy - 18.0 * lay.z
+                        && rel.x >= sx - 4.0 * lay.z
+                        && rel.x <= sx + 90.0 * lay.z
                 };
-                let zone = if on_section || (bk == 0 && ry < g.top + 22.0 * lay.z) { 0 } else { 1 };
+                let zone = if on_section || (bk == 0 && ry < g.top + 22.0 * lay.z) {
+                    0
+                } else {
+                    1
+                };
                 hit = Some(Hit::Above(zone));
             }
             if g.tab && hit.is_none() {

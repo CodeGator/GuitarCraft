@@ -23,7 +23,18 @@ fn check(ui: &mut Ui, on: bool, label: &str, sc: &str) -> Response {
 impl App {
     pub(super) fn menu_bar(&mut self, ui: &mut Ui) {
         egui::MenuBar::new().ui(ui, |ui| {
-            ui.menu_button("File", |ui| self.file_menu(ui));
+            let file = ui.menu_button("File", |ui| self.file_menu(ui));
+            if self.file_menu_demo.is_some() {
+                // Pictures for checks: the File menu shown open (with Import or Export).
+                let at = file.response.rect.left_bottom();
+                egui::Area::new(egui::Id::new("file-menu-demo")).order(egui::Order::Foreground).fixed_pos(at).show(ui.ctx(), |ui| {
+                    egui::Frame::menu(ui.style()).show(ui, |ui| {
+                        ui.set_min_width(230.0);
+                        ui.style_mut().visuals.button_frame = false;
+                        self.file_menu(ui);
+                    });
+                });
+            }
             ui.menu_button("Edit", |ui| self.edit_menu(ui));
             ui.menu_button("Track", |ui| self.track_menu(ui));
             ui.menu_button("Bar", |ui| self.bar_menu(ui));
@@ -132,58 +143,103 @@ impl App {
             ui.close();
         }
         ui.separator();
-        if item(ui, "Stylesheet...", "F7").clicked() {
-            self.open_stylesheet();
+        // Import, Export and Batch Converter, in Guitar Pro 8's order. (Scores only:
+        // a chord chart has its own File menu.)
+        let demo = self.file_menu_demo;
+        let import = ui.menu_button("Import", |ui| self.import_menu(ui));
+        let export = ui.menu_button("Export", |ui| self.export_menu(ui));
+        if let Some(e) = demo {
+            // Pictures for checks: the submenu shown open.
+            let r = if e { export.response.rect } else { import.response.rect };
+            egui::Area::new(egui::Id::new("file-sub-demo")).order(egui::Order::Foreground).fixed_pos(r.right_top()).show(ui.ctx(), |ui| {
+                egui::Frame::menu(ui.style()).show(ui, |ui| {
+                    ui.set_min_width(140.0);
+                    ui.style_mut().visuals.button_frame = false;
+                    if e {
+                        self.export_menu(ui)
+                    } else {
+                        self.import_menu(ui)
+                    }
+                });
+            });
+        }
+        if item(ui, "Batch Converter...", "").clicked() {
+            self.open_batch();
             ui.close();
         }
         ui.separator();
-        ui.menu_button("Import", |ui| {
-            if ui
-                .button("Guitar Pro file (.gp, .gpx, .gp3\u{2013}.gp5)...")
-                .clicked()
-            {
-                self.request(Pending::Open);
-                ui.close();
-            }
-            if ui.button("ASCII tab into a new track...").clicked() {
-                self.import_ascii_dialog();
-                ui.close();
-            }
-            if ui.button("MIDI...").clicked() {
-                self.import_midi_dialog();
-                ui.close();
-            }
-        });
-        ui.menu_button("Export", |ui| {
-            if ui.button("PDF...").clicked() {
-                self.open_export(super::printing::ExportKind::Pdf);
-                ui.close();
-            }
-            if ui.button("PNG...").clicked() {
-                self.open_export(super::printing::ExportKind::Png);
-                ui.close();
-            }
-            ui.separator();
-            if ui.button("MIDI...").clicked() {
-                self.export_midi();
-                ui.close();
-            }
-            if ui.button("ASCII tab of this track...").clicked() {
-                self.export_ascii();
-                ui.close();
-            }
-            if ui.button("Audio (WAV)...").clicked() {
-                self.export_wav();
-                ui.close();
-            }
-        });
         if item(ui, "Print...", "Ctrl+P").clicked() {
             ui.close();
             self.print_song();
         }
         ui.separator();
+        if item(ui, "Stylesheet...", "F7").clicked() {
+            self.open_stylesheet();
+            ui.close();
+        }
+        ui.separator();
         if item(ui, "Quit", "Alt+F4").clicked() {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+            ui.close();
+        }
+    }
+
+    /// File > Import: song files from other programs, as in Guitar Pro 8.
+    fn import_menu(&mut self, ui: &mut Ui) {
+        if ui.button("MIDI...").clicked() {
+            self.import_midi_dialog();
+            ui.close();
+        }
+        if ui.button("MusicXML...").on_hover_text(".musicxml, .xml or compressed .mxl").clicked() {
+            self.import_musicxml_dialog();
+            ui.close();
+        }
+        if ui.button("ASCII...").on_hover_text("Text tab, added to the song as a new track").clicked() {
+            self.import_ascii_dialog();
+            ui.close();
+        }
+        for (name, why) in [("TablEdit...", "TablEdit"), ("PowerTab...", "Power Tab")] {
+            ui.add_enabled(false, egui::Button::new(name))
+                .on_disabled_hover_text(format!("Not available: the {why} file format isn't publicly documented, so GuitarCraft can't read it yet."));
+        }
+    }
+
+    /// File > Export: the song in other formats, as in Guitar Pro 8.
+    fn export_menu(&mut self, ui: &mut Ui) {
+        if ui.button("GPX...").on_hover_text("Guitar Pro 6").clicked() {
+            self.export_gpx();
+            ui.close();
+        }
+        if ui.button("GP5...").on_hover_text("Guitar Pro 5").clicked() {
+            self.export_gp5();
+            ui.close();
+        }
+        if ui.button("MIDI...").clicked() {
+            self.export_midi();
+            ui.close();
+        }
+        if ui.button("ASCII...").on_hover_text("Text tab of the selected track").clicked() {
+            self.export_ascii();
+            ui.close();
+        }
+        if ui.button("MusicXML...").clicked() {
+            self.export_musicxml();
+            ui.close();
+        }
+        if ui.button("PDF...").clicked() {
+            self.open_export(super::printing::ExportKind::Pdf);
+            ui.close();
+        }
+        if ui.button("SVG...").clicked() {
+            self.open_export(super::printing::ExportKind::Svg);
+            ui.close();
+        }
+        if ui.button("PNG...").clicked() {
+            self.open_export(super::printing::ExportKind::Png);
+            ui.close();
+        }
+        if ui.button("Audio...").on_hover_text("A WAV recording of the song, played by GuitarCraft").clicked() {
+            self.export_wav();
             ui.close();
         }
     }
