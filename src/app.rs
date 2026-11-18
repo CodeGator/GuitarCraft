@@ -9,6 +9,7 @@ mod bottom;
 mod chartstyle;
 mod chartui;
 mod chartxpose;
+mod chordscales;
 mod chordlib;
 mod clipmenu;
 mod cursor;
@@ -157,11 +158,8 @@ pub struct App {
     chord_text: String,
     chord_root: usize,
     chord_type: usize,
-    scale_open: bool,
-    scale_root: u8,
-    scale_kind: usize,
-    scale_shown: bool,
-    scale_found: Vec<(u8, usize, u32)>,
+    /// The Chords & Scales tool.
+    cs: chordscales::ChordScales,
     lyrics_open: bool,
     lyrics_snap: bool,
     cmd_open: bool,
@@ -321,11 +319,7 @@ impl App {
             chord_text: String::new(),
             chord_root: 0,
             chord_type: 0,
-            scale_open: false,
-            scale_root: 0,
-            scale_kind: 0,
-            scale_shown: false,
-            scale_found: vec![],
+            cs: Default::default(),
             lyrics_open: false,
             lyrics_snap: false,
             cmd_open: false,
@@ -603,7 +597,29 @@ impl App {
                     app.song.tracks[1].bars[1].simile = 1;
                     app.song.master[2].free_time = true;
                 }
-                "scales" => app.scale_open = true,
+                "scales" => app.open_chord_scales(chordscales::Mode::Scales),
+                "arpeggios" => {
+                    app.open_chord_scales(chordscales::Mode::Arpeggios);
+                    app.cs.root = 2;
+                    app.cs.arp = 1;
+                }
+                "chords" | "chordscales" => {
+                    app.open_chord_scales(chordscales::Mode::Chords);
+                    app.cs.root = 4;
+                    app.cs.chord = 18;
+                    app.cs.label = 2;
+                }
+                "identify" => {
+                    app.open_chord_scales(chordscales::Mode::Chords);
+                    app.cs.identify = true;
+                    app.cs.picks = [None, None, Some(4), Some(4), Some(2), None];
+                }
+                "scalesrelated" => {
+                    app.open_chord_scales(chordscales::Mode::Scales);
+                    app.cs.root = 2;
+                    app.cs.scale = 0;
+                    app.cs.related = true;
+                }
                 "lyrics" => app.lyrics_open = true,
                 "addtrack" => app.addtrack_open = true,
                 "std" => {

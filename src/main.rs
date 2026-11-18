@@ -23,6 +23,7 @@ mod musicxml;
 mod render;
 mod score;
 mod style;
+mod theory;
 mod textmidi;
 
 use egui::{FontData, FontDefinitions, FontFamily};

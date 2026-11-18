@@ -565,6 +565,7 @@ impl eframe::App for App {
             self.dialogs(&ctx);
             self.export_window(&ctx);
             self.print_preview_window(&ctx);
+            self.chord_scales_window(&ctx);
             return;
         }
         egui::Panel::top("toolbar")

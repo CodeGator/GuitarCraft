@@ -40,24 +40,6 @@ pub const CHORD_TYPES: [(&str, &[u8]); 16] = [
     ("dim7", &[0, 3, 6, 9]),
 ];
 
-/// Scales: name and intervals.
-pub const SCALES: [(&str, &[u8]); 14] = [
-    ("Major (Ionian)", &[0, 2, 4, 5, 7, 9, 11]),
-    ("Natural minor (Aeolian)", &[0, 2, 3, 5, 7, 8, 10]),
-    ("Major pentatonic", &[0, 2, 4, 7, 9]),
-    ("Minor pentatonic", &[0, 3, 5, 7, 10]),
-    ("Blues", &[0, 3, 5, 6, 7, 10]),
-    ("Dorian", &[0, 2, 3, 5, 7, 9, 10]),
-    ("Phrygian", &[0, 1, 3, 5, 7, 8, 10]),
-    ("Lydian", &[0, 2, 4, 6, 7, 9, 11]),
-    ("Mixolydian", &[0, 2, 4, 5, 7, 9, 10]),
-    ("Locrian", &[0, 1, 3, 5, 6, 8, 10]),
-    ("Harmonic minor", &[0, 2, 3, 5, 7, 8, 11]),
-    ("Melodic minor", &[0, 2, 3, 5, 7, 9, 11]),
-    ("Whole tone", &[0, 2, 4, 6, 8, 10]),
-    ("Chromatic", &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]),
-];
-
 /// Names the chord formed by a set of pitches, if it matches a known shape.
 pub fn detect_chord(pitches: &[u8]) -> Option<String> {
     if pitches.len() < 2 {
@@ -87,30 +69,6 @@ pub fn detect_chord(pitches: &[u8]) -> Option<String> {
         }
     }
     best.map(|b| b.1)
-}
-
-/// Scales containing the pitch classes, best matches first: (root, scale index, coverage %).
-pub fn find_scales(pcs: &[u8]) -> Vec<(u8, usize, u32)> {
-    if pcs.is_empty() {
-        return vec![];
-    }
-    let mut out = vec![];
-    for root in 0..12u8 {
-        for (k, (_, iv)) in SCALES.iter().enumerate().take(SCALES.len() - 1) {
-            let set: Vec<u8> = iv.iter().map(|i| (root + i) % 12).collect();
-            let hit = pcs.iter().filter(|p| set.contains(p)).count();
-            let pct = (hit * 100 / pcs.len()) as u32;
-            if pct >= 80 {
-                out.push((root, k, pct));
-            }
-        }
-    }
-    out.sort_by(|a, b| {
-        b.2.cmp(&a.2)
-            .then(SCALES[a.1].1.len().cmp(&SCALES[b.1].1.len()))
-    });
-    out.truncate(12);
-    out
 }
 
 /// The commands offered by the command palette.
@@ -186,7 +144,7 @@ pub fn commands() -> Vec<(&'static str, Cmd)> {
         ("chord: Chord name and diagram", |a| a.open_chord_tool()),
         ("lyrics: Lyrics editor", |a| a.lyrics_open = true),
         ("transpose: Transpose", |a| a.transpose_open = true),
-        ("scale: Scales", |a| a.scale_open = true),
+        ("scales: Chords & Scales", |a| a.open_chord_scales(super::chordscales::Mode::Scales)),
         ("section: Name this section", |a| a.edit_section()),
         ("go-to: Go to a bar", |a| a.goto_open = true),
         ("check-bars: Check bar duration", |a| a.check_bar_duration()),
@@ -399,7 +357,7 @@ impl App {
         self.batch_window(ctx);
         self.print_preview_window(ctx);
         self.special_paste_window(ctx);
-        self.scale_window(ctx);
+        self.chord_scales_window(ctx);
         self.lyrics_window(ctx);
         self.command_palette(ctx);
         self.trainer_window(ctx);
@@ -684,132 +642,6 @@ impl App {
         self.chord_open = open;
     }
 
-    fn scale_window(&mut self, ctx: &egui::Context) {
-        if !self.scale_open {
-            return;
-        }
-        let mut open = true;
-        let mut play = false;
-        egui::Window::new("Scales")
-            .open(&mut open)
-            .resizable(false)
-            .collapsible(false)
-            .show(ctx, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    ui.label("Key:");
-                    for (k, n) in NOTE_NAMES.iter().enumerate() {
-                        if ui
-                            .selectable_label(self.scale_root == k as u8, *n)
-                            .clicked()
-                        {
-                            self.scale_root = k as u8;
-                        }
-                    }
-                });
-                egui::ComboBox::from_id_salt("scale")
-                    .width(240.0)
-                    .selected_text(SCALES[self.scale_kind].0)
-                    .show_ui(ui, |ui| {
-                        for (k, (n, _)) in SCALES.iter().enumerate() {
-                            ui.selectable_value(&mut self.scale_kind, k, *n);
-                        }
-                    });
-                let iv = SCALES[self.scale_kind].1;
-                let names: Vec<&str> = iv
-                    .iter()
-                    .map(|i| NOTE_NAMES[((self.scale_root + i) % 12) as usize])
-                    .collect();
-                ui.label(RichText::new(names.join("  ")).strong().size(15.0));
-                let steps: Vec<String> = iv
-                    .windows(2)
-                    .map(|w| format!("{}", w[1] - w[0]))
-                    .chain(std::iter::once(format!("{}", 12 - iv.last().unwrap())))
-                    .collect();
-                ui.label(RichText::new(format!("Steps in semitones: {}", steps.join("-"))).weak());
-                ui.horizontal(|ui| {
-                    let mut show = self.scale_shown;
-                    if ui.checkbox(&mut show, "Show on the fretboard").changed() {
-                        self.scale_shown = show;
-                        if show {
-                            self.show_fretboard = true;
-                        }
-                    }
-                    if ui.button("\u{25B6} Play").clicked() {
-                        play = true;
-                    }
-                });
-                ui.separator();
-                if ui
-                    .button("Find scales in the selection (or this bar)")
-                    .clicked()
-                {
-                    let (a, b) = match self.selection() {
-                        Some((a, b)) => (a.0, b.0),
-                        None => (self.bar, self.bar),
-                    };
-                    let tr = &self.song.tracks[self.track];
-                    let mut pcs: Vec<u8> = (a..=b)
-                        .flat_map(|bi| {
-                            tr.bars[bi]
-                                .beats
-                                .iter()
-                                .flat_map(|bt| bt.notes.iter().map(|n| tr.pitch(n) % 12))
-                        })
-                        .collect();
-                    pcs.sort();
-                    pcs.dedup();
-                    self.scale_found = find_scales(&pcs);
-                }
-                for &(root, k, pct) in self.scale_found.clone().iter() {
-                    if ui
-                        .selectable_label(
-                            false,
-                            format!("{} {}   ({pct}%)", NOTE_NAMES[root as usize], SCALES[k].0),
-                        )
-                        .clicked()
-                    {
-                        self.scale_root = root;
-                        self.scale_kind = k;
-                    }
-                }
-            });
-        if play {
-            self.play_scale();
-        }
-        if !open {
-            self.scale_shown = false;
-        }
-        self.scale_open = open;
-    }
-
-    fn play_scale(&mut self) {
-        if !self.sound_allowed {
-            return;
-        }
-        self.ensure_audio();
-        let Some(a) = &self.audio else { return };
-        if a.error.is_some() {
-            return;
-        }
-        let sr = a.sample_rate();
-        let tr = self.song.tracks[self.track].clone();
-        let low = *tr.tuning.iter().min().unwrap_or(&40) as i32;
-        let base = low + ((self.scale_root as i32 - low).rem_euclid(12));
-        let iv = SCALES[self.scale_kind].1;
-        if let Ok(mut st) = a.state.lock() {
-            for (k, i) in iv.iter().chain(std::iter::once(&12)).enumerate() {
-                let pitch = base + *i as i32;
-                let s = tr.strings() - 1;
-                let fret = (pitch - tr.tuning[s] as i32 - tr.capo_at(s) as i32).clamp(0, 30) as u8;
-                let mut ev =
-                    crate::audio::note_preview(&tr, self.track, &Note::new(s as u8, fret), sr);
-                ev.start = (k as f32 * sr * 0.28) as u64;
-                ev.len = (sr * 0.3) as u64;
-                st.preview.push(ev);
-            }
-        }
-    }
-
     fn lyrics_window(&mut self, ctx: &egui::Context) {
         if !self.lyrics_open {
             return;
@@ -976,11 +808,5 @@ mod tests {
             Some("Em")
         );
         assert_eq!(detect_chord(&[48, 52, 55, 58]).as_deref(), Some("C7"));
-    }
-
-    #[test]
-    fn scale_finder() {
-        let found = find_scales(&[0, 2, 4, 5, 7, 9, 11]);
-        assert!(found.iter().any(|&(r, k, p)| r == 0 && k == 0 && p == 100));
     }
 }

@@ -790,7 +790,7 @@ impl App {
             {
                 self.open_chord_tool();
             }
-            if paint_button(ui, self.scale_open, "Scales\u{2026}", |p, r, c| {
+            if paint_button(ui, self.cs.open, "Chords & Scales\u{2026}", |p, r, c| {
                 for i in 0..6 {
                     let y = r.top() + 1.0 + i as f32 * 3.2;
                     p.line_segment([Pos2::new(r.left(), y), Pos2::new(r.right(), y)], st(c, 0.8));
@@ -805,7 +805,7 @@ impl App {
             })
             .clicked()
             {
-                self.scale_open = true;
+                self.open_chord_scales(super::chordscales::Mode::Scales);
             }
             if paint_button(ui, cur.fx.slash, "Slash notation for this beat", |p, r, c| {
                 p.line_segment([Pos2::new(r.left() + 5.0, r.bottom() - 1.0), Pos2::new(r.left() + 10.0, r.bottom() - 6.0)], st(c, 2.4));

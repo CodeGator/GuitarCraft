@@ -35,21 +35,29 @@ impl App {
                     });
                 });
             }
-            ui.menu_button("Edit", |ui| self.edit_menu(ui));
-            ui.menu_button("Track", |ui| self.track_menu(ui));
-            ui.menu_button("Bar", |ui| self.bar_menu(ui));
-            ui.menu_button("Note", |ui| self.note_menu(ui));
-            ui.menu_button("Effects", |ui| self.effects_menu(ui));
-            ui.menu_button("Section", |ui| self.section_menu(ui));
-            ui.menu_button("Tools", |ui| self.tools_menu(ui));
-            ui.menu_button("Sound", |ui| self.sound_menu(ui));
-            ui.menu_button("View", |ui| self.view_menu(ui));
-            ui.menu_button("Window", |ui| self.window_menu(ui));
+            // The start screen (Browse) has no song to work on: as in Guitar Pro, only
+            // File (open and import) and Help are available.
+            let home = self.show_home;
+            ui.add_enabled_ui(!home, |ui| {
+                ui.menu_button("Edit", |ui| self.edit_menu(ui));
+                ui.menu_button("Track", |ui| self.track_menu(ui));
+                ui.menu_button("Bar", |ui| self.bar_menu(ui));
+                ui.menu_button("Note", |ui| self.note_menu(ui));
+                ui.menu_button("Effects", |ui| self.effects_menu(ui));
+                ui.menu_button("Section", |ui| self.section_menu(ui));
+                ui.menu_button("Tools", |ui| self.tools_menu(ui));
+                ui.menu_button("Sound", |ui| self.sound_menu(ui));
+                ui.menu_button("View", |ui| self.view_menu(ui));
+                ui.menu_button("Window", |ui| self.window_menu(ui));
+            });
             ui.menu_button("Help", |ui| self.help_menu(ui));
         });
     }
 
     fn file_menu(&mut self, ui: &mut Ui) {
+        // On the start screen there is no open song: saving, closing, exporting,
+        // printing and the stylesheet are greyed out.
+        let song = !self.show_home;
         if item(ui, "New", "Ctrl+N").clicked() {
             self.request(Pending::New);
             ui.close();
@@ -122,23 +130,23 @@ impl App {
             ui.close();
         }
         ui.separator();
-        if item(ui, "Close", "Ctrl+W").clicked() {
+        if item_if(ui, song, "Close", "Ctrl+W") {
             self.request(Pending::Close);
             ui.close();
         }
-        if item(ui, "Save", "Ctrl+S").clicked() {
+        if item_if(ui, song, "Save", "Ctrl+S") {
             self.save(false);
             ui.close();
         }
-        if item(ui, "Save As...", "Ctrl+Shift+S").clicked() {
+        if item_if(ui, song, "Save As...", "Ctrl+Shift+S") {
             self.save(true);
             ui.close();
         }
-        if item(ui, "Save As Template...", "").clicked() {
+        if item_if(ui, song, "Save As Template...", "") {
             self.save_as_template();
             ui.close();
         }
-        if item_if(ui, self.path.is_some(), "Open Containing Folder", "") {
+        if item_if(ui, song && self.path.is_some(), "Open Containing Folder", "") {
             self.open_containing_folder();
             ui.close();
         }
@@ -147,7 +155,7 @@ impl App {
         // a chord chart has its own File menu.)
         let demo = self.file_menu_demo;
         let import = ui.menu_button("Import", |ui| self.import_menu(ui));
-        let export = ui.menu_button("Export", |ui| self.export_menu(ui));
+        let export = ui.add_enabled_ui(song, |ui| ui.menu_button("Export", |ui| self.export_menu(ui))).inner;
         if let Some(e) = demo {
             // Pictures for checks: the submenu shown open.
             let r = if e { export.response.rect } else { import.response.rect };
@@ -168,12 +176,12 @@ impl App {
             ui.close();
         }
         ui.separator();
-        if item(ui, "Print...", "Ctrl+P").clicked() {
+        if item_if(ui, song, "Print...", "Ctrl+P") {
             ui.close();
             self.print_song();
         }
         ui.separator();
-        if item(ui, "Stylesheet...", "F7").clicked() {
+        if item_if(ui, song, "Stylesheet...", "F7") {
             self.open_stylesheet();
             ui.close();
         }
@@ -754,8 +762,8 @@ impl App {
     }
 
     fn tools_menu(&mut self, ui: &mut Ui) {
-        if item(ui, "Scales...", "").clicked() {
-            self.scale_open = true;
+        if item(ui, "Chords & Scales...", "").clicked() {
+            self.open_chord_scales(super::chordscales::Mode::Scales);
             ui.close();
         }
         if item(ui, "Transpose...", "").clicked() {
