@@ -451,14 +451,7 @@ impl App {
                     super::actions::shortcut_rows(ui);
                 });
         }
-        if self.show_about {
-            egui::Window::new("About").open(&mut self.show_about).resizable(false).show(ctx, |ui| {
-                ui.heading("GuitarCraft");
-                ui.label("A guitar and bass score and tablature editor written in Rust.");
-                ui.label("Write tabs and standard notation, hear them with the built-in sound, and save, open or export your songs.");
-                ui.label("Opens its own songs and Guitar Pro files (.gp3, .gp4, .gp5, .gpx, .gp).");
-            });
-        }
+        self.about_window(ctx);
     }
 
     fn update_title(&mut self, ctx: &egui::Context) {

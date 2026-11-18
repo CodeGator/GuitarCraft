@@ -11,6 +11,7 @@ shots/
 # Test files written by "--gp-tests" and "--convert"
 samples/Test *.gp
 samples/Check *.gp
+samples/Check *.gpx
 samples/MorningWalk*.gp
 
 # Installers and zips made by packaging/windows/package.ps1

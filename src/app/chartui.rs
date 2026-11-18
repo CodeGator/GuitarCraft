@@ -1,7 +1,7 @@
 //! The screen for chord charts: the score tools give way to a sections list
 //! and the map (the playing order, which can be rearranged) on the left, the
 //! chart's pages in the middle, and the chart's details and the selected
-//! section's text on the right. Charts are saved as .chart files.
+//! section's text on the right. Charts are saved as .gcx files.
 
 use super::icons::{icon_home, icon_toggle};
 use super::widgets::{icon_redo, icon_undo};
@@ -104,26 +104,6 @@ pub fn chart_key(k: &str) -> Option<(i8, bool)> {
     // The same spelling first, then the fewest sharps or flats.
     found.sort_by_key(|&s| (acc(&super::popups::key_short(s, minor)) != want, s.abs()));
     found.first().map(|&s| (s, minor))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn chart_key_and_time_read_as_signatures() {
-        assert_eq!(chart_key("E"), Some((4, false)));
-        assert_eq!(chart_key("C#m"), Some((4, true)));
-        assert_eq!(chart_key("F#"), Some((6, false)));
-        assert_eq!(chart_key("Gb"), Some((-6, false)));
-        assert_eq!(chart_key("Bb major"), Some((-2, false)));
-        assert_eq!(chart_key("D minor"), Some((-1, true)));
-        assert_eq!(chart_key(""), None);
-        assert_eq!(super::super::popups::key_short(4, false), "E");
-        assert_eq!(super::super::popups::key_short(-3, true), "Cm");
-        assert_eq!(chart_time("6/8"), (6, 8));
-        assert_eq!(chart_time("Free"), (4, 4));
-    }
 }
 
 /// A small square button with a drawn icon (dimmed when it can't be used).
@@ -1198,5 +1178,25 @@ impl App {
             st.sel = i;
             st.tab = 1;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn chart_key_and_time_read_as_signatures() {
+        assert_eq!(chart_key("E"), Some((4, false)));
+        assert_eq!(chart_key("C#m"), Some((4, true)));
+        assert_eq!(chart_key("F#"), Some((6, false)));
+        assert_eq!(chart_key("Gb"), Some((-6, false)));
+        assert_eq!(chart_key("Bb major"), Some((-2, false)));
+        assert_eq!(chart_key("D minor"), Some((-1, true)));
+        assert_eq!(chart_key(""), None);
+        assert_eq!(super::super::popups::key_short(4, false), "E");
+        assert_eq!(super::super::popups::key_short(-3, true), "Cm");
+        assert_eq!(chart_time("6/8"), (6, 8));
+        assert_eq!(chart_time("Free"), (4, 4));
     }
 }

@@ -347,3 +347,231 @@ mod tests {
         assert_eq!(t[0].get_pixel(2, 2)[3], 0);
     }
 }
+
+// ----- SVG
+
+/// Pages as SVG drawings: the same drawing as on screen and in print, kept as
+/// vector lines, shapes and text (in the score's fonts) instead of pixels.
+pub fn svg_pages(spec: &PrintSpec, pages: &[usize]) -> Vec<String> {
+    let lay = spec.layout();
+    let (w_mm, h_mm) = spec.page_mm();
+    let size = Vec2::new(lay.page_w(), lay.page_h());
+    svg_with(size, (w_mm, h_mm), pages, &mut |painter, page, music_font| {
+        let dc = score::DrawCtx {
+            song: spec.song,
+            ti: spec.track,
+            cursor: (usize::MAX, 0, 0),
+            selection: None,
+            play_tick: None,
+            music_font,
+            show_cursor: false,
+            voice: 0,
+            cursor_std: None,
+            printing: true,
+            transparent: false,
+        };
+        score::draw_page(painter, &lay, &dc, page, Pos2::ZERO);
+    })
+}
+
+/// Draws pages with `draw` and writes what was painted as SVG.
+pub fn svg_with(size: Vec2, mm: (f32, f32), pages: &[usize], draw: &mut dyn FnMut(&egui::Painter, usize, bool)) -> Vec<String> {
+    let ctx = egui::Context::default();
+    let music_font = crate::setup_fonts(&ctx);
+    let input = || egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)), ..Default::default() };
+    ctx.begin_pass(input());
+    // No pixels are made here, so the font textures aren't needed.
+    ctx.end_pass().textures_delta.clear();
+    let mut out = vec![];
+    for &page in pages {
+        ctx.begin_pass(input());
+        let painter = ctx.layer_painter(egui::LayerId::background());
+        draw(&painter, page, music_font);
+        let mut o = ctx.end_pass();
+        o.textures_delta.clear();
+        let mut s = format!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}mm\" height=\"{}mm\" viewBox=\"0 0 {} {}\">\n",
+            mm.0, mm.1, size.x, size.y
+        );
+        for cs in o.shapes {
+            svg_shape(&mut s, &cs.shape);
+        }
+        s.push_str("</svg>\n");
+        out.push(s);
+    }
+    out
+}
+
+fn svg_color(c: Color32) -> String {
+    let [r, g, b, a] = c.to_srgba_unmultiplied();
+    if a == 255 { format!("#{r:02x}{g:02x}{b:02x}") } else { format!("rgba({r},{g},{b},{:.3})", a as f32 / 255.0) }
+}
+
+fn svg_paint(fill: Color32, stroke: Option<(f32, Color32)>) -> String {
+    let mut s = if fill.a() == 0 { "fill=\"none\"".to_string() } else { format!("fill=\"{}\"", svg_color(fill)) };
+    if let Some((w, c)) = stroke
+        && w > 0.0
+        && c.a() > 0
+    {
+        s.push_str(&format!(" stroke=\"{}\" stroke-width=\"{w:.2}\"", svg_color(c)));
+    }
+    s
+}
+
+fn path_stroke(p: &egui::epaint::PathStroke) -> Option<(f32, Color32)> {
+    match p.color {
+        egui::epaint::ColorMode::Solid(c) => Some((p.width, c)),
+        _ => None,
+    }
+}
+
+fn xml_text(s: &str) -> String {
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+}
+
+/// A font as SVG font-family, weight and style.
+fn svg_font(f: &egui::FontFamily) -> (String, &'static str, &'static str) {
+    match f {
+        egui::FontFamily::Name(n) => {
+            let n: &str = n.as_ref();
+            if let Some((fam, k)) = n.split_once('|') {
+                let k: u8 = k.parse().unwrap_or(0);
+                return (fam.to_string(), if k & 1 != 0 { "bold" } else { "normal" }, if k & 2 != 0 { "italic" } else { "normal" });
+            }
+            match n {
+                "music" => ("Segoe UI Symbol".into(), "normal", "normal"),
+                "bold" | "ui-bold" => ("Segoe UI".into(), "bold", "normal"),
+                "ui-italic" => ("Segoe UI".into(), "normal", "italic"),
+                "serif" => ("Times New Roman".into(), "normal", "normal"),
+                "serif-bold" => ("Times New Roman".into(), "bold", "normal"),
+                "serif-bi" => ("Times New Roman".into(), "bold", "italic"),
+                other => (other.to_string(), "normal", "normal"),
+            }
+        }
+        egui::FontFamily::Monospace => ("Consolas, monospace".into(), "normal", "normal"),
+        egui::FontFamily::Proportional => ("Segoe UI, sans-serif".into(), "normal", "normal"),
+    }
+}
+
+fn svg_shape(s: &mut String, shape: &egui::Shape) {
+    use egui::Shape;
+    match shape {
+        Shape::Vec(v) => v.iter().for_each(|x| svg_shape(s, x)),
+        Shape::LineSegment { points, stroke } => {
+            if stroke.width > 0.0 && stroke.color.a() > 0 {
+                s.push_str(&format!(
+                    "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{}\" stroke-width=\"{:.2}\"/>\n",
+                    points[0].x, points[0].y, points[1].x, points[1].y, svg_color(stroke.color), stroke.width
+                ));
+            }
+        }
+        Shape::Rect(r) => {
+            let rad = (r.corner_radius.nw as f32 + r.corner_radius.ne as f32 + r.corner_radius.sw as f32 + r.corner_radius.se as f32) / 4.0;
+            s.push_str(&format!(
+                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"{rad:.2}\" {}/>\n",
+                r.rect.min.x,
+                r.rect.min.y,
+                r.rect.width(),
+                r.rect.height(),
+                svg_paint(r.fill, Some((r.stroke.width, r.stroke.color)))
+            ));
+        }
+        Shape::Circle(c) => s.push_str(&format!(
+            "<circle cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" {}/>\n",
+            c.center.x,
+            c.center.y,
+            c.radius,
+            svg_paint(c.fill, Some((c.stroke.width, c.stroke.color)))
+        )),
+        Shape::Ellipse(e) => s.push_str(&format!(
+            "<ellipse cx=\"{:.2}\" cy=\"{:.2}\" rx=\"{:.2}\" ry=\"{:.2}\" {}/>\n",
+            e.center.x,
+            e.center.y,
+            e.radius.x,
+            e.radius.y,
+            svg_paint(e.fill, Some((e.stroke.width, e.stroke.color)))
+        )),
+        Shape::Path(p) => {
+            if p.points.len() < 2 {
+                return;
+            }
+            let pts: Vec<String> = p.points.iter().map(|q| format!("{:.2},{:.2}", q.x, q.y)).collect();
+            let tag = if p.closed { "polygon" } else { "polyline" };
+            let fill = if p.closed { p.fill } else { Color32::TRANSPARENT };
+            s.push_str(&format!("<{tag} points=\"{}\" {}/>\n", pts.join(" "), svg_paint(fill, path_stroke(&p.stroke))));
+        }
+        Shape::QuadraticBezier(b) => {
+            let [a, c, d] = b.points;
+            let fill = if b.closed { b.fill } else { Color32::TRANSPARENT };
+            s.push_str(&format!(
+                "<path d=\"M{:.2},{:.2} Q{:.2},{:.2} {:.2},{:.2}{}\" {}/>\n",
+                a.x,
+                a.y,
+                c.x,
+                c.y,
+                d.x,
+                d.y,
+                if b.closed { " Z" } else { "" },
+                svg_paint(fill, path_stroke(&b.stroke))
+            ));
+        }
+        Shape::CubicBezier(b) => {
+            let [a, c1, c2, d] = b.points;
+            let fill = if b.closed { b.fill } else { Color32::TRANSPARENT };
+            s.push_str(&format!(
+                "<path d=\"M{:.2},{:.2} C{:.2},{:.2} {:.2},{:.2} {:.2},{:.2}{}\" {}/>\n",
+                a.x,
+                a.y,
+                c1.x,
+                c1.y,
+                c2.x,
+                c2.y,
+                d.x,
+                d.y,
+                if b.closed { " Z" } else { "" },
+                svg_paint(fill, path_stroke(&b.stroke))
+            ));
+        }
+        Shape::Text(t) => {
+            let job = &t.galley.job;
+            let Some(sec) = job.sections.first() else { return };
+            let fmt = &sec.format;
+            let color = t.override_text_color.unwrap_or(if fmt.color == Color32::PLACEHOLDER { t.fallback_color } else { fmt.color });
+            let (family, weight, style) = svg_font(&fmt.font_id.family);
+            for row in &t.galley.rows {
+                let glyphs: Vec<_> = row.row.glyphs.iter().filter(|g| !g.chr.is_control()).collect();
+                if glyphs.is_empty() || glyphs.iter().all(|g| g.chr.is_whitespace()) {
+                    continue;
+                }
+                // Each character at its own place, as laid out.
+                let xs: Vec<String> = glyphs.iter().map(|g| format!("{:.2}", t.pos.x + row.pos.x + g.pos.x)).collect();
+                let y = t.pos.y + row.pos.y + glyphs[0].pos.y;
+                let text: String = glyphs.iter().map(|g| g.chr).collect();
+                s.push_str(&format!(
+                    "<text x=\"{}\" y=\"{y:.2}\" font-family=\"{}\" font-size=\"{:.2}\" font-weight=\"{weight}\" font-style=\"{style}\" fill=\"{}\" xml:space=\"preserve\">{}</text>\n",
+                    xs.join(" "),
+                    xml_text(&family),
+                    fmt.font_id.size,
+                    svg_color(color),
+                    xml_text(&text)
+                ));
+            }
+        }
+        _ => {}
+    }
+}
+
+#[cfg(test)]
+mod svg_tests {
+    #[test]
+    fn score_pages_become_svg() {
+        let song = crate::model::Song::demo();
+        let spec = super::PrintSpec { song: &song, shown: vec![0, 1], track: 0, notation: crate::score::Notation::Both };
+        let pages = super::svg_pages(&spec, &[0]);
+        let svg = &pages[0];
+        assert!(svg.starts_with("<?xml") && svg.trim_end().ends_with("</svg>"));
+        assert!(svg.contains("Morning Walk"), "the title is text");
+        assert!(svg.matches("<line").count() > 20, "staff lines are lines");
+        assert!(roxmltree::Document::parse(svg).is_ok(), "well-formed XML");
+    }
+}

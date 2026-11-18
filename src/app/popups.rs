@@ -624,20 +624,6 @@ fn key_staff(ui: &mut egui::Ui, key: i8, bass: bool, music_font: bool) {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn key_labels() {
-        assert_eq!(key_label(1, false), "G (#)");
-        assert_eq!(key_label(-2, false), "Bb (bb)");
-        assert_eq!(key_label(0, false), "C");
-        assert_eq!(key_label(0, true), "Am");
-        assert_eq!(key_label(-7, false), "Cb (bbbbbbb)");
-    }
-}
-
 /// Arpeggio duration slider range, 480 to the quarter note: a 32nd note to a half note.
 const ARP_MIN: f32 = 60.0;
 const ARP_MAX: f32 = 960.0;
@@ -691,4 +677,18 @@ fn arpeggio_editor(ui: &mut egui::Ui, up: bool, fx: &mut crate::model::BeatFx) {
         ui.label("Starts on time");
     });
     let _ = FontId::default();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn key_labels() {
+        assert_eq!(key_label(1, false), "G (#)");
+        assert_eq!(key_label(-2, false), "Bb (bb)");
+        assert_eq!(key_label(0, false), "C");
+        assert_eq!(key_label(0, true), "Am");
+        assert_eq!(key_label(-7, false), "Cb (bbbbbbb)");
+    }
 }

@@ -237,6 +237,55 @@ fn le32(d: &[u8], at: usize) -> Option<usize> {
     Some(i32::from_le_bytes([s[0], s[1], s[2], s[3]]).max(0) as usize)
 }
 
+/// Every file in a .gpx file, by name, in the order its root folder lists
+/// them (or the order of the sectors when there is no folder).
+pub(crate) fn gpx_files(data: &[u8]) -> Result<Vec<(String, Vec<u8>)>, String> {
+    const SECTOR: usize = 0x1000;
+    let fs = if data.starts_with(b"BCFZ") {
+        decompress_bcfz(&data[4..])?
+    } else if data.starts_with(b"BCFS") {
+        data[4..].to_vec()
+    } else {
+        return Err("This .gpx file has an unknown layout.".into());
+    };
+    let read_entry = |at: usize| -> Option<(u32, String, Vec<u8>)> {
+        let kind = le32(&fs, at)? as u32;
+        let raw = fs.get(at + 4..at + 4 + 127)?;
+        let end = raw.iter().position(|&c| c == 0).unwrap_or(raw.len());
+        let name = String::from_utf8_lossy(&raw[..end]).to_string();
+        let size = le32(&fs, at + 0x8C)?;
+        let mut body = vec![];
+        let mut k = 0;
+        while let Some(s) = le32(&fs, at + 0x94 + 4 * k) {
+            k += 1;
+            if s == 0 || k > 100_000 {
+                break;
+            }
+            body.extend_from_slice(fs.get(s * SECTOR..(s * SECTOR + SECTOR).min(fs.len()))?);
+        }
+        body.truncate(size);
+        Some((kind, name, body))
+    };
+    let mut out = vec![];
+    if let Some((1, _, list)) = read_entry(SECTOR) {
+        for c in list.chunks(4).filter(|c| c.len() == 4) {
+            let s = u32::from_le_bytes([c[0], c[1], c[2], c[3]]) as usize;
+            if let Some((2, name, body)) = read_entry(s * SECTOR) {
+                out.push((name, body));
+            }
+        }
+    } else {
+        let mut at = SECTOR;
+        while at + 3 < fs.len() {
+            if let Some((2, name, body)) = read_entry(at) {
+                out.push((name, body));
+            }
+            at += SECTOR;
+        }
+    }
+    Ok(out)
+}
+
 /// Finds a file in the sector-based container of a .gpx file.
 fn read_bcfs(d: &[u8], want: &str) -> Option<Vec<u8>> {
     const SECTOR: usize = 0x1000;

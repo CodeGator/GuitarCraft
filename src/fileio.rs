@@ -31,10 +31,13 @@ pub fn save_song(song: &Song, path: &std::path::Path) -> Result<(), String> {
     std::fs::write(path, data).map_err(|e| e.to_string())
 }
 
-/// Writes a song in the format its extension names: Guitar Pro, MIDI (.mid,
-/// .midi) or text tab (.txt, .tab). Text tab holds one track, so it takes the first.
+/// Writes a song in the format its extension names: Guitar Pro (.gp, .gpx,
+/// .gp5), MIDI (.mid, .midi), MusicXML (.musicxml, .xml) or text tab (.txt,
+/// .tab). Text tab holds one track, so it takes the first.
 pub fn export_song(song: &Song, path: &std::path::Path) -> Result<(), String> {
     let data = match ext_of(path).as_str() {
+        "gpx" => crate::gpx::export_gpx(song),
+        "musicxml" | "xml" => crate::musicxml::export_musicxml(song).into_bytes(),
         "mid" | "midi" => export_midi(song),
         "txt" | "tab" => export_ascii(song, 0).into_bytes(),
         _ => return save_song(song, path),
@@ -128,11 +131,12 @@ pub fn load_song(path: &std::path::Path) -> Result<Song, String> {
         "gp" => crate::gpif::import_gp(&data)?,
         "gpx" => crate::gpif::import_gpx(&data)?,
         "mid" | "midi" => crate::textmidi::import_midi(&data, &stem)?,
+        "musicxml" | "xml" | "mxl" => crate::musicxml::import_musicxml(&data, &stem)?,
         "txt" | "tab" => song_from_track(
             crate::textmidi::import_ascii(&String::from_utf8_lossy(&data))?,
             &stem,
         ),
-        _ => return Err("GuitarCraft opens Guitar Pro (.gp, .gpx, .gp3-.gp5), MIDI and text tab files.".into()),
+        _ => return Err("GuitarCraft opens Guitar Pro (.gp, .gpx, .gp3-.gp5), MusicXML (.musicxml, .xml, .mxl), MIDI and text tab files.".into()),
     };
     song.normalize();
     Ok(song)
@@ -355,7 +359,7 @@ mod tests {
     fn export_writes_the_format_the_extension_names() {
         let d = temp_dir("export");
         let song = Song::demo();
-        for name in ["song.gp", "song.gp5", "song.mid", "song.txt"] {
+        for name in ["song.gp", "song.gpx", "song.gp5", "song.mid", "song.musicxml", "song.txt"] {
             let p = d.join(name);
             export_song(&song, &p).unwrap();
             let back = load_song(&p).unwrap_or_else(|e| panic!("{name}: {e}"));

@@ -1044,7 +1044,7 @@ fn write_note(ids: &mut Ids, t: &Track, beat: &Beat, n: &Note, key: i8) -> usize
 
 /// Which staves each track shows, for Guitar Pro's part settings: one view of
 /// all tracks, then one view per track. Each track: 1 notation, 2 tablature.
-fn part_configuration(song: &Song) -> Vec<u8> {
+pub(crate) fn part_configuration(song: &Song) -> Vec<u8> {
     let flags: Vec<u8> = song
         .tracks
         .iter()
@@ -1069,7 +1069,7 @@ fn part_configuration(song: &Song) -> Vec<u8> {
 
 /// The layout settings record, as in a .gp file Guitar Pro 8 saved for the
 /// person (its meaning isn't documented; it holds no song content).
-const LAYOUT_CONFIGURATION: [u8; 14] = [0, 0, 0, 4, 1, 0, 0, 0xff, 0xff, 0xff, 0, 0, 0, 1];
+pub(crate) const LAYOUT_CONFIGURATION: [u8; 14] = [0, 0, 0, 4, 1, 0, 0, 0xff, 0xff, 0xff, 0, 0, 0, 1];
 
 /// The whole .gp file.
 pub fn export_gp(song: &Song) -> Result<Vec<u8>, String> {

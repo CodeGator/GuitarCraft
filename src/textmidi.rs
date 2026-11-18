@@ -165,7 +165,7 @@ fn split_ticks(mut t: u32) -> Vec<(Dur, bool)> {
 }
 
 /// Chooses strings and frets for a set of pitches on a track.
-fn place_pitches(track: &Track, pitches: &[u8]) -> Vec<Note> {
+pub(crate) fn place_pitches(track: &Track, pitches: &[u8]) -> Vec<Note> {
     let maxf = track.frets as i32;
     let mut used = vec![false; track.strings()];
     let mut out = vec![];

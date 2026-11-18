@@ -358,6 +358,20 @@ impl App {
         }
     }
 
+    /// File > Import > MusicXML: .musicxml, .xml or compressed .mxl.
+    pub(super) fn import_musicxml_dialog(&mut self) {
+        if self.screenshot.is_some() {
+            return;
+        }
+        if let Some(p) = self.file_dialog().add_filter("MusicXML", &["musicxml", "xml", "mxl"]).pick_file() {
+            if self.dirty {
+                self.status = "Save or undo your changes first.".into();
+            } else {
+                self.open_path(p);
+            }
+        }
+    }
+
     pub(super) fn import_midi_dialog(&mut self) {
         if self.screenshot.is_some() {
             return;
@@ -382,6 +396,7 @@ impl App {
         self.chord_window(ctx);
         self.chord_library_window(ctx);
         self.export_window(ctx);
+        self.batch_window(ctx);
         self.print_preview_window(ctx);
         self.special_paste_window(ctx);
         self.scale_window(ctx);
