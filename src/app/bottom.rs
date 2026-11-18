@@ -577,12 +577,11 @@ impl App {
             return;
         }
         let mut marks: Vec<(u8, u8, Color32)> = vec![];
-        if self.scale_shown {
-            let iv = super::tools::SCALES[self.scale_kind].1;
+        if let Some((root, iv)) = self.cs.overlay_pattern() {
             for s in 0..tr.strings() {
                 for f in 0..=tr.frets.min(24) {
                     let pc = ((tr.tuning[s] as u32 + f as u32 + tr.capo_at(s) as u32) % 12) as u8;
-                    let rel = (pc + 12 - self.scale_root) % 12;
+                    let rel = (pc + 12 - root) % 12;
                     if iv.contains(&rel) {
                         let col = if rel == 0 {
                             Color32::from_rgb(200, 120, 60)

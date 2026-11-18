@@ -486,6 +486,12 @@ impl App {
                     }
                 }
             });
+            ui.menu_button("Tools", |ui| {
+                if item(ui, true, "Chords & Scales...", "") {
+                    self.open_chord_scales(super::chordscales::Mode::Chords);
+                    ui.close();
+                }
+            });
             ui.menu_button("Help", |ui| {
                 if ui.button("Chord chart help").clicked() {
                     self.status = "Chords go in [brackets] before the syllable: [E]Let my heart. A line starting with | is bars: | E /// | B //// |.".into();

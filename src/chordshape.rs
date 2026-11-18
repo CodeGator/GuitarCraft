@@ -3,7 +3,8 @@
 //! the guitar's neck is searched for a fingering a hand can play (at most
 //! four fingers, with a barre, within four frets) that has every needed note,
 //! the right bass note, and as few muted strings as possible, as low on the
-//! neck as it can be. Standard tuning.
+//! neck as it can be. Any six-string tuning; the Chords & Scales tool lists the
+//! best fingering in each part of the neck.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -172,12 +173,12 @@ pub fn formula(quality: &str) -> Option<Formula> {
 }
 
 /// How hard a fingering is (lower is better), or None when a hand can't play it.
-fn cost(frets: &[i8; 6], f: &Formula, root: i32, bass: i32) -> Option<f32> {
+fn cost(tuning: &[i32; 6], frets: &[i8; 6], f: &Formula, root: i32, bass: i32) -> Option<f32> {
     let played: Vec<usize> = (0..6).filter(|&s| frets[s] >= 0).collect();
     if played.len() < 2 {
         return None;
     }
-    let notes: Vec<i32> = played.iter().map(|&s| TUNING[s] + frets[s] as i32).collect();
+    let notes: Vec<i32> = played.iter().map(|&s| tuning[s] + frets[s] as i32).collect();
     let pcs: Vec<i32> = notes.iter().map(|n| (n - root).rem_euclid(12)).collect();
     // Every needed note, and the bass note lowest.
     if f.tones.iter().any(|(pc, need)| *need && !pcs.contains(pc)) {
@@ -235,22 +236,21 @@ fn cost(frets: &[i8; 6], f: &Formula, root: i32, bass: i32) -> Option<f32> {
     Some(c)
 }
 
-/// The best fingering found for a chord: root, the chord's notes and the
-/// bass note (the root unless a slash chord says otherwise).
-pub fn voicing(root: i32, f: &Formula, bass: Option<i32>) -> Option<[i8; 6]> {
+/// The best fingering in each four-fret stretch of the neck (starting at
+/// frets 1 to `last_start`; open strings are always allowed), with its cost.
+pub fn voicing_list(tuning: &[i32; 6], root: i32, f: &Formula, bass: Option<i32>, last_start: i8) -> Vec<(f32, [i8; 6])> {
     let bass = bass.unwrap_or(root);
     let mut allowed: Vec<i32> = f.tones.iter().map(|t| (root + t.0).rem_euclid(12)).collect();
     if !allowed.contains(&bass.rem_euclid(12)) {
         allowed.push(bass.rem_euclid(12));
     }
-    let mut best: Option<(f32, [i8; 6])> = None;
-    // Each four-fret stretch of the neck, open strings always allowed.
-    for start in 1..=12i8 {
+    let mut out = vec![];
+    for start in 1..=last_start {
         let options: Vec<Vec<i8>> = (0..6)
             .map(|s| {
                 let mut o = vec![-1i8];
                 for fr in std::iter::once(0).chain(start..start + 4) {
-                    if allowed.contains(&((TUNING[s] + fr as i32).rem_euclid(12))) {
+                    if allowed.contains(&((tuning[s] + fr as i32).rem_euclid(12))) {
                         o.push(fr);
                     }
                 }
@@ -258,15 +258,90 @@ pub fn voicing(root: i32, f: &Formula, bass: Option<i32>) -> Option<[i8; 6]> {
             })
             .collect();
         let mut frets = [-1i8; 6];
+        let mut best: Option<(f32, [i8; 6])> = None;
         search(&options, 0, &mut frets, &mut |fr| {
-            if let Some(c) = cost(fr, f, root, bass)
+            if let Some(c) = cost(tuning, fr, f, root, bass)
                 && best.map(|b| c < b.0 - 1e-6).unwrap_or(true)
             {
                 best = Some((c, *fr));
             }
         });
+        out.extend(best);
     }
-    best.map(|b| b.1)
+    out
+}
+
+/// The best fingering found for a chord in standard tuning: root, the chord's
+/// notes and the bass note (the root unless a slash chord says otherwise).
+pub fn voicing(root: i32, f: &Formula, bass: Option<i32>) -> Option<[i8; 6]> {
+    voicing_list(&TUNING, root, f, bass, 12)
+        .into_iter()
+        .min_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|b| b.1)
+}
+
+/// The lowest fretted fret of a fingering (0 when only open strings are played).
+pub fn lowest_fret(frets: &[i8; 6]) -> i8 {
+    frets.iter().copied().filter(|&f| f > 0).min().unwrap_or(0)
+}
+
+static LISTS: Mutex<Option<HashMap<String, Vec<[i8; 6]>>>> = Mutex::new(None);
+
+/// Playable fingerings of a chord, one for each part of the neck up to
+/// `max_fret`, nearest the nut first. `quality` is the name after the root
+/// ("m7", "sus4", "add9"). Worked out once and remembered.
+pub fn voicings(tuning: &[i32; 6], root: i32, quality: &str, bass: Option<i32>, max_fret: i8) -> Vec<[i8; 6]> {
+    let key = format!("{tuning:?}|{root}|{quality}|{bass:?}|{max_fret}");
+    if let Ok(c) = LISTS.lock()
+        && let Some(v) = c.as_ref().and_then(|m| m.get(&key))
+    {
+        return v.clone();
+    }
+    let Some(f) = formula(quality) else { return vec![] };
+    let mut all = voicing_list(tuning, root, &f, bass, (max_fret - 3).max(1));
+    // Leave out thin or awkward ones: judged without the cost of being high on
+    // the neck (every part of the neck gets its best), a fingering must be
+    // nearly as good as the best of them.
+    let plain = |c: f32, v: &[i8; 6]| c - 0.5 * lowest_fret(v) as f32;
+    let best = all.iter().map(|a| plain(a.0, &a.1)).fold(f32::MAX, f32::min);
+    all.retain(|a| plain(a.0, &a.1) <= best + 3.0);
+    // Nearest the nut first; the same fingering found in two stretches counts once.
+    all.sort_by(|a, b| lowest_fret(&a.1).cmp(&lowest_fret(&b.1)).then(a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal)));
+    let mut out: Vec<[i8; 6]> = vec![];
+    for (_, v) in all {
+        if !out.contains(&v) {
+            out.push(v);
+        }
+    }
+    if let Ok(mut c) = LISTS.lock() {
+        c.get_or_insert_with(HashMap::new).insert(key, out.clone());
+    }
+    out
+}
+
+/// Which finger plays each string of a fingering (0 = none, 1 index ... 4
+/// little finger). When more than four strings are fretted, the index finger
+/// lies across them as a barre at the lowest fret.
+pub fn fingers(frets: &[i8; 6]) -> [u8; 6] {
+    let fretted: Vec<usize> = (0..6).filter(|&s| frets[s] > 0).collect();
+    let mut out = [0u8; 6];
+    let Some(min) = fretted.iter().map(|&s| frets[s]).min() else { return out };
+    let at_min: Vec<usize> = fretted.iter().copied().filter(|&s| frets[s] == min).collect();
+    let barre = fretted.len() > 4 && at_min.len() >= 2;
+    let mut next = 1u8;
+    if barre {
+        for &s in &at_min {
+            out[s] = 1;
+        }
+        next = 2;
+    }
+    let mut rest: Vec<usize> = fretted.iter().copied().filter(|s| !barre || frets[*s] != min).collect();
+    rest.sort_by_key(|&s| (frets[s], s));
+    for s in rest {
+        out[s] = next.min(4);
+        next += 1;
+    }
+    out
 }
 
 fn search(options: &[Vec<i8>], s: usize, frets: &mut [i8; 6], visit: &mut dyn FnMut(&[i8; 6])) {
@@ -382,5 +457,29 @@ mod tests {
         // Names that aren't chords get no diagram.
         assert_eq!(shape("N.C."), None);
         assert_eq!(shape("Cxyz"), None);
+    }
+}
+
+#[cfg(test)]
+mod voicing_tests {
+    use super::*;
+
+    #[test]
+    fn ordinary_chords_have_several_fingerings_up_the_neck() {
+        let std = [40, 45, 50, 55, 59, 64];
+        for (root, q) in [(0, ""), (9, "m"), (7, "7"), (2, "maj7"), (4, "sus4")] {
+            let v = voicings(&std, root, q, None, 17);
+            assert!(v.len() >= 2, "{root}{q}: {}", v.len());
+            // Nearest the nut first.
+            assert!(v.windows(2).all(|w| lowest_fret(&w[0]) <= lowest_fret(&w[1])));
+        }
+        // Another tuning gives different fingerings: open strings of DADGAD make D5/sus fingerings.
+        let dadgad = [38, 45, 50, 55, 57, 62];
+        let d = voicings(&dadgad, 2, "sus4", None, 17);
+        assert!(d.iter().any(|f| f.iter().filter(|&&x| x == 0).count() >= 4), "{d:?}");
+        // Fingers: an open C uses fingers 3, 2, 1.
+        assert_eq!(fingers(&[-1, 3, 2, 0, 1, 0]), [0, 3, 2, 0, 1, 0]);
+        // A barre chord: F uses the index finger across fret 1.
+        assert_eq!(fingers(&[1, 3, 3, 2, 1, 1]), [1, 3, 4, 2, 1, 1]);
     }
 }
