@@ -114,8 +114,8 @@ dotnet tool install --global wix --version 5.0.2
   the first install chose. A silent install for everyone passes `ALLUSERS=1` to `msiexec`.
 - **Start menu** shortcut, and the *Programs and Features* entry with the icon and links to
   the GitHub page.
-- **Files:** GuitarCraft becomes the default app for `.chart` chord charts. For `.gp`, `.gp5`,
-  `.gpx`, `.gp4`, `.gp3`, `.mid`, `.midi` and old `.gcchart` charts it's listed under
+- **Files:** GuitarCraft becomes the default app for `.gcx` chord charts. For `.gp`, `.gp5`,
+  `.gpx`, `.gp4`, `.gp3`, `.mid` and `.midi` it's listed under
   *Open with*, but never takes them over, so an installed Guitar Pro keeps its files.
 - **Win+R** `guitarcraft` starts it (App Paths).
 - Settings in `%APPDATA%\GuitarCraft` belong to the user and are left alone on uninstall.

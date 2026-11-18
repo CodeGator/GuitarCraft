@@ -57,8 +57,8 @@ Check files from "--gp-tests" go to the shots folder.
 
 Chord charts
 ------------
-Morning Walk chart.chart    A sample chord chart (made-up words). Open it with
-                            File > Open. Chord charts are saved only as .chart
+Morning Walk chart.gcx      A sample chord chart (made-up words). Open it with
+                            File > Open. Chord charts are saved only as .gcx
                             files, never as Guitar Pro files.
 
 Import and export (17-18 Nov 2026)

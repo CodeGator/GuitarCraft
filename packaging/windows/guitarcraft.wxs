@@ -45,13 +45,13 @@
           <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="GuitarCraft" Description="Write, edit and play guitar music" WorkingDirectory="INSTALLFOLDER" Advertise="yes" Icon="GuitarcraftIcon.ico" IconIndex="0" />
         </File>
 
-        <!-- .chart: GuitarCraft's own chord-chart format; GuitarCraft is its default app. -->
+        <!-- .gcx: GuitarCraft's own chord-chart format; GuitarCraft is its default app. -->
         <ProgId Id="GuitarCraft.Chart" Description="GuitarCraft Chord Chart" Icon="GuitarcraftExe" IconIndex="0">
-          <Extension Id="chart" ContentType="application/x-guitarcraft-chart">
+          <Extension Id="gcx" ContentType="application/x-guitarcraft-chart">
             <Verb Id="open" Command="Open" TargetFile="GuitarcraftExe" Argument="&quot;%1&quot;" />
           </Extension>
         </ProgId>
-        <!-- Guitar Pro and MIDI files, and old .gcchart charts: offered under "Open with", never
+        <!-- Guitar Pro and MIDI files: offered under "Open with", never
              forced as the default, so an installed Guitar Pro keeps its files. -->
         <ProgId Id="GuitarCraft.Song" Description="Guitar Pro File" Icon="GuitarcraftExe" IconIndex="0" />
         <RegistryValue Root="HKMU" Key="Software\Classes\GuitarCraft.Song\shell\open\command" Value="&quot;[#GuitarcraftExe]&quot; &quot;%1&quot;" Type="string" />
@@ -62,15 +62,13 @@
         <RegistryValue Root="HKMU" Key="Software\Classes\.gpx\OpenWithProgids" Name="GuitarCraft.Song" Value="" Type="string" />
         <RegistryValue Root="HKMU" Key="Software\Classes\.gp4\OpenWithProgids" Name="GuitarCraft.Song" Value="" Type="string" />
         <RegistryValue Root="HKMU" Key="Software\Classes\.gp3\OpenWithProgids" Name="GuitarCraft.Song" Value="" Type="string" />
-        <RegistryValue Root="HKMU" Key="Software\Classes\.gcchart\OpenWithProgids" Name="GuitarCraft.Chart" Value="" Type="string" />
         <RegistryValue Root="HKMU" Key="Software\Classes\.mid\OpenWithProgids" Name="GuitarCraft.Midi" Value="" Type="string" />
         <RegistryValue Root="HKMU" Key="Software\Classes\.midi\OpenWithProgids" Name="GuitarCraft.Midi" Value="" Type="string" />
 
         <!-- "Open with" app list and the Run dialog (Win+R "guitarcraft"). -->
         <RegistryValue Root="HKMU" Key="Software\Classes\Applications\guitarcraft.exe" Name="FriendlyAppName" Value="GuitarCraft" Type="string" />
         <RegistryValue Root="HKMU" Key="Software\Classes\Applications\guitarcraft.exe\shell\open\command" Value="&quot;[#GuitarcraftExe]&quot; &quot;%1&quot;" Type="string" />
-        <RegistryValue Root="HKMU" Key="Software\Classes\Applications\guitarcraft.exe\SupportedTypes" Name=".chart" Value="" Type="string" />
-        <RegistryValue Root="HKMU" Key="Software\Classes\Applications\guitarcraft.exe\SupportedTypes" Name=".gcchart" Value="" Type="string" />
+        <RegistryValue Root="HKMU" Key="Software\Classes\Applications\guitarcraft.exe\SupportedTypes" Name=".gcx" Value="" Type="string" />
         <RegistryValue Root="HKMU" Key="Software\Classes\Applications\guitarcraft.exe\SupportedTypes" Name=".gp" Value="" Type="string" />
         <RegistryValue Root="HKMU" Key="Software\Classes\Applications\guitarcraft.exe\SupportedTypes" Name=".gp5" Value="" Type="string" />
         <RegistryValue Root="HKMU" Key="Software\Classes\Applications\guitarcraft.exe\SupportedTypes" Name=".gpx" Value="" Type="string" />

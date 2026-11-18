@@ -1271,13 +1271,12 @@ impl App {
                     "gp4",
                     "gp5",
                     crate::chart::EXT,
-                    crate::chart::OLD_EXT,
                 ],
             )
             .add_filter("Guitar Pro files", &["gp", "gpx", "gp3", "gp4", "gp5"])
             .add_filter(
                 "GuitarCraft chord charts",
-                &[crate::chart::EXT, crate::chart::OLD_EXT],
+                &[crate::chart::EXT],
             )
             .pick_file();
         if let Some(p) = f {
