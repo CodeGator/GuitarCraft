@@ -128,6 +128,40 @@ fn main() -> eframe::Result {
             };
             exit_with(song.and_then(|s| fileio::export_song(&s, std::path::Path::new(&to))));
         }
+        if a == "--gpx-tests" {
+            // Files for finding out which part of a .gpx file Guitar Pro 8 objects to:
+            // our export; Guitar Pro 8's own files packed by us; our score with
+            // Guitar Pro 8's other files. Written next to the samples.
+            let dir = std::path::PathBuf::from(args.next().unwrap_or_else(|| "samples".into()));
+            let demo = model::Song::demo();
+            let mut made = vec![("Check GPX 1 - GuitarCraft export", gpx::export_gpx(&demo))];
+            let gp8 = std::fs::read(dir.join("Morning Walk - GP8.gpx"))
+                .map_err(|e| e.to_string())
+                .and_then(|d| gpif::gpx_files(&d));
+            match gp8 {
+                Ok(theirs) => {
+                    let pack = |v: &[(String, Vec<u8>)]| {
+                        let f: Vec<(&str, Vec<u8>)> = v.iter().map(|(n, d)| (n.as_str(), d.clone())).collect();
+                        gpx::pack(&f)
+                    };
+                    made.push(("Check GPX 2 - GP8 files, GuitarCraft packing", pack(&theirs)));
+                    let ours = gpx::files(&demo);
+                    let mixed: Vec<(String, Vec<u8>)> = theirs
+                        .iter()
+                        .map(|(n, d)| match ours.iter().find(|o| o.0 == "score.gpif" && n == "score.gpif") {
+                            Some(o) => (n.clone(), o.1.clone()),
+                            None => (n.clone(), d.clone()),
+                        })
+                        .collect();
+                    made.push(("Check GPX 3 - GuitarCraft score, GP8 other files", pack(&mixed)));
+                }
+                Err(e) => eprintln!("Morning Walk - GP8.gpx not read ({e}); writing only check 1."),
+            }
+            for (name, data) in made {
+                let _ = std::fs::write(dir.join(format!("{name}.gpx")), data);
+            }
+            std::process::exit(0);
+        }
         if a == "--gp-tests" {
             // Files for checking which parts Guitar Pro 8 accepts.
             let dir =

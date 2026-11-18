@@ -1069,7 +1069,7 @@ pub(crate) fn part_configuration(song: &Song) -> Vec<u8> {
 
 /// The layout settings record, as in a .gp file Guitar Pro 8 saved for the
 /// person (its meaning isn't documented; it holds no song content).
-const LAYOUT_CONFIGURATION: [u8; 14] = [0, 0, 0, 4, 1, 0, 0, 0xff, 0xff, 0xff, 0, 0, 0, 1];
+pub(crate) const LAYOUT_CONFIGURATION: [u8; 14] = [0, 0, 0, 4, 1, 0, 0, 0xff, 0xff, 0xff, 0, 0, 0, 1];
 
 /// The whole .gp file.
 pub fn export_gp(song: &Song) -> Result<Vec<u8>, String> {
