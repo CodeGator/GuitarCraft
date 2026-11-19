@@ -3,7 +3,7 @@
 
 use super::App;
 use crate::model::*;
-use egui::{Align2, Color32, RichText, Vec2};
+use egui::{Align2, RichText, Vec2};
 
 pub const NOTE_NAMES: [&str; 12] = [
     "C",
@@ -151,7 +151,7 @@ pub fn commands() -> Vec<(&'static str, Cmd)> {
         ("complete-bars: Complete bars with rests", |a| {
             a.complete_bars()
         }),
-        ("add-track: Add a track", |a| a.addtrack_open = true),
+        ("add-track: Add a track", |a| a.open_add_track(false)),
         ("tempo: Edit the tempo (automations)", |a| {
             a.open_automations(a.bar)
         }),
@@ -322,11 +322,7 @@ impl App {
             return;
         }
         if let Some(p) = self.file_dialog().add_filter("MusicXML", &["musicxml", "xml", "mxl"]).pick_file() {
-            if self.dirty {
-                self.status = "Save or undo your changes first.".into();
-            } else {
-                self.open_path(p);
-            }
+            self.open_path(p);
         }
     }
 
@@ -339,11 +335,7 @@ impl App {
             .add_filter("MIDI", &["mid", "midi"])
             .pick_file()
         {
-            if self.dirty {
-                self.status = "Save or undo your changes first.".into();
-            } else {
-                self.open_path(p);
-            }
+            self.open_path(p);
         }
     }
 
@@ -396,165 +388,6 @@ impl App {
             self.bar_edit(move |m| *m = mb);
         }
         self.dir_open = open;
-    }
-
-    fn add_track_window(&mut self, ctx: &egui::Context) {
-        if !self.addtrack_open {
-            return;
-        }
-        let mut open = true;
-        let mut create = false;
-        egui::Window::new("Add a track")
-            .open(&mut open)
-            .resizable(false)
-            .collapsible(false)
-            .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
-            .show(ctx, |ui| {
-                // Instrument type first (stringed, keyboards, vocals, orchestra, drums), then the instrument.
-                ui.horizontal(|ui| {
-                    for k in InstrumentType::ALL {
-                        if ui
-                            .add(
-                                egui::Button::selectable(self.at_inst.kind() == k, k.name())
-                                    .frame_when_inactive(true)
-                                    .min_size(Vec2::new(78.0, 26.0)),
-                            )
-                            .clicked()
-                            && self.at_inst.kind() != k
-                        {
-                            let i = k.instruments()[0];
-                            self.at_inst = i;
-                            self.at_tuning = i.default_tuning();
-                            self.at_grand = true;
-                            self.at_name = i.name().to_string();
-                        }
-                    }
-                });
-                ui.add_space(6.0);
-                egui::Grid::new("addtr")
-                    .num_columns(2)
-                    .spacing(Vec2::new(8.0, 6.0))
-                    .show(ui, |ui| {
-                        ui.label("Instrument:");
-                        egui::ComboBox::from_id_salt("at_inst")
-                            .width(200.0)
-                            .selected_text(self.at_inst.name())
-                            .show_ui(ui, |ui| {
-                                for i in self.at_inst.kind().instruments() {
-                                    if ui
-                                        .selectable_value(&mut self.at_inst, i, i.name())
-                                        .changed()
-                                    {
-                                        self.at_tuning = i.default_tuning();
-                                        if self.at_name.is_empty()
-                                            || Instrument::ALL
-                                                .iter()
-                                                .any(|x| x.name() == self.at_name)
-                                        {
-                                            self.at_name = i.name().to_string();
-                                        }
-                                    }
-                                }
-                            });
-                        ui.end_row();
-                        ui.label("Name:");
-                        ui.add(egui::TextEdit::singleline(&mut self.at_name).desired_width(200.0));
-                        ui.end_row();
-                        let kind = self.at_inst.kind();
-                        ui.label("Notation:");
-                        ui.label(match kind {
-                            InstrumentType::Stringed => "Standard notation and tablature",
-                            InstrumentType::Drums => "Percussion staff",
-                            _ => "Standard notation",
-                        });
-                        ui.end_row();
-                        if kind == InstrumentType::Keyboard {
-                            ui.label("Staff:");
-                            ui.horizontal(|ui| {
-                                ui.selectable_value(&mut self.at_grand, false, "Simple");
-                                ui.selectable_value(&mut self.at_grand, true, "Grand staff");
-                            });
-                            ui.end_row();
-                        }
-                        if kind == InstrumentType::Stringed {
-                            ui.label("Strings:");
-                            let mut n = self.at_tuning.len();
-                            egui::ComboBox::from_id_salt("at_str")
-                                .width(60.0)
-                                .selected_text(format!("{n}"))
-                                .show_ui(ui, |ui| {
-                                    for k in [4usize, 5, 6, 7] {
-                                        ui.selectable_value(&mut n, k, format!("{k}"));
-                                    }
-                                });
-                            if n != self.at_tuning.len() {
-                                self.at_tuning = tuning_presets(n)[0].1.clone();
-                            }
-                            ui.end_row();
-                            ui.label("Tuning:");
-                            egui::ComboBox::from_id_salt("at_tun")
-                                .width(200.0)
-                                .selected_text(tuning_name(&self.at_tuning))
-                                .show_ui(ui, |ui| {
-                                    for (name, notes) in tuning_presets(self.at_tuning.len()) {
-                                        if ui
-                                            .selectable_label(self.at_tuning == notes, name)
-                                            .clicked()
-                                        {
-                                            self.at_tuning = notes;
-                                        }
-                                    }
-                                });
-                            ui.end_row();
-                        }
-                        ui.label("Colour:");
-                        ui.horizontal(|ui| {
-                            for (k, c) in TRACK_COLORS.iter().enumerate() {
-                                let (r, resp) =
-                                    ui.allocate_exact_size(Vec2::splat(18.0), egui::Sense::click());
-                                ui.painter().rect_filled(
-                                    r,
-                                    3.0,
-                                    Color32::from_rgb(c[0], c[1], c[2]),
-                                );
-                                if self.at_color == k {
-                                    ui.painter().rect_stroke(
-                                        r,
-                                        3.0,
-                                        egui::Stroke::new(2.0, Color32::WHITE),
-                                        egui::StrokeKind::Outside,
-                                    );
-                                }
-                                if resp.clicked() {
-                                    self.at_color = k;
-                                }
-                            }
-                        });
-                        ui.end_row();
-                    });
-                ui.add_space(6.0);
-                if ui.button(RichText::new("Create").strong()).clicked() {
-                    create = true;
-                }
-            });
-        if create {
-            let name = if self.at_name.trim().is_empty() {
-                self.at_inst.name().to_string()
-            } else {
-                self.at_name.clone()
-            };
-            let mut t = Track::of_instrument(self.at_inst, &name);
-            if t.has_strings() {
-                t.tuning = self.at_tuning.clone();
-            }
-            t.grand_staff = t.kind() == InstrumentType::Keyboard && self.at_grand;
-            t.color = TRACK_COLORS[self.at_color % TRACK_COLORS.len()];
-            self.edit(move |s, _, _, _, _| s.tracks.push(t));
-            self.track = self.song.tracks.len() - 1;
-            self.clamp_cursor();
-            open = false;
-        }
-        self.addtrack_open = open;
     }
 
     fn chord_window(&mut self, ctx: &egui::Context) {

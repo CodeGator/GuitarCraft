@@ -48,25 +48,33 @@ pub fn save_recent(list: &[PathBuf]) {
     }
 }
 
-pub const TEMPLATES: [&str; 18] = [
+/// The standard templates, in the order Guitar Pro 8 lists them. The first is an
+/// empty document, which asks for its first track.
+pub const TEMPLATES: [&str; 24] = [
     "Empty (default)",
     "Acoustic Bass",
+    "Acoustic Piano",
+    "Blues Power Trio",
+    "Californian Punk Band",
     "Classical Guitar",
+    "Drumkit",
     "Electric Bass",
     "Electric Guitar Clean",
     "Electric Guitar Distortion",
     "Electric Guitar Overdrive",
-    "Guitar and Bass",
+    "Funk Orchestra",
+    "Guitar Vocals",
     "Jazz Guitar",
+    "Jazz Quintet",
+    "Jazz Trio",
     "Metal Band",
     "Modern Rock Band",
     "Nylon Guitar",
+    "Progressive Rock Band",
+    "Rock Experience Band",
     "Steel Guitar",
-    "7-String Guitar",
-    "Ukulele",
-    "Piano",
-    "Vocals and Piano",
-    "Pop Band (vocals, piano, guitar, bass, drums)",
+    "Stoner Band",
+    "Thrash Band",
 ];
 
 fn tr(name: &str, inst: Instrument, tuning: &[u8], color: usize) -> Track {
@@ -87,7 +95,15 @@ fn inst(name: &str, i: Instrument, color: usize) -> Track {
 
 /// A short song for a band: vocals with lyrics, piano on a grand staff, guitar, bass and drums.
 pub fn band_song() -> Song {
-    let mut s = template(17);
+    let mut s = Song::new_blank();
+    s.tracks = vec![
+        inst("Lead Vocals", Instrument::LeadVocals, 5),
+        inst("Piano", Instrument::Piano, 4),
+        tr("Guitar", Instrument::SteelGuitar, &STANDARD_GUITAR, 0),
+        tr("Bass", Instrument::Bass, &STANDARD_BASS, 1),
+        inst("Drums", Instrument::Drums, 6),
+    ];
+    s.normalize();
     s.title = "Band Practice".into();
     s.subtitle = "Five instruments".into();
     s.tempo = 100;
@@ -187,63 +203,102 @@ pub fn band_song() -> Song {
     s
 }
 
-pub fn template(k: usize) -> Song {
+/// The tracks of a standard template.
+fn template_tracks(k: usize) -> Vec<Track> {
     const STD: &[u8] = &STANDARD_GUITAR;
     const DROP_D: [u8; 6] = [64, 59, 55, 50, 45, 38];
+    const D_STD: [u8; 6] = [62, 57, 53, 48, 43, 38];
     const BASS: &[u8] = &STANDARD_BASS;
-    let mut s = Song::new_blank();
-    s.title = "Untitled".into();
-    let tracks = match k {
-        1 => vec![tr("Acoustic Bass", Instrument::Bass, BASS, 1)],
-        2 => vec![tr("Classical Guitar", Instrument::NylonGuitar, STD, 0)],
-        3 => vec![tr("Electric Bass", Instrument::Bass, BASS, 1)],
-        4 => vec![tr("Electric Guitar", Instrument::CleanGuitar, STD, 0)],
-        5 => vec![tr(
-            "Distortion Guitar",
-            Instrument::DistortionGuitar,
-            STD,
-            0,
-        )],
-        6 => vec![tr("Overdrive Guitar", Instrument::OverdriveGuitar, STD, 0)],
-        7 => vec![
-            tr("Steel Guitar", Instrument::SteelGuitar, STD, 0),
-            tr("Electric Bass", Instrument::Bass, BASS, 1),
+    const DROP_D_BASS: [u8; 4] = [43, 38, 33, 26];
+    let guitar = |name: &str, i: Instrument, tuning: &[u8]| tr(name, i, tuning, 0);
+    let bass = |name: &str| tr(name, Instrument::Bass, BASS, 1);
+    let drums = || inst("Drums", Instrument::Drums, 6);
+    let vocals = || inst("Lead Vocals", Instrument::LeadVocals, 5);
+    match k {
+        1 => vec![bass("Acoustic Bass")],
+        2 => vec![inst("Acoustic Piano", Instrument::Piano, 4)],
+        3 => vec![guitar("Guitar", Instrument::OverdriveGuitar, STD), bass("Bass"), drums()],
+        4 => vec![
+            guitar("Guitar 1", Instrument::DistortionGuitar, STD),
+            guitar("Guitar 2", Instrument::DistortionGuitar, STD),
+            bass("Bass"),
+            drums(),
+            vocals(),
         ],
-        8 => vec![tr("Jazz Guitar", Instrument::CleanGuitar, STD, 5)],
-        9 => vec![
-            tr("Rhythm Guitar", Instrument::DistortionGuitar, &DROP_D, 0),
-            tr("Lead Guitar", Instrument::DistortionGuitar, &DROP_D, 3),
-            tr("Bass", Instrument::Bass, &[43, 38, 33, 26], 1),
+        5 => vec![guitar("Classical Guitar", Instrument::NylonGuitar, STD)],
+        6 => vec![drums()],
+        7 => vec![bass("Electric Bass")],
+        8 => vec![guitar("Electric Guitar Clean", Instrument::CleanGuitar, STD)],
+        9 => vec![guitar("Electric Guitar Distortion", Instrument::DistortionGuitar, STD)],
+        10 => vec![guitar("Electric Guitar Overdrive", Instrument::OverdriveGuitar, STD)],
+        11 => vec![
+            guitar("Rhythm Guitar", Instrument::CleanGuitar, STD),
+            bass("Bass"),
+            inst("Electric Piano", Instrument::ElectricPiano, 4),
+            inst("Trumpet", Instrument::Trumpet, 5),
+            inst("Saxophone", Instrument::Saxophone, 3),
+            drums(),
         ],
-        10 => vec![
-            tr("Rhythm Guitar", Instrument::OverdriveGuitar, STD, 0),
-            tr("Lead Guitar", Instrument::CleanGuitar, STD, 3),
-            tr("Bass", Instrument::Bass, BASS, 1),
-        ],
-        11 => vec![tr("Nylon Guitar", Instrument::NylonGuitar, STD, 0)],
-        12 => vec![tr("Steel Guitar", Instrument::SteelGuitar, STD, 0)],
-        13 => vec![tr(
-            "7-String Guitar",
-            Instrument::DistortionGuitar,
-            &[64, 59, 55, 50, 45, 40, 35],
-            0,
-        )],
-        14 => vec![tr("Ukulele", Instrument::Ukulele, &[69, 64, 60, 67], 2)],
-        15 => vec![inst("Piano", Instrument::Piano, 4)],
-        16 => vec![
-            inst("Lead Vocals", Instrument::LeadVocals, 5),
+        12 => vec![vocals(), guitar("Steel Guitar", Instrument::SteelGuitar, STD)],
+        13 => vec![guitar("Jazz Guitar", Instrument::CleanGuitar, STD)],
+        14 => vec![
+            inst("Saxophone", Instrument::Saxophone, 3),
             inst("Piano", Instrument::Piano, 4),
+            guitar("Jazz Guitar", Instrument::CleanGuitar, STD),
+            bass("Bass"),
+            drums(),
+        ],
+        15 => vec![inst("Piano", Instrument::Piano, 4), bass("Bass"), drums()],
+        16 => vec![
+            guitar("Rhythm Guitar", Instrument::DistortionGuitar, &DROP_D),
+            guitar("Lead Guitar", Instrument::DistortionGuitar, &DROP_D),
+            tr("Bass", Instrument::Bass, &DROP_D_BASS, 1),
+            drums(),
+            vocals(),
         ],
         17 => vec![
-            inst("Lead Vocals", Instrument::LeadVocals, 5),
-            inst("Piano", Instrument::Piano, 4),
-            tr("Guitar", Instrument::SteelGuitar, STD, 0),
-            tr("Bass", Instrument::Bass, BASS, 1),
-            inst("Drums", Instrument::Drums, 6),
+            vocals(),
+            guitar("Rhythm Guitar", Instrument::OverdriveGuitar, STD),
+            guitar("Lead Guitar", Instrument::CleanGuitar, STD),
+            bass("Bass"),
+            drums(),
         ],
-        _ => vec![tr("Steel Guitar", Instrument::SteelGuitar, STD, 0)],
-    };
-    s.tracks = tracks;
+        18 => vec![guitar("Nylon Guitar", Instrument::NylonGuitar, STD)],
+        19 => vec![
+            vocals(),
+            guitar("Guitar", Instrument::OverdriveGuitar, STD),
+            inst("Keyboards", Instrument::Synth, 4),
+            bass("Bass"),
+            drums(),
+        ],
+        20 => vec![vocals(), guitar("Guitar", Instrument::OverdriveGuitar, STD), bass("Bass"), drums()],
+        21 => vec![guitar("Steel Guitar", Instrument::SteelGuitar, STD)],
+        22 => vec![
+            guitar("Guitar 1", Instrument::DistortionGuitar, &D_STD),
+            guitar("Guitar 2", Instrument::DistortionGuitar, &D_STD),
+            tr("Bass", Instrument::Bass, &[41, 36, 31, 24], 1),
+            drums(),
+        ],
+        23 => vec![
+            guitar("Rhythm Guitar", Instrument::DistortionGuitar, STD),
+            guitar("Lead Guitar", Instrument::DistortionGuitar, STD),
+            bass("Bass"),
+            drums(),
+            vocals(),
+        ],
+        // The empty document keeps a plain guitar until its first track is chosen.
+        _ => vec![guitar("Steel Guitar", Instrument::SteelGuitar, STD)],
+    }
+}
+
+/// A standard template as a song: its tracks, each in its own colour, with empty bars.
+pub fn template(k: usize) -> Song {
+    let mut s = Song::new_blank();
+    s.title = "Untitled".into();
+    s.tracks = template_tracks(k);
+    for (i, t) in s.tracks.iter_mut().enumerate() {
+        t.color = TRACK_COLORS[i % TRACK_COLORS.len()];
+    }
     s.normalize();
     s
 }
@@ -251,6 +306,8 @@ pub fn template(k: usize) -> Song {
 enum Item {
     Recent(PathBuf),
     Template(usize),
+    /// One of your own templates (File > Save As Template).
+    UserTemplate(PathBuf),
     Example,
 }
 
@@ -274,6 +331,10 @@ impl App {
                 .iter()
                 .enumerate()
                 .map(|(i, n)| (n.to_string(), Item::Template(i)))
+                .chain(Self::user_templates().into_iter().map(|p| {
+                    let name = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+                    (format!("{name}  (my template)"), Item::UserTemplate(p))
+                }))
                 .collect(),
             _ => vec![("Morning Walk (demo song)".to_string(), Item::Example)],
         };
@@ -287,13 +348,10 @@ impl App {
         match it {
             Item::Recent(p) => {
                 let p = p.clone();
-                if self.dirty {
-                    self.status = "Save or undo your changes first (or use File ▸ Open).".into();
-                } else {
-                    self.open_path(p);
-                }
+                self.open_path(p);
             }
             Item::Template(k) => self.request(Pending::Template(*k)),
+            Item::UserTemplate(p) => self.open_template_file(p.clone()),
             Item::Example => self.request(Pending::Demo),
         }
     }
@@ -522,6 +580,7 @@ impl App {
             let key = match it {
                 Item::Recent(p) => p.display().to_string(),
                 Item::Template(k) => format!("template-{k}"),
+                Item::UserTemplate(p) => format!("my-template-{}", p.display()),
                 Item::Example => "example".into(),
             };
             if self
@@ -533,6 +592,7 @@ impl App {
                 let song = match it {
                     Item::Recent(p) => fileio::load_song(p).ok(),
                     Item::Template(k) => Some(template(*k)),
+                    Item::UserTemplate(p) => fileio::load_song(p).ok(),
                     Item::Example => Some(Song::demo()),
                 };
                 self.preview = song.map(|s| (key.clone(), s));

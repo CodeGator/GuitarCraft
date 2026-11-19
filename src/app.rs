@@ -3,7 +3,10 @@
 
 mod about;
 mod actions;
+mod addtrack;
 mod batch;
+#[cfg(test)]
+mod flows;
 mod automation;
 mod bottom;
 mod chartstyle;
@@ -23,6 +26,8 @@ mod popups;
 mod printing;
 mod side;
 mod stylesheet;
+mod templates;
+mod tabs;
 mod tools;
 pub mod trackicons;
 mod tuning;
@@ -55,7 +60,7 @@ pub struct LaunchOptions {
     pub show: Vec<String>,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 enum Pending {
     New,
     Open,
@@ -65,6 +70,8 @@ enum Pending {
     Quit,
     /// A new chord chart.
     NewChart,
+    /// Close every open file (File > Close All, Ctrl+Shift+W).
+    CloseAll,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -141,11 +148,8 @@ pub struct App {
     /// 0 page vertical, 1 page horizontal, 2 page grid, 3 screen vertical, 4 screen horizontal.
     view_mode: u8,
     dir_open: bool,
-    addtrack_open: bool,
-    at_name: String,
-    at_inst: Instrument,
-    at_tuning: Vec<u8>,
-    at_grand: bool,
+    /// The Add Track window.
+    at: addtrack::AddTrack,
     /// Where to suggest saving a Guitar Pro file opened in another format.
     save_hint: Option<PathBuf>,
     /// The song tab shows every information field (More) or only title and artist (Less).
@@ -153,7 +157,6 @@ pub struct App {
     /// The icon list beside the track name is open (for checking pictures).
     icon_menu_open: bool,
     tuning_dlg: Option<tuning::TuningDlg>,
-    at_color: usize,
     chord_open: bool,
     chord_text: String,
     chord_root: usize,
@@ -224,10 +227,24 @@ pub struct App {
     follow_sys: Option<usize>,
     /// The chord chart being edited, when one is open (instead of a score).
     chart: Option<chartui::ChartState>,
+    /// The open files, one per tab. The showing tab's data is in the fields above
+    /// (its entry here is None); the others are kept here.
+    tabs: Vec<Option<tabs::Doc>>,
+    active_tab: usize,
+    /// The window is closing for good (every question about unsaved changes is answered).
+    quitting: bool,
+    /// Whether Insert and Delete were held at the last frame (Windows hides some of their shortcuts).
+    ins_down: bool,
+    del_down: bool,
 }
 
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>, launch: LaunchOptions) -> App {
+        App::with_ctx(&cc.egui_ctx, launch)
+    }
+
+    /// The app, made from an egui context (tests make theirs without a window).
+    pub fn with_ctx(ctx: &egui::Context, launch: LaunchOptions) -> App {
         let LaunchOptions {
             screenshot,
             open,
@@ -237,8 +254,8 @@ impl App {
             home,
             show,
         } = launch;
-        let music_font = crate::setup_fonts(&cc.egui_ctx);
-        crate::setup_style(&cc.egui_ctx);
+        let music_font = crate::setup_fonts(ctx);
+        crate::setup_style(ctx);
         // Open on the start screen (File > Browse), as Guitar Pro 8 does. Screenshot runs
         // keep starting in the score; they ask for the start screen with --home.
         let start_on_home = screenshot.is_none();
@@ -305,16 +322,11 @@ impl App {
             play_while_editing: true,
             view_mode: 0,
             dir_open: false,
-            addtrack_open: false,
-            at_name: String::new(),
-            at_inst: Instrument::SteelGuitar,
-            at_tuning: STANDARD_GUITAR.to_vec(),
-            at_grand: true,
+            at: Default::default(),
             save_hint: None,
             song_more: false,
             icon_menu_open: false,
             tuning_dlg: None,
-            at_color: 2,
             chord_open: false,
             chord_text: String::new(),
             chord_root: 0,
@@ -373,6 +385,11 @@ impl App {
             bar_hover_demo: None,
             follow_sys: None,
             chart: None,
+            tabs: vec![],
+            active_tab: 0,
+            quitting: false,
+            ins_down: false,
+            del_down: false,
         };
         if app.screenshot.is_none() {
             app.recent = home::load_recent();
@@ -430,9 +447,8 @@ impl App {
                     }
                 }
                 "addtrack2" => {
-                    app.addtrack_open = true;
-                    app.at_inst = Instrument::Piano;
-                    app.at_name = "Grand Piano".into();
+                    app.open_add_track(false);
+                    app.at.choose(Instrument::Piano);
                 }
                 "band" => {
                     // A band with vocals, piano, guitar, bass and drums, for checking.
@@ -512,6 +528,36 @@ impl App {
                     };
                 }
                 "batch" => app.open_batch(),
+                "tabs" | "tabshome" | "tabschart" | "quitprompt" => {
+                    // Several files open at once: the demo song, a chord chart and a new song.
+                    app.begin_new_doc();
+                    app.song = Song::demo();
+                    app.reset_after_load();
+                    app.show_home = false;
+                    app.new_chart();
+                    if let Some(c) = app.chart.as_mut() {
+                        c.doc = crate::chart::ChordChart::sample();
+                    }
+                    app.request(Pending::Template(0));
+                    app.song.title = "Waltz in Three".into();
+                    // Show the first tab, or the chart, or the start screen.
+                    match part.as_str() {
+                        "tabschart" => app.switch_to(1),
+                        "tabshome" => app.switch_to(2),
+                        _ => app.switch_to(0),
+                    }
+                    if part == "tabshome" {
+                        app.show_home = true;
+                    }
+                    if part == "quitprompt" {
+                        // Closing the window with two files that have unsaved changes.
+                        app.dirty = true;
+                        if let Some(Some(d)) = app.tabs.get_mut(2) {
+                            d.dirty = true;
+                        }
+                        app.pending = Some(Pending::Quit);
+                    }
+                }
                 "importmenu" | "exportmenu" => app.file_menu_demo = Some(part == "exportmenu"),
                 "chartmoved" => {
                     let mut st = chartui::ChartState::new(crate::chart::ChordChart::sample());
@@ -621,7 +667,8 @@ impl App {
                     app.cs.related = true;
                 }
                 "lyrics" => app.lyrics_open = true,
-                "addtrack" => app.addtrack_open = true,
+                "addtrack" => app.open_add_track(false),
+                "newdoc" => app.open_add_track(true),
                 "std" => {
                     // Cursor on the lowest note of the beat, in the notation.
                     if let Some(n) = app
@@ -1227,13 +1274,15 @@ impl App {
     // ----- files -----
 
     fn new_song(&mut self) {
-        self.stop();
+        self.begin_new_doc();
         self.song = Song::new_blank();
         self.song.style = stylesheet::default_style();
         self.path = None;
         self.reset_after_load();
         self.show_home = false;
         self.status = "New song. Click a string and type fret numbers.".into();
+        // The first thing to do with an empty document is to add a track.
+        self.open_add_track(true);
     }
 
     fn reset_after_load(&mut self) {
@@ -1303,13 +1352,18 @@ impl App {
     fn open_path(&mut self, p: PathBuf) {
         // Kept as a full location, so later dialogs can start in its folder.
         let p = full_path(&p);
+        if let Some(i) = self.find_open(&p) {
+            self.switch_to(i);
+            self.status = "That file is already open.".into();
+            return;
+        }
         if crate::chart::is_chart_path(&p) {
             self.open_chart_path(p);
             return;
         }
         match fileio::load_song(&p) {
             Ok(song) => {
-                self.stop();
+                self.begin_new_doc();
                 self.song = song;
                 // Files saved straight back: Guitar Pro 5 and this app's own. Other
                 // Guitar Pro files are saved next to the original as .gp5.
@@ -1485,7 +1539,13 @@ impl App {
     }
 
     fn request(&mut self, what: Pending) {
-        if self.dirty {
+        // Opening and creating add a tab, so only closing a tab or quitting can lose changes.
+        let ask = match what {
+            Pending::Close => self.dirty,
+            Pending::Quit | Pending::CloseAll => self.any_dirty(),
+            _ => false,
+        };
+        if ask {
             self.pending = Some(what);
         } else {
             self.run_pending(what);
@@ -1497,24 +1557,28 @@ impl App {
             Pending::New => self.new_song(),
             Pending::Open => self.open_dialog(),
             Pending::Demo => {
-                self.stop();
+                self.begin_new_doc();
                 self.song = Song::demo();
                 self.path = None;
                 self.reset_after_load();
                 self.show_home = false;
             }
+            // The empty template is an empty document: it asks for its first track.
+            Pending::Template(0) => self.new_song(),
             Pending::Template(k) => {
-                self.stop();
+                self.begin_new_doc();
                 self.song = home::template(k);
                 self.path = None;
                 self.reset_after_load();
                 self.show_home = false;
             }
             Pending::Close => self.close_song(),
+            Pending::CloseAll => self.close_all(),
             Pending::NewChart => self.new_chart(),
             Pending::Quit => {
                 self.dirty = false;
                 self.pending = None;
+                self.quitting = true;
             }
         }
     }

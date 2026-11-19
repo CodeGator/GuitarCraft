@@ -3,17 +3,16 @@
 use super::App;
 use super::panels::BLUE;
 use crate::audio;
-use crate::fileio;
 use crate::model::*;
 use egui::{Align2, Color32, FontId, Pos2, Rect, RichText, Sense, Ui, Vec2};
-use std::path::PathBuf;
+
 
 impl App {
     pub(super) fn dialog_open(&self) -> bool {
         self.goto_open
             || self.transpose_open
             || self.cmd_open
-            || self.addtrack_open
+            || self.at.open
             || self.chord_open
             || self.popup.is_some()
             || self.voices_open
@@ -81,6 +80,23 @@ impl App {
         });
         self.track = ti + 1;
         self.clamp_cursor();
+    }
+
+    /// Moves the note under the cursor up (+1) or down (-1) to the next line or
+    /// space of the staff: the next note of the bar's key, on the same string.
+    pub(super) fn move_on_staff(&mut self, dir: i32) {
+        let beat = self.cur_beat();
+        let Some(n) = beat.note_on(self.string as u8).or_else(|| beat.notes.first()) else {
+            return;
+        };
+        let pitch = self.tr().pitch(n) as i32;
+        let tonic = (self.song.master[self.bar].key as i32 * 7).rem_euclid(12);
+        let in_key = |q: i32| [0, 2, 4, 5, 7, 9, 11].contains(&(q - tonic).rem_euclid(12));
+        let mut d = dir;
+        while !in_key(pitch + d) && d.abs() < 3 {
+            d += dir;
+        }
+        self.note_edit(move |x| x.fret = (x.fret as i32 + d).clamp(0, 30) as u8);
     }
 
     pub(super) fn goto_section(&mut self, dir: i32) {
@@ -223,59 +239,6 @@ impl App {
         self.status = "Short bars were filled with rests.".into();
     }
 
-    fn templates_dir() -> Option<PathBuf> {
-        Some(super::home::app_dir()?.join("Templates"))
-    }
-
-    pub(super) fn user_templates() -> Vec<PathBuf> {
-        super::home::files_with_ext(Self::templates_dir(), fileio::GP_EXT)
-    }
-
-    pub(super) fn save_as_template(&mut self) {
-        let Some(d) = Self::templates_dir() else {
-            return;
-        };
-        let _ = std::fs::create_dir_all(&d);
-        let mut t = self.song.clone();
-        for tr in &mut t.tracks {
-            for b in &mut tr.bars {
-                *b = Bar::empty();
-            }
-        }
-        let name = if self.song.title.trim().is_empty() {
-            "My template".to_string()
-        } else {
-            self.song.title.clone()
-        };
-        let p = d.join(format!(
-            "{}.{}",
-            super::widgets::sanitize(&name),
-            fileio::GP_EXT
-        ));
-        match fileio::save_song(&t, &p) {
-            Ok(()) => {
-                self.status = format!(
-                    "Saved the template \u{201C}{name}\u{201D}. Find it in File \u{25B8} New from Template."
-                )
-            }
-            Err(e) => self.status = format!("Couldn't save the template: {e}"),
-        }
-    }
-
-    pub(super) fn open_template_file(&mut self, p: PathBuf) {
-        match fileio::load_song(&p) {
-            Ok(mut s) => {
-                self.stop();
-                s.title = "Untitled".into();
-                self.song = s;
-                self.path = None;
-                self.reset_after_load();
-                self.show_home = false;
-            }
-            Err(e) => self.status = format!("Couldn't open the template: {e}"),
-        }
-    }
-
     pub(super) fn open_containing_folder(&mut self) {
         let Some(p) = self.path.clone() else {
             self.status = "Save the song first.".into();
@@ -294,14 +257,6 @@ impl App {
         if let Err(e) = r {
             self.status = format!("Couldn't open the folder: {e}");
         }
-    }
-
-    pub(super) fn close_song(&mut self) {
-        self.stop();
-        self.song = Song::new_blank();
-        self.path = None;
-        self.reset_after_load();
-        self.show_home = true;
     }
 
     /// Plays the open strings from lowest to highest.
@@ -793,7 +748,7 @@ pub fn refit_track(t: &mut Track, old_tuning: &[u8], old_capo: u8) {
 
 pub fn shortcut_rows(ui: &mut Ui) {
     egui::Grid::new("keys").striped(true).show(ui, |ui| {
-        for (k, d) in super::keys::SHORTCUTS {
+        for (k, d) in super::keys::SHORTCUTS.iter().copied() {
             ui.label(RichText::new(k).strong());
             ui.label(d);
             ui.end_row();

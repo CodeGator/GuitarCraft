@@ -73,23 +73,27 @@ impl App {
                     ui.close();
                 }
             }
+            // Your own templates (File > Save As Template).
+            ui.separator();
+            ui.label(RichText::new("My Templates").weak().size(11.5));
             let mine = Self::user_templates();
-            if !mine.is_empty() {
-                ui.separator();
-                for p in mine {
-                    let name = p
-                        .file_stem()
-                        .map(|s| s.to_string_lossy().to_string())
-                        .unwrap_or_default();
-                    if ui.button(name).clicked() {
-                        if self.dirty {
-                            self.status = "Save or undo your changes first.".into();
-                        } else {
-                            self.open_template_file(p);
-                        }
-                        ui.close();
-                    }
+            if mine.is_empty() {
+                ui.label(RichText::new("None yet: use File > Save As Template").weak().size(11.5));
+            }
+            for p in mine {
+                let name = p
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                if ui.button(name).clicked() {
+                    self.open_template_file(p);
+                    ui.close();
                 }
+            }
+            ui.separator();
+            if ui.button("Open My Templates Folder").clicked() {
+                self.open_templates_folder();
+                ui.close();
             }
         });
         if item(ui, "Open...", "Ctrl+O").clicked() {
@@ -110,11 +114,7 @@ impl App {
                     .on_hover_text(p.display().to_string())
                     .clicked()
                 {
-                    if self.dirty {
-                        self.status = "Save or undo your changes first.".into();
-                    } else {
-                        self.open_path(p);
-                    }
+                    self.open_path(p);
                     ui.close();
                 }
             }
@@ -130,6 +130,10 @@ impl App {
             ui.close();
         }
         ui.separator();
+        if item_if(ui, !self.tabs.is_empty() && song, "Close All", "Ctrl+Shift+W") {
+            self.request(Pending::CloseAll);
+            ui.close();
+        }
         if item_if(ui, song, "Close", "Ctrl+W") {
             self.request(Pending::Close);
             ui.close();
@@ -312,7 +316,7 @@ impl App {
 
     fn track_menu(&mut self, ui: &mut Ui) {
         if item(ui, "Add...", "Ctrl+Shift+Ins").clicked() {
-            self.addtrack_open = true;
+            self.open_add_track(false);
             ui.close();
         }
         if item_if(ui, self.song.tracks.len() > 1, "Delete", "Ctrl+Shift+Del") {
@@ -324,7 +328,7 @@ impl App {
             ui.close();
         }
         ui.separator();
-        if item_if(ui, self.track > 0, "Move Up", "Ctrl+Alt+Up") {
+        if item_if(ui, self.track > 0, "Move Up", "") {
             self.move_track(-1);
             ui.close();
         }
@@ -332,7 +336,7 @@ impl App {
             ui,
             self.track + 1 < self.song.tracks.len(),
             "Move Down",
-            "Ctrl+Alt+Down",
+            "",
         )
         {
             self.move_track(1);
@@ -377,6 +381,8 @@ impl App {
     }
 
     pub(super) fn bar_menu(&mut self, ui: &mut Ui) {
+        #[cfg(test)]
+        super::flows::MENU_ENABLED.with(|c| c.set(ui.is_enabled()));
         let mb = self.song.master[self.bar].clone();
         if item(ui, "Insert Bar", "Ctrl+Ins").clicked() {
             self.insert_bar(self.bar);
@@ -945,19 +951,25 @@ impl App {
     }
 
     fn window_menu(&mut self, ui: &mut Ui) {
-        let title = if self.song.title.is_empty() {
-            "Untitled".to_string()
-        } else {
-            self.song.title.clone()
-        };
-        let name = if self.song.artist.is_empty() {
-            title
-        } else {
-            format!("{} - {}", self.song.artist, title)
-        };
-        if check(ui, !self.show_home, &format!("1 {name}"), "").clicked() {
-            self.show_home = false;
-            ui.close();
+        // The open files, one to a tab.
+        for (i, (name, _)) in self.tab_labels().into_iter().enumerate() {
+            let on = !self.show_home && i == self.active_tab;
+            if check(ui, on, &format!("{} {name}", i + 1), "").clicked() {
+                self.switch_to(i);
+                ui.close();
+            }
+        }
+        if !self.tabs.is_empty() {
+            ui.separator();
+            if item(ui, "Next Tab", "Ctrl+Tab").clicked() {
+                self.cycle_tab(1);
+                ui.close();
+            }
+            if item(ui, "Previous Tab", "Ctrl+Shift+Tab").clicked() {
+                self.cycle_tab(-1);
+                ui.close();
+            }
+            ui.separator();
         }
         if check(ui, self.show_home, "Start Screen", "").clicked() {
             self.show_home = true;

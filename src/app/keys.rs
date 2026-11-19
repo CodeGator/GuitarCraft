@@ -5,15 +5,90 @@ use super::{App, InspectorTab, Pending};
 use crate::model::*;
 use egui::{Key, Modifiers};
 
+/// Whether a key is physically held down right now. Windows turns Ctrl+Insert
+/// into a "copy", Ctrl+Shift+Insert into a "copy" with Shift held, and
+/// Ctrl+Shift+Delete into a "cut", and the window library then drops the key
+/// itself, so these are the only way to tell them from Ctrl+C and Ctrl+X.
+fn native_key_down(key: egui::Key) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_DELETE, VK_INSERT};
+        let vk = match key {
+            egui::Key::Insert => VK_INSERT,
+            egui::Key::Delete => VK_DELETE,
+            _ => return false,
+        };
+        // SAFETY: GetAsyncKeyState only reads the keyboard state.
+        (unsafe { GetAsyncKeyState(vk as i32) } as u16 & 0x8000) != 0
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = key;
+        false
+    }
+}
+
+/// Whether Windows (through the window library) swallows this key press into a
+/// copy, cut or paste event and never passes the key itself on: Ctrl+Insert
+/// (copy), Shift+Insert (paste), Shift+Delete (cut), and their combinations.
+/// These are Guitar Pro's Insert Bar, Edit Section, Add Track, Delete the
+/// Beats and Delete Track shortcuts.
+pub(super) fn swallowed_by_clipboard(key: Key, ctrl: bool, shift: bool) -> bool {
+    match key {
+        Key::Insert => ctrl || shift,
+        Key::Delete => shift,
+        _ => false,
+    }
+}
+
 impl App {
-    pub(super) fn handle_keys(&mut self, ctx: &egui::Context) {
-        if self.pending.is_some() || self.dialog_open() {
-            return;
+    /// Keeps the Insert and Delete state up to date while keys are ignored.
+    fn swallowed_keys_idle(&mut self) {
+        self.ins_down = native_key_down(Key::Insert);
+        self.del_down = native_key_down(Key::Delete);
+    }
+
+    /// Insert or Delete pressed this frame whose key event Windows swallowed:
+    /// run its shortcut here, and say that this frame's copy, cut and paste
+    /// events were really these keys.
+    fn swallowed_keys(&mut self, ctx: &egui::Context, typing: bool) -> bool {
+        let (ctrl, shift, mods) = ctx.input(|i| (i.modifiers.ctrl || i.modifiers.command, i.modifiers.shift, i.modifiers));
+        let (ins, del) = (native_key_down(Key::Insert), native_key_down(Key::Delete));
+        let mut pressed = vec![];
+        if ins && !self.ins_down && swallowed_by_clipboard(Key::Insert, ctrl, shift) {
+            pressed.push(Key::Insert);
         }
+        if del && !self.del_down && swallowed_by_clipboard(Key::Delete, ctrl, shift) {
+            pressed.push(Key::Delete);
+        }
+        self.ins_down = ins;
+        self.del_down = del;
+        if pressed.is_empty() || typing {
+            return false;
+        }
+        let now = ctx.input(|i| i.time);
+        for k in pressed {
+            self.key(k, mods, now);
+        }
+        true
+    }
+
+    pub(super) fn handle_keys(&mut self, ctx: &egui::Context) {
         let typing = ctx.egui_wants_keyboard_input();
+        // Always look at Insert and Delete, so a press during a question isn't run later.
+        let swallowed = if self.pending.is_some() || self.dialog_open() {
+            self.swallowed_keys_idle();
+            return;
+        } else {
+            self.swallowed_keys(ctx, typing)
+        };
         let events = ctx.input(|i| i.events.clone());
         let now = ctx.input(|i| i.time);
         for ev in events {
+            // Copy, cut and paste events that were really Insert or Delete shortcuts.
+            if swallowed && matches!(ev, egui::Event::Copy | egui::Event::Cut | egui::Event::Paste(_)) {
+                continue;
+            }
             match ev {
                 egui::Event::Copy if !typing => {
                     if ctx.input(|i| i.modifiers.shift) {
@@ -55,7 +130,7 @@ impl App {
                             Key::O | Key::B => self.request(Pending::Open),
                             Key::N if modifiers.shift => self.request(Pending::NewChart),
                             Key::N => self.request(Pending::New),
-                            Key::W => self.request(Pending::Close),
+                            Key::W if !modifiers.shift => self.request(Pending::Close),
                             Key::E => {
                                 self.cmd_open = !self.cmd_open;
                                 self.cmd_text.clear();
@@ -81,10 +156,32 @@ impl App {
             "!" => self.toggle_note_flag("Staccato", |n| &mut n.staccato),
             "[" => self.bar_edit(|m| m.repeat_open = !m.repeat_open),
             "]" => self.bar_edit(|m| m.repeat_close = if m.repeat_close > 0 { 0 } else { 2 }),
-            "<" => self.beat_edit(|b| b.fade_in = !b.fade_in),
+            "<" => self.beat_edit(|b| {
+                let was = b.fade_in;
+                b.fade_in = !was;
+                b.fx.fade_out = false;
+                b.fx.swell = false;
+            }),
+            ">" => self.beat_edit(|b| {
+                let was = b.fx.fade_out;
+                b.fx.fade_out = !was;
+                b.fade_in = false;
+                b.fx.swell = false;
+            }),
+            "@" => self.beat_edit(|b| b.fx.timer = !b.fx.timer),
+            // The star: a dot on the note or rest (like the period key).
+            "*" => self.beat_edit(|b| {
+                b.dotted = !b.dotted;
+                b.double_dot = false;
+            }),
+            "%" => self.edit(|s, t, b, _, _| {
+                let bar = &mut s.tracks[t].bars[b];
+                bar.simile = if bar.simile == 1 { 0 } else { 1 };
+            }),
             "/" => self.beat_edit(|b| b.tuplet = if b.tuplet == 3 { 0 } else { 3 }),
             "\"" => self.beat_edit(|b| b.tremolo = !b.tremolo),
-            "(" | ")" => self.beat_edit(|b| b.technique = if b.technique == 1 { 0 } else { 1 }),
+            "(" => self.toggle_note_flag("Left-hand tapping", |n| &mut n.fx.lh_tap),
+            ")" => self.beat_edit(|b| b.technique = if b.technique == 1 { 0 } else { 1 }),
             "$" => self.beat_edit(|b| b.technique = if b.technique == 2 { 0 } else { 2 }),
             _ => {}
         }
@@ -141,19 +238,25 @@ impl App {
         }
         if cmd && m.alt {
             match key {
-                Key::ArrowUp => self.move_track(-1),
-                Key::ArrowDown => self.move_track(1),
+                Key::ArrowUp => self.move_on_staff(1),
+                Key::ArrowDown => self.move_on_staff(-1),
+                Key::V => self.beat_edit(|b| b.fx.whammy = !b.fx.whammy),
+                Key::W => self.beat_edit(|b| b.fx.bridge_vibrato = if b.fx.bridge_vibrato == 2 { 0 } else { 2 }),
+                Key::O => self.beat_edit(|b| b.fx.wah = if b.fx.wah == 1 { 0 } else { 1 }),
+                Key::C => self.beat_edit(|b| b.fx.wah = if b.fx.wah == 2 { 0 } else { 2 }),
                 Key::ArrowLeft => self.goto_section(-1),
                 Key::ArrowRight => self.goto_section(1),
                 Key::Y => self.toggle_note_flag("Artificial harmonic", |n| &mut n.pinch_harmonic),
                 Key::Num8 => self.note_edit(|x| x.spell = (x.spell + 1) % 3),
-                Key::G => self.note_edit(|x| {
-                    x.grace = if x.grace.is_some() {
-                        None
-                    } else {
-                        Some(x.fret.saturating_sub(2))
-                    }
-                }),
+                Key::G => {
+                    // A grace note on the beat (G alone puts it before the beat).
+                    self.note_edit(|x| {
+                        if x.grace.is_none() {
+                            x.grace = Some(x.fret.saturating_sub(2));
+                        }
+                    });
+                    self.beat_edit(|b| b.fx.grace_on_beat = true);
+                }
                 _ => {}
             }
             self.clamp_cursor();
@@ -161,6 +264,14 @@ impl App {
         }
         if m.alt && m.shift {
             match key {
+                // Free time (the bar isn't played to the tempo) and a volume swell.
+                Key::L => self.bar_edit(|mb| mb.free_time = !mb.free_time),
+                Key::Comma | Key::Period => self.beat_edit(|b| {
+                    let was = b.fx.swell;
+                    b.fx.swell = !was;
+                    b.fx.fade_out = false;
+                    b.fade_in = false;
+                }),
                 Key::ArrowUp => self.transpose(1),
                 Key::ArrowDown => self.transpose(-1),
                 Key::PageUp => self.shift_octave(1),
@@ -186,9 +297,15 @@ impl App {
                     };
                     self.voices_open = true;
                 }
+                Key::D if m.shift => self.open_popup(Popup::ArpeggioDown),
+                Key::U if m.shift => self.open_popup(Popup::ArpeggioUp),
+                Key::Num5 if m.shift => self.edit(|s, t, b, _, _| {
+                    let bar = &mut s.tracks[t].bars[b];
+                    bar.simile = if bar.simile == 2 { 0 } else { 2 };
+                }),
                 Key::C if m.shift => self.all_track_copy(),
                 Key::X if m.shift => self.all_track_cut(),
-                Key::W if m.shift => self.request(Pending::Close),
+                Key::W if m.shift => self.request(Pending::CloseAll),
                 Key::ArrowRight if m.shift => {
                     self.update_anchor(true);
                     self.bar = (self.bar + 1).min(self.song.bar_count() - 1);
@@ -322,7 +439,17 @@ impl App {
                 Key::Insert => self.edit_section(),
                 Key::D => self.beat_edit(|b| b.pick = if b.pick == 1 { 0 } else { 1 }),
                 Key::U => self.beat_edit(|b| b.pick = if b.pick == 2 { 0 } else { 2 }),
-                Key::H => self.toggle_note_flag("Hammer-on / pull-off", |n| &mut n.hammer),
+                Key::H => self.toggle_note_flag("Legato", |n| &mut n.fx.legato),
+                Key::I => self.beat_edit(|b| {
+                    // A barre across the beat's lowest fretted fret, or none.
+                    b.fx.barre = if b.fx.barre > 0 {
+                        0
+                    } else {
+                        b.notes.iter().map(|n| n.fret).filter(|f| *f > 0).min().unwrap_or(1).min(12)
+                    };
+                }),
+                Key::R => self.beat_edit(|b| b.fx.rasgueado = !b.fx.rasgueado),
+                Key::S => self.open_chord_scales(super::chordscales::Mode::Scales),
                 Key::Plus | Key::Equals => self.set_duration(self.cur_beat().dur.shorter()),
                 Key::Minus => self.set_duration(self.cur_beat().dur.longer()),
                 Key::Period => self.beat_edit(|b| {
@@ -382,6 +509,7 @@ impl App {
             Key::S => self.toggle_note_flag("Slide", |n| &mut n.slide),
             Key::B => self.open_popup(Popup::Bend),
             Key::V => self.toggle_note_flag("Vibrato", |n| &mut n.vibrato),
+            Key::W => self.beat_edit(|b| b.fx.bridge_vibrato = if b.fx.bridge_vibrato == 1 { 0 } else { 1 }),
             Key::P => self.toggle_note_flag("Palm mute", |n| &mut n.palm_mute),
             Key::I => self.toggle_note_flag("Let ring", |n| &mut n.let_ring),
             Key::L => self.toggle_note_flag("Tie", |n| &mut n.tie),
@@ -422,7 +550,7 @@ impl App {
     }
 }
 
-pub const SHORTCUTS: [(&str, &str); 47] = [
+pub const SHORTCUTS: &[(&str, &str)] = &[
     ("Arrow keys", "Move between beats and strings"),
     (
         "Tab / Shift + Tab",
@@ -452,7 +580,7 @@ pub const SHORTCUTS: [(&str, &str); 47] = [
         "Tab: type a fret. Notation: 1\u{2013}9 picks the string, 0 the best one",
     ),
     ("+ / \u{2212}", "Shorter / longer note"),
-    (". / Ctrl + .", "Dotted / double-dotted note"),
+    (". or * / Ctrl + .", "Dotted / double-dotted note or rest"),
     ("/", "Triplet"),
     ("R", "Rest"),
     ("L / Shift + L", "Tie note / tie beat"),
@@ -469,13 +597,27 @@ pub const SHORTCUTS: [(&str, &str); 47] = [
     ),
     ("X", "Dead note"),
     ("Y / Ctrl + Alt + Y", "Natural / artificial harmonic"),
+    ("Shift + H", "Legato"),
+    ("Shift + I", "Barre"),
+    ("Shift + R", "Rasgueado"),
+    ("Ctrl + Shift + D / U", "Arpeggio down / up"),
+    ("Ctrl + Alt + G", "Grace note on the beat"),
+    ("W / Ctrl + Alt + W", "Vibrato with the tremolo bar: slight / wide"),
+    ("Ctrl + Alt + V", "Tremolo bar"),
+    ("Ctrl + Alt + O / C", "Wah open / closed"),
+    ("> / Alt + Shift + , .", "Fade out / volume swell"),
+    ("@", "Timer"),
+    ("%  /  Ctrl + %", "Repeat the previous bar / two bars"),
+    ("Alt + Shift + L", "Free time"),
+    ("Shift + S", "Scale diagram (Chords & Scales)"),
+    ("Ctrl + Alt + \u{2191} \u{2193}", "Move the note up / down on the staff"),
     (
         "Ctrl + 7 / 8 / 9",
         "Spell with flats / automatically / with sharps",
     ),
     ("Shift + D / U", "Pickstroke down / up"),
     ("Ctrl + D / U", "Brush down / up"),
-    ("\" / ( ) / $", "Tremolo picking / tapping / slap"),
+    ("\" / ( ) / $", "Tremolo picking / left-hand tapping / tapping / slap"),
     ("<", "Fade in"),
     ("[ / ]", "Repeat open / close"),
     ("D", "Directions (Segno, Coda, D.C., D.S.)"),
@@ -507,6 +649,27 @@ pub const SHORTCUTS: [(&str, &str); 47] = [
     ),
     (
         "Ctrl + Z / Y, N / O / S / W",
-        "Undo / redo, new / open / save / close",
+        "Undo / redo, new / open / save / close (Ctrl + Shift + W: close all)",
     ),
 ];
+
+#[cfg(test)]
+mod swallow_tests {
+    use super::*;
+
+    #[test]
+    fn windows_hides_these_insert_and_delete_shortcuts_inside_clipboard_events() {
+        // Ctrl+Insert (copy), Ctrl+Shift+Insert (copy), Shift+Insert (paste).
+        assert!(swallowed_by_clipboard(Key::Insert, true, false));
+        assert!(swallowed_by_clipboard(Key::Insert, true, true));
+        assert!(swallowed_by_clipboard(Key::Insert, false, true));
+        // Shift+Delete and Ctrl+Shift+Delete (cut).
+        assert!(swallowed_by_clipboard(Key::Delete, false, true));
+        assert!(swallowed_by_clipboard(Key::Delete, true, true));
+        // Plain Insert and Delete, and Ctrl+Delete, arrive as keys.
+        assert!(!swallowed_by_clipboard(Key::Insert, false, false));
+        assert!(!swallowed_by_clipboard(Key::Delete, false, false));
+        assert!(!swallowed_by_clipboard(Key::Delete, true, false));
+        assert!(!swallowed_by_clipboard(Key::C, true, false));
+    }
+}
