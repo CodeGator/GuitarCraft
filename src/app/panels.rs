@@ -358,42 +358,6 @@ impl App {
         }
     }
 
-    fn title_strip(&mut self, ui: &mut Ui) {
-        let r = ui.max_rect();
-        let mut title = self.song.title.clone();
-        if !self.song.artist.is_empty() {
-            title = format!("{} - {}", self.song.artist, title);
-        }
-        if self.dirty {
-            title.push_str(" *");
-        }
-        ui.painter().text(
-            r.center(),
-            Align2::CENTER_CENTER,
-            title,
-            FontId::new(12.5, egui::FontFamily::Name("bold".into())),
-            Color32::WHITE,
-        );
-        let pr = Rect::from_min_max(Pos2::new(r.right() - 26.0, r.top()), r.right_bottom());
-        let resp = ui
-            .interact(pr, ui.id().with("strip_plus"), Sense::click())
-            .on_hover_text("New song");
-        if resp.hovered() {
-            ui.painter()
-                .rect_filled(pr, 0.0, Color32::from_white_alpha(30));
-        }
-        ui.painter().text(
-            pr.center(),
-            Align2::CENTER_CENTER,
-            "+",
-            FontId::proportional(18.0),
-            Color32::WHITE,
-        );
-        if resp.clicked() {
-            self.request(Pending::New);
-        }
-    }
-
     fn dialogs(&mut self, ctx: &egui::Context) {
         if let Some(p) = self.pending {
             let mut choice = None;
@@ -402,11 +366,18 @@ impl App {
                 .resizable(false)
                 .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
                 .show(ctx, |ui| {
-                    ui.label(if self.chart.is_some() {
-                        "This chord chart has changes that haven't been saved."
-                    } else {
-                        "This song has changes that haven't been saved."
-                    });
+                    ui.label(format!(
+                        "\u{201C}{}\u{201D} has changes that haven't been saved.",
+                        self.doc_label()
+                    ));
+                    // Quitting asks about each file with changes, one after another.
+                    let n = self.dirty_count();
+                    if matches!(p, Pending::Quit | Pending::CloseAll) && n > 1 {
+                        ui.label(
+                            egui::RichText::new(format!("{n} files have unsaved changes: you will be asked about each one."))
+                                .color(Color32::from_gray(190)),
+                        );
+                    }
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
                         if ui.button("Save first").clicked() {
@@ -425,18 +396,34 @@ impl App {
                     self.pending = None;
                     self.save(false);
                     if !self.dirty {
-                        self.run_pending(p);
-                        if p == Pending::Quit {
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                        // Quitting goes on to the next file with changes before closing.
+                        if matches!(p, Pending::Quit | Pending::CloseAll)
+                            && let Some(i) = self.other_dirty_tab()
+                        {
+                            self.switch_to(i);
+                            self.pending = Some(p);
+                        } else {
+                            self.run_pending(p);
+                            if p == Pending::Quit {
+                                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                            }
                         }
                     }
                 }
                 Some(1) => {
                     self.pending = None;
                     self.dirty = false;
-                    self.run_pending(p);
-                    if p == Pending::Quit {
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    // Quitting asks about every file with changes, one after another.
+                    if matches!(p, Pending::Quit | Pending::CloseAll)
+                        && let Some(i) = self.other_dirty_tab()
+                    {
+                        self.switch_to(i);
+                        self.pending = Some(p);
+                    } else {
+                        self.run_pending(p);
+                        if p == Pending::Quit {
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                        }
                     }
                 }
                 Some(_) => self.pending = None,
@@ -505,6 +492,13 @@ impl App {
 
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
+        self.frame_ui(ui);
+    }
+}
+
+impl App {
+    /// One frame of the whole window (tests drive it directly).
+    pub(super) fn frame_ui(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
         self.handle_screenshot(&ctx);
         // Only text fields keep the keyboard: a clicked button (like Loop) mustn't
@@ -515,9 +509,29 @@ impl eframe::App for App {
             ctx.memory_mut(|m| m.surrender_focus(id));
         }
         self.fix_cursor_mode();
-        if ctx.input(|i| i.viewport().close_requested()) && self.dirty && self.screenshot.is_none()
+        self.ensure_tab();
+        // Ctrl+Tab and Ctrl+Shift+Tab move between the open tabs.
+        let cycle = ctx.input_mut(|i| {
+            if i.consume_key(egui::Modifiers::CTRL | egui::Modifiers::SHIFT, egui::Key::Tab) {
+                -1
+            } else if i.consume_key(egui::Modifiers::CTRL, egui::Key::Tab) {
+                1
+            } else {
+                0
+            }
+        });
+        if cycle != 0 {
+            self.cycle_tab(cycle);
+        }
+        if ctx.input(|i| i.viewport().close_requested()) && !self.quitting && self.any_dirty() && self.screenshot.is_none()
         {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            // The question is asked about a file that has changes.
+            if !self.dirty
+                && let Some(i) = self.other_dirty_tab()
+            {
+                self.switch_to(i);
+            }
             self.pending = Some(Pending::Quit);
         }
         if !self.show_home && self.chart.is_some() {
@@ -551,6 +565,10 @@ impl eframe::App for App {
                 }
             });
         if self.show_home {
+            // The open files stay in their tabs while the start screen shows.
+            if !self.tabs.is_empty() {
+                self.tab_panel(ui);
+            }
             egui::CentralPanel::default()
                 .frame(egui::Frame::NONE)
                 .show(ui, |ui| self.home_ui(ui));
@@ -575,10 +593,7 @@ impl eframe::App for App {
                     .inner_margin(egui::Margin::symmetric(8, 5)),
             )
             .show(ui, |ui| self.toolbar(ui));
-        egui::Panel::top("strip")
-            .exact_size(22.0)
-            .frame(egui::Frame::new().fill(STRIP_BG))
-            .show(ui, |ui| self.title_strip(ui));
+        self.tab_panel(ui);
         if self.show_keyboard {
             egui::Panel::bottom("keyboard")
                 .exact_size(112.0)

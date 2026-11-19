@@ -5,6 +5,8 @@ use crate::model::*;
 /// Songs are saved as Guitar Pro files: .gp (current) or .gp5 (older).
 pub const GP_EXT: &str = "gp";
 pub const GP5_EXT: &str = "gp5";
+/// Templates: a Guitar Pro file with a song's tracks and empty bars, as Guitar Pro 8 names them.
+pub const GPT_EXT: &str = "gpt";
 
 /// The lower-case extension of a path, or "" if it has none.
 fn ext_of(path: &std::path::Path) -> String {
@@ -20,7 +22,7 @@ fn ext_of(path: &std::path::Path) -> String {
 pub fn save_song(song: &Song, path: &std::path::Path) -> Result<(), String> {
     let data = match ext_of(path).as_str() {
         GP5_EXT => crate::gp5write::export_gp5(song),
-        GP_EXT | "" => crate::gpifwrite::export_gp(song)?,
+        GP_EXT | GPT_EXT | "" => crate::gpifwrite::export_gp(song)?,
         other => {
             return Err(format!(
                 "Can't save as .{other}. Songs are saved as .{GP_EXT} or .{GP5_EXT}; \
@@ -128,7 +130,7 @@ pub fn load_song(path: &std::path::Path) -> Result<Song, String> {
         .unwrap_or_else(|| "Untitled".into());
     let mut song = match ext.as_str() {
         "gp3" | "gp4" | "gp5" => crate::gpimport::import(&data)?,
-        "gp" => crate::gpif::import_gp(&data)?,
+        "gp" | "gpt" => crate::gpif::import_gp(&data)?,
         "gpx" => crate::gpif::import_gpx(&data)?,
         "mid" | "midi" => crate::textmidi::import_midi(&data, &stem)?,
         "musicxml" | "xml" | "mxl" => crate::musicxml::import_musicxml(&data, &stem)?,

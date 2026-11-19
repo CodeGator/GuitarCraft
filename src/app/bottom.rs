@@ -532,7 +532,7 @@ impl App {
             self.track = ti;
             self.clamp_cursor();
             match code {
-                0 => self.addtrack_open = true,
+                0 => self.open_add_track(false),
                 1 => self.duplicate_track(),
                 2 => self.move_track(-1),
                 3 => self.move_track(1),

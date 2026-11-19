@@ -230,6 +230,7 @@ impl App {
         for s in &mut doc.sections {
             s.color = doc.look.kind_color(s.kind);
         }
+        self.begin_new_doc();
         self.chart = Some(ChartState::new(doc));
         self.path = None;
         self.dirty = false;
@@ -240,7 +241,7 @@ impl App {
     pub(super) fn open_chart_path(&mut self, p: PathBuf) {
         match ChordChart::load(&p) {
             Ok(doc) => {
-                self.stop();
+                self.begin_new_doc();
                 self.chart = Some(ChartState::new(doc));
                 self.path = Some(p.clone());
                 self.dirty = false;
@@ -561,12 +562,7 @@ impl App {
         egui::Panel::top("chart-toolbar")
             .frame(egui::Frame::new().fill(Color32::from_rgb(40, 43, 50)).inner_margin(egui::Margin::symmetric(8, 5)))
             .show(ui, |ui| self.chart_toolbar(ui));
-        egui::Panel::top("chart-strip").exact_size(22.0).frame(egui::Frame::new().fill(Color32::from_rgb(110, 118, 140))).show(ui, |ui| {
-            let title = self.chart.as_ref().map(|s| s.doc.title.clone()).unwrap_or_default();
-            ui.centered_and_justified(|ui| {
-                ui.label(RichText::new(format!("GuitarCraft - {title}  \u{00B7}  chord chart")).family(FontFamily::Name("bold".into())).size(12.5).color(Color32::WHITE));
-            });
-        });
+        self.tab_panel(ui);
         egui::Panel::left("chart-sections")
             .exact_size(250.0)
             .frame(egui::Frame::new().fill(PANEL_BG).inner_margin(egui::Margin::same(8)))
