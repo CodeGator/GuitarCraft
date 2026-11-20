@@ -255,22 +255,6 @@ const GUIDE: [(&str, &str); 13] = [
 ];
 
 impl App {
-    pub(super) fn open_chord_tool(&mut self) {
-        let pitches: Vec<u8> = self
-            .cur_beat()
-            .notes
-            .iter()
-            .map(|n| self.tr().pitch(n))
-            .collect();
-        self.chord_text = self
-            .cur_beat()
-            .chord
-            .clone()
-            .or_else(|| detect_chord(&pitches))
-            .unwrap_or_default();
-        self.chord_open = true;
-    }
-
     pub(super) fn export_wav(&mut self) {
         let Some(p) = self.export_path("WAV audio", "wav") else {
             return;
@@ -347,6 +331,7 @@ impl App {
         self.directions_window(ctx);
         self.add_track_window(ctx);
         self.tuning_window(ctx);
+        self.tuner_window(ctx);
         self.chord_window(ctx);
         self.chord_library_window(ctx);
         self.export_window(ctx);
@@ -393,91 +378,6 @@ impl App {
             self.bar_edit(move |m| *m = mb);
         }
         self.dir_open = open;
-    }
-
-    fn chord_window(&mut self, ctx: &egui::Context) {
-        if !self.chord_open {
-            return;
-        }
-        let mut open = true;
-        let pitches: Vec<u8> = self
-            .cur_beat()
-            .notes
-            .iter()
-            .map(|n| self.tr().pitch(n))
-            .collect();
-        let detected = detect_chord(&pitches);
-        let mut apply: Option<(Option<String>, bool)> = None;
-        let mut diagram = self.cur_beat().chord_diagram;
-        egui::Window::new("Chord")
-            .open(&mut open)
-            .resizable(false)
-            .collapsible(false)
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label("Name:");
-                    ui.add(egui::TextEdit::singleline(&mut self.chord_text).desired_width(120.0));
-                });
-                ui.label(RichText::new("Build it:").weak());
-                ui.horizontal_wrapped(|ui| {
-                    for (k, n) in NOTE_NAMES.iter().enumerate() {
-                        if ui.selectable_label(self.chord_root == k, *n).clicked() {
-                            self.chord_root = k;
-                            self.chord_text =
-                                format!("{}{}", NOTE_NAMES[k], CHORD_TYPES[self.chord_type].0);
-                        }
-                    }
-                });
-                ui.horizontal_wrapped(|ui| {
-                    for (k, (suffix, _)) in CHORD_TYPES.iter().enumerate() {
-                        let lab = if suffix.is_empty() { "maj" } else { suffix };
-                        if ui.selectable_label(self.chord_type == k, lab).clicked() {
-                            self.chord_type = k;
-                            self.chord_text = format!("{}{}", NOTE_NAMES[self.chord_root], suffix);
-                        }
-                    }
-                });
-                ui.horizontal(|ui| match &detected {
-                    Some(d) => {
-                        ui.label(format!("The notes on this beat make {d}."));
-                        if ui.button("Use it").clicked() {
-                            self.chord_text = d.clone();
-                        }
-                    }
-                    None => {
-                        ui.label(
-                            RichText::new("Put two or more notes on the beat to detect a chord.")
-                                .weak(),
-                        );
-                    }
-                });
-                ui.checkbox(
-                    &mut diagram,
-                    "Show a diagram of this beat's notes above the staff",
-                );
-                ui.horizontal(|ui| {
-                    if ui.button(RichText::new("OK").strong()).clicked() {
-                        let name = if self.chord_text.trim().is_empty() {
-                            None
-                        } else {
-                            Some(self.chord_text.trim().to_string())
-                        };
-                        apply = Some((name, diagram));
-                    }
-                    if ui.button("Remove chord").clicked() {
-                        apply = Some((None, false));
-                    }
-                });
-            });
-        if let Some((name, dia)) = apply {
-            self.edit(move |s, t, b, j, _| {
-                let beat = &mut s.tracks[t].bars[b].beats[j];
-                beat.chord = name;
-                beat.chord_diagram = dia;
-            });
-            open = false;
-        }
-        self.chord_open = open;
     }
 
     fn lyrics_window(&mut self, ctx: &egui::Context) {

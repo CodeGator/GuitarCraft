@@ -540,3 +540,48 @@ fn preferences_record_a_new_shortcut() {
     assert!(r.app.prefs_dlg.as_ref().is_some_and(|d| d.recording.is_none()), "Esc cancels, the window stays");
     assert_eq!(sc(Act::Bend), "Ctrl+Alt+B");
 }
+
+#[test]
+fn the_chord_window_names_a_chord_and_shows_its_diagram_on_an_empty_beat() {
+    let mut r = song_with_a_note();
+    r.key(Key::ArrowRight, Modifiers::NONE);
+    r.frames(1);
+    assert!(r.app.cur_beat().is_rest());
+    r.app.open_chord_tool();
+    r.frames(2);
+    assert!(r.app.chord_open);
+    // Starts on C, with fingerings to choose from.
+    assert_eq!(r.app.chord_ed.name, "C");
+    assert!(r.app.chord_ed.frets().is_some());
+    // Typing a name moves the controls and the fingerings follow.
+    r.app.chord_ed.name = "Am7".into();
+    r.app.chord_ed.read_name();
+    r.frames(2);
+    assert_eq!(r.app.chord_ed.sel.name().as_deref(), Some("Am7"));
+    let ed = r.app.chord_ed.clone();
+    r.app.apply_chord(&ed, false);
+    r.frames(2);
+    let b = r.app.cur_beat();
+    assert_eq!(b.chord.as_deref(), Some("Am7"));
+    assert!(b.chord_frets.is_some());
+    // The diagram is switched on by the "Display diagram" option, and works without notes.
+    r.app.chord_open = false;
+    r.app.open_chord_tool();
+    r.frames(2);
+    r.app.chord_ed.show_diagram = true;
+    r.app.chord_ed.show_name = false;
+    let ed = r.app.chord_ed.clone();
+    r.app.apply_chord(&ed, false);
+    r.frames(2);
+    let b = r.app.cur_beat();
+    assert!(b.has_diagram() && b.chord_name_hidden && b.is_rest());
+    let frets = b.diagram_frets(6);
+    assert!(frets.iter().flatten().count() >= 4, "{frets:?}");
+    // Deleting takes it all off.
+    r.app.open_chord_tool();
+    let ed = r.app.chord_ed.clone();
+    r.app.apply_chord(&ed, true);
+    r.frames(1);
+    let b = r.app.cur_beat();
+    assert!(b.chord.is_none() && b.chord_frets.is_none() && !b.chord_diagram);
+}

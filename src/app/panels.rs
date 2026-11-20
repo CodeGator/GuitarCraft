@@ -99,6 +99,13 @@ impl App {
             {
                 self.looping = !self.looping;
             }
+            if icon_toggle(ui, self.tuner.open, "Tuner", icon_tuning_fork).clicked() {
+                if self.tuner.open {
+                    self.tuner.open = false;
+                } else {
+                    self.open_tuner();
+                }
+            }
             if icon_toggle(ui, self.metronome, "Metronome", icon_metronome).clicked() {
                 self.metronome = !self.metronome;
             }
@@ -514,6 +521,7 @@ impl App {
         }
         self.fix_cursor_mode();
         self.ensure_tab();
+        self.sync_track_mix();
         // Next / Previous Tab (Ctrl+Tab, Ctrl+Shift+Tab) work on every screen, so they
         // are taken here before the other keys. Keys with more modifiers are tried
         // first: Ctrl would also match Ctrl+Shift.

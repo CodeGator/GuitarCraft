@@ -12,7 +12,7 @@ use egui::{
 
 const ROW_H: f32 = 25.0;
 const HEAD_H: f32 = 24.0;
-const LEFT_W: f32 = 430.0;
+const LEFT_W: f32 = 468.0;
 const CELL: f32 = 22.0;
 
 impl App {
@@ -153,6 +153,14 @@ impl App {
             FontId::proportional(11.5),
             grey,
         );
+        p.text(
+            head.min + Vec2::new(446.0, 12.0),
+            Align2::CENTER_CENTER,
+            "EQ",
+            FontId::proportional(11.5),
+            grey,
+        );
+        let mut open_eq: Option<usize> = None;
         let mut select: Option<(usize, Option<usize>)> = None;
         let mut track_action: Option<(usize, u8)> = None;
         let mut section_sel: Option<(usize, usize)> = None;
@@ -308,6 +316,44 @@ impl App {
                         Color32::from_gray(130)
                     },
                 );
+                // Equalizer button: lit while the track's EQ is not flat.
+                let er = Rect::from_center_size(
+                    row.min + Vec2::new(446.0, ROW_H * 0.5),
+                    Vec2::new(26.0, 16.0),
+                );
+                let eq_on = t.equalizer.on;
+                let eresp = ui
+                    .interact(er, ui.id().with(("eq", ti)), Sense::click())
+                    .on_hover_text(if eq_on {
+                        let g = t.equalizer.gains_db();
+                        format!(
+                            "Equalizer on: {:+.1} / {:+.1} / {:+.1} / {:+.1} / {:+.1} dB",
+                            g[0], g[1], g[2], g[3], g[4]
+                        )
+                    } else {
+                        "Equalizer (off)".into()
+                    });
+                if eresp.clicked() {
+                    open_eq = Some(ti);
+                }
+                p.rect_filled(
+                    er,
+                    3.0,
+                    if eq_on {
+                        BLUE
+                    } else if eresp.hovered() {
+                        Color32::from_gray(80)
+                    } else {
+                        Color32::from_rgb(36, 38, 44)
+                    },
+                );
+                p.text(
+                    er.center(),
+                    Align2::CENTER_CENTER,
+                    "EQ",
+                    FontId::proportional(10.5),
+                    if eq_on { Color32::WHITE } else { Color32::from_gray(150) },
+                );
                 (&mut t.volume, Some(&mut t.pan))
             };
             // Volume bar.
@@ -368,7 +414,35 @@ impl App {
                 }
             }
             knob(&p, kc, 8.0, value);
+            if is_master {
+                // Focus / Unfocus: the selected track against the others (not saved).
+                let fc = row.min + Vec2::new(446.0, ROW_H * 0.5);
+                let fr = Rect::from_center_size(fc, Vec2::splat(18.0));
+                let name = self.song.tracks.get(self.track).map(|t| t.name.as_str()).unwrap_or("");
+                let fresp = ui
+                    .interact(fr, ui.id().with("focus"), Sense::click_and_drag())
+                    .on_hover_text(format!(
+                        "Focus: {:+.0}%
+Right brings the selected track ({name}) forward by                          turning the others down; left pushes it back. Double-click to reset.",
+                        self.focus * 100.0
+                    ));
+                if fresp.dragged() {
+                    let d = fresp.drag_delta();
+                    self.focus = (self.focus + d.x / 60.0 - d.y / 60.0).clamp(-1.0, 1.0);
+                }
+                if fresp.double_clicked() {
+                    self.focus = 0.0;
+                }
+                if self.focus.abs() > 0.005 {
+                    p.circle_stroke(fc, 10.5, PStroke::new(1.5, BLUE));
+                }
+                knob(&p, fc, 8.0, self.focus);
+            }
         }
+        if let Some(ti) = open_eq {
+            self.eq_track = if self.eq_track == Some(ti) { None } else { Some(ti) };
+        }
+        self.eq_window(ui.ctx());
         if (master - self.master_volume).abs() > 1e-6 {
             self.master_volume = master;
             if let Some(a) = &self.audio
@@ -871,5 +945,165 @@ impl App {
                     }
                 }
             });
+    }
+}
+
+/// The preset (index into EQ_PRESETS) that suits an instrument.
+fn suggested_eq(i: crate::model::Instrument) -> usize {
+    use crate::audio::Timbre as T;
+    match T::of(i) {
+        T::Steel | T::Nylon | T::Uke | T::Banjo => 1,
+        T::Clean => 2,
+        T::Overdrive | T::Distortion => 3,
+        T::Bass => 4,
+        T::Piano | T::EPiano | T::Organ | T::Synth => 5,
+        T::Drum => 6,
+        T::Voice | T::Bowed | T::Brass | T::Reed | T::Flute => 7,
+        T::ClickHigh | T::ClickLow => 0,
+    }
+}
+
+/// A knob's value as text: "+3.5 dB", "367 Hz", "1.2 kHz", "Q 1.20".
+fn eq_value_text(k: usize, pos: f32) -> String {
+    use crate::model::{EQ_KNOBS, EqUnit, eq_knob_value};
+    let x = eq_knob_value(k, pos);
+    match EQ_KNOBS[k].1 {
+        EqUnit::Db => format!("{x:+.1} dB"),
+        EqUnit::Hz if x >= 1000.0 => format!("{:.1} kHz", x / 1000.0),
+        EqUnit::Hz => format!("{x:.0} Hz"),
+        EqUnit::Q => format!("{x:.2}"),
+    }
+}
+
+/// One equalizer knob: drag up or right to turn it, double-click for the default.
+fn eq_knob(ui: &mut Ui, k: usize, pos: &mut f32) -> bool {
+    use crate::model::{EQ_KNOBS, EqUnit};
+    let mut changed = false;
+    ui.vertical(|ui| {
+        ui.set_width(52.0);
+        let unit = match EQ_KNOBS[k].1 {
+            EqUnit::Db => "dB",
+            EqUnit::Hz => "Hz",
+            EqUnit::Q => "Q",
+        };
+        ui.vertical_centered(|ui| {
+            ui.label(RichText::new(unit).small());
+            let (rect, resp) = ui.allocate_exact_size(Vec2::splat(28.0), Sense::click_and_drag());
+            if resp.dragged() {
+                let d = resp.drag_delta();
+                *pos = (*pos + (d.x - d.y) / 150.0).clamp(0.0, 1.0);
+                changed = true;
+            }
+            if resp.double_clicked() {
+                *pos = 0.5;
+                changed = true;
+            }
+            knob(ui.painter(), rect.center(), 11.0, *pos * 2.0 - 1.0);
+            resp.on_hover_text(format!(
+                "{} {}\nDrag up or right to turn it; double-click for the default.",
+                EQ_KNOBS[k].0,
+                eq_value_text(k, *pos)
+            ));
+            ui.label(RichText::new(eq_value_text(k, *pos)).small());
+        });
+    });
+    changed
+}
+
+impl App {
+    /// The equalizer window for one track, laid out like Guitar Pro 8's: an On switch,
+    /// presets, and Low, Low Medium, Medium, High Medium and High knobs.
+    fn eq_window(&mut self, ctx: &egui::Context) {
+        use crate::model::{EQ_PRESETS, Equalizer};
+        let Some(ti) = self.eq_track else { return };
+        let Some(track) = self.song.tracks.get(ti) else {
+            self.eq_track = None;
+            return;
+        };
+        let mut e = track.equalizer;
+        let suggested = suggested_eq(track.instrument);
+        let preset = |g: [f32; 5]| {
+            let mut p = Equalizer { on: true, ..Equalizer::default() };
+            p.set_gains_db(g);
+            p
+        };
+        let mut open = true;
+        egui::Window::new(format!("Equalizer: {}", track.name))
+            .id(egui::Id::new("track-eq"))
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut e.on, "On");
+                    ui.add_space(12.0);
+                    let current = EQ_PRESETS
+                        .iter()
+                        .find(|(_, g)| preset(*g).knobs == e.knobs)
+                        .map(|(n, _)| *n)
+                        .unwrap_or("Custom");
+                    egui::ComboBox::from_id_salt("eq-preset")
+                        .selected_text(current)
+                        .width(170.0)
+                        .show_ui(ui, |ui| {
+                            for (i, (name, g)) in EQ_PRESETS.iter().enumerate() {
+                                let label = if i == suggested && i != 0 {
+                                    format!("{name} (suggested)")
+                                } else {
+                                    name.to_string()
+                                };
+                                if ui.selectable_label(current == *name, label).clicked() {
+                                    e = preset(*g);
+                                }
+                            }
+                        });
+                    if ui
+                        .button("Flat")
+                        .on_hover_text("Every knob back to its default")
+                        .clicked()
+                    {
+                        e.knobs = [0.5; 9];
+                    }
+                });
+                ui.add_space(6.0);
+                let mut turned = false;
+                ui.horizontal(|ui| {
+                    let groups: [(&str, &[usize]); 5] = [
+                        ("Low", &[0]),
+                        ("Low Medium", &[1, 2]),
+                        ("Medium", &[3, 4, 5]),
+                        ("High Medium", &[6, 7]),
+                        ("High", &[8]),
+                    ];
+                    for (gi, (name, ks)) in groups.iter().enumerate() {
+                        if gi > 0 {
+                            ui.separator();
+                        }
+                        ui.vertical(|ui| {
+                            ui.horizontal(|ui| {
+                                for &k in *ks {
+                                    turned |= eq_knob(ui, k, &mut e.knobs[k]);
+                                }
+                            });
+                            ui.label(*name);
+                        });
+                    }
+                });
+                // Turning a knob while the equalizer is off switches it on.
+                if turned {
+                    e.on = true;
+                }
+                if !e.on {
+                    ui.label(RichText::new("Off: the track plays without the equalizer.").weak());
+                }
+            });
+        if !open {
+            self.eq_track = None;
+        }
+        // The player picks the change up in sync_track_mix.
+        if e != self.song.tracks[ti].equalizer {
+            self.song.tracks[ti].equalizer = e;
+            self.dirty = true;
+        }
     }
 }

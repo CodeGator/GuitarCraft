@@ -265,6 +265,11 @@ pub struct Beat {
     pub lyric: Option<String>,
     /// Show a chord diagram (made from this beat's notes) above the staff.
     pub chord_diagram: bool,
+    /// The fingering the chord's diagram shows (frets from the lowest string, -1 = not
+    /// played), when it was chosen in the Chord window rather than made from the notes.
+    pub chord_frets: Option<[i8; 6]>,
+    /// The chord's name is left off the score (its diagram still shows).
+    pub chord_name_hidden: bool,
     /// Pick stroke: 0 none, 1 down, 2 up.
     pub pick: u8,
     pub tremolo: bool,
@@ -299,6 +304,8 @@ impl Beat {
             hairpin: 0,
             lyric: None,
             chord_diagram: false,
+            chord_frets: None,
+            chord_name_hidden: false,
             pick: 0,
             tremolo: false,
             technique: 0,
@@ -307,6 +314,36 @@ impl Beat {
             fx: BeatFx::default(),
         }
     }
+    /// Whether a chord diagram is drawn for this beat: asked for, and there is something to draw
+    /// (the beat's notes, or a fingering chosen for the chord).
+    pub fn has_diagram(&self) -> bool {
+        self.chord_diagram && (!self.is_rest() || self.chord_frets.is_some())
+    }
+
+    /// What a chord diagram shows, by string number (0 = the highest string): the chosen
+    /// fingering for a six-string track, otherwise the beat's notes. None = not played.
+    pub fn diagram_frets(&self, strings: usize) -> Vec<Option<u8>> {
+        let mut out = vec![None; strings];
+        match self.chord_frets {
+            Some(f) if strings == 6 => {
+                for (i, &v) in f.iter().enumerate() {
+                    if v >= 0 {
+                        out[5 - i] = Some(v as u8);
+                    }
+                }
+            }
+            _ => {
+                for n in &self.notes {
+                    let s = n.string as usize;
+                    if s < strings && out[s].is_none() {
+                        out[s] = Some(n.fret);
+                    }
+                }
+            }
+        }
+        out
+    }
+
     pub fn is_rest(&self) -> bool {
         self.notes.is_empty()
     }
@@ -978,6 +1015,112 @@ pub fn note_name_oct(midi: u8) -> String {
     format!("{}{}", note_name(midi), midi as i32 / 12 - 1)
 }
 
+/// A track's 5-band equalizer, laid out like Guitar Pro 8's track EQ panel.
+///
+/// Each knob is kept as its position from 0 (fully left) to 1 (fully right), 0.5 being the
+/// default, exactly as Guitar Pro stores it; the `*_db`, `*_hz` and `med_q` methods give the
+/// real values.
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
+#[serde(default)]
+pub struct Equalizer {
+    pub on: bool,
+    /// Knob positions in panel order: see EQ_KNOBS.
+    pub knobs: [f32; 9],
+}
+
+impl Default for Equalizer {
+    fn default() -> Self {
+        Equalizer { on: false, knobs: [0.5; 9] }
+    }
+}
+
+/// What a knob sets.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum EqUnit {
+    Db,
+    Hz,
+    Q,
+}
+
+/// The nine knobs in panel order (left to right): band, unit, and the range from fully
+/// left to fully right, all read from Guitar Pro 8's tooltips. dB knobs: +-15 dB. Hz and Q
+/// knobs are logarithmic, their default (0.5) the geometric middle; High Medium's bottom
+/// end was worked out from its 3000 Hz default. Q: 0.5 .. 3.0 (default shown as 1.2).
+pub const EQ_KNOBS: [(&str, EqUnit, f32, f32); 9] = [
+    ("Low", EqUnit::Db, -15.0, 15.0),
+    ("Low Medium", EqUnit::Db, -15.0, 15.0),
+    ("Low Medium", EqUnit::Hz, 45.0, 3000.0),
+    ("Medium", EqUnit::Q, 0.5, 3.0),
+    ("Medium", EqUnit::Db, -15.0, 15.0),
+    ("Medium", EqUnit::Hz, 45.0, 18000.0),
+    ("High Medium", EqUnit::Db, -15.0, 15.0),
+    ("High Medium", EqUnit::Hz, 500.0, 18000.0),
+    ("High", EqUnit::Db, -15.0, 15.0),
+];
+
+/// ESTIMATED, not confirmed: the corner frequencies of the Low and High shelves (Guitar Pro
+/// 8 has no Hz knob for them), and the width of the Low Medium and High Medium bands.
+pub const EQ_LOW_SHELF_HZ: f32 = 100.0;
+pub const EQ_HIGH_SHELF_HZ: f32 = 8000.0;
+pub const EQ_SIDE_Q: f32 = 1.2;
+
+/// Where each knob sits in Guitar Pro's channel strip: the panel read right to left.
+pub const EQ_GPIF_INDEX: [usize; 9] = [8, 6, 7, 5, 3, 4, 1, 2, 0];
+
+/// A knob's real value from its position.
+pub fn eq_knob_value(k: usize, v: f32) -> f32 {
+    let (_, unit, lo, hi) = EQ_KNOBS[k];
+    let v = v.clamp(0.0, 1.0);
+    match unit {
+        EqUnit::Db => lo + (hi - lo) * v,
+        EqUnit::Hz | EqUnit::Q => lo * (hi / lo).powf(v),
+    }
+}
+
+/// A knob's position for a real value.
+pub fn eq_knob_pos(k: usize, x: f32) -> f32 {
+    let (_, unit, lo, hi) = EQ_KNOBS[k];
+    match unit {
+        EqUnit::Db => (x - lo) / (hi - lo),
+        EqUnit::Hz | EqUnit::Q => (x.max(1e-3) / lo).ln() / (hi / lo).ln(),
+    }
+    .clamp(0.0, 1.0)
+}
+
+impl Equalizer {
+    /// Gains in dB: low, low medium, medium, high medium, high.
+    pub fn gains_db(&self) -> [f32; 5] {
+        [0, 1, 4, 6, 8].map(|k| eq_knob_value(k, self.knobs[k]))
+    }
+
+    /// Sets the five gains (dB), leaving the Hz and Q knobs alone.
+    pub fn set_gains_db(&mut self, g: [f32; 5]) {
+        for (i, k) in [0, 1, 4, 6, 8].into_iter().enumerate() {
+            self.knobs[k] = eq_knob_pos(k, g[i]);
+        }
+    }
+
+    /// Whether it changes the sound at all.
+    pub fn audible(&self) -> bool {
+        self.on && self.gains_db().iter().any(|g| g.abs() > 0.05)
+    }
+}
+
+/// Equalizer presets: a name and the low, low medium, medium, high medium and high gains
+/// in dB (the Hz and Q knobs go back to their defaults).
+pub const EQ_PRESETS: [(&str, [f32; 5]); 10] = [
+    ("Flat", [0.0, 0.0, 0.0, 0.0, 0.0]),
+    ("Acoustic guitar", [-3.0, -2.0, 0.0, 2.0, 3.0]),
+    ("Clean electric guitar", [1.0, 0.0, -1.0, 2.0, 2.0]),
+    ("Distorted guitar", [-2.0, 1.0, 3.0, 1.0, -3.0]),
+    ("Bass", [4.0, 2.0, -1.0, -2.0, -3.0]),
+    ("Keys", [1.0, 0.0, -1.0, 1.0, 2.0]),
+    ("Drums", [3.0, -1.0, -3.0, 1.0, 3.0]),
+    ("Vocals and lead", [-3.0, -1.0, 2.0, 3.0, 1.0]),
+    ("Warmer", [3.0, 1.0, 0.0, -1.0, -3.0]),
+    ("Brighter", [-1.0, 0.0, 0.0, 2.0, 4.0]),
+];
+
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 #[serde(default)]
 pub struct Track {
@@ -989,6 +1132,8 @@ pub struct Track {
     pub color: [u8; 3],
     pub volume: f32,
     pub pan: f32,
+    /// The track's equalizer.
+    pub equalizer: Equalizer,
     pub mute: bool,
     pub solo: bool,
     /// Shown in the score.
@@ -1044,6 +1189,7 @@ impl Default for Track {
             color: TRACK_COLORS[0],
             volume: 0.8,
             pan: 0.0,
+            equalizer: Equalizer::default(),
             mute: false,
             solo: false,
             visible: true,

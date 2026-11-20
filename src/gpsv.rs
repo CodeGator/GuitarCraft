@@ -178,27 +178,24 @@ pub fn view(name: &str, staves: &[(usize, usize)], nbars: usize, per_line: usize
 mod tests {
     use super::*;
 
-    fn sample(name: &str) -> Option<Vec<u8>> {
-        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("samples")
-            .join("Empty.gp");
-        let data = std::fs::read(p).ok()?;
-        let mut z = zip::ZipArchive::new(std::io::Cursor::new(data)).ok()?;
+    fn part(name: &str) -> Vec<u8> {
+        let data = crate::fixture("gp8/Morning Walk Gp8.gp");
+        let mut z = zip::ZipArchive::new(std::io::Cursor::new(data)).unwrap();
         let mut v = vec![];
-        std::io::Read::read_to_end(&mut z.by_name(name).ok()?, &mut v).ok()?;
-        Some(v)
+        std::io::Read::read_to_end(&mut z.by_name(name).unwrap(), &mut v).unwrap();
+        v
     }
 
+    /// Against the demo song saved by Guitar Pro 8 (two tracks, 12 bars). Its part views
+    /// were never opened, so they hold only the track's name; the full score view starts
+    /// with the bar list, then layout this file doesn't let us check (Guitar Pro 8 adds
+    /// more there than GuitarCraft writes).
     #[test]
     fn matches_views_saved_by_guitar_pro() {
-        // The sample: two tracks with notation and tab, ten bars, the bass track hidden.
-        let Some(full) = sample("Content/ScoreViews/0.gpsv") else {
-            return;
-        };
-        assert_eq!(view("Full score", &[(1, 0), (1, 1)], 10, 4), full);
-        let bass = sample("Content/ScoreViews/1.gpsv").unwrap();
-        assert_eq!(view("Electric Bass", &[(0, 0), (0, 1)], 10, 3), bass);
-        let reso = sample("Content/ScoreViews/2.gpsv").unwrap();
-        assert_eq!(view("Resonator", &[(1, 0), (1, 1)], 10, 3), reso);
+        assert_eq!(view("Steel Guitar", &[], 0, 1), part("Content/ScoreViews/2.gpsv"));
+        assert_eq!(view("Electric Bass", &[], 0, 1), part("Content/ScoreViews/3.gpsv"));
+        let full = part("Content/ScoreViews/1.gpsv");
+        let ours = view("Full score", &[], 12, 4);
+        assert!(full.starts_with(&ours), "the name and the 12 bars differ");
     }
 }

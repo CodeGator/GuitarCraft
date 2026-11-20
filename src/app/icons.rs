@@ -237,6 +237,27 @@ pub fn icon_loop(p: &egui::Painter, r: Rect, c: Color32) {
         PStroke::NONE,
     ));
 }
+/// A tuning fork: two prongs joined at the bottom, on a short stem.
+pub fn icon_tuning_fork(p: &egui::Painter, r: Rect, c: Color32) {
+    let s = PStroke::new(1.6, c);
+    let (l, rr, cx) = (r.center().x - 3.5, r.center().x + 3.5, r.center().x);
+    let top = r.top() + 1.0;
+    let bend = r.center().y + 2.0;
+    p.line_segment([Pos2::new(l, top), Pos2::new(l, bend - 2.0)], s);
+    p.line_segment([Pos2::new(rr, top), Pos2::new(rr, bend - 2.0)], s);
+    p.add(egui::Shape::line(
+        vec![
+            Pos2::new(l, bend - 2.0),
+            Pos2::new(l + 1.0, bend),
+            Pos2::new(cx, bend + 1.5),
+            Pos2::new(rr - 1.0, bend),
+            Pos2::new(rr, bend - 2.0),
+        ],
+        s,
+    ));
+    p.line_segment([Pos2::new(cx, bend + 1.5), Pos2::new(cx, r.bottom())], s);
+}
+
 pub fn icon_metronome(p: &egui::Painter, r: Rect, c: Color32) {
     let s = PStroke::new(1.5, c);
     p.add(egui::Shape::closed_line(

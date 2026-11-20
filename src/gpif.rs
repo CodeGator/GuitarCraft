@@ -531,7 +531,7 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
                 .iter()
                 .position(|p| p.1 == style)
                 .unwrap_or(0) as u8;
-            // Mixer: the channel strip holds pan (11) and volume (12), from 0 to 1.
+            // Mixer: the channel strip holds the equalizer (0-9), pan (11) and volume (12), from 0 to 1.
             if let Some(ps) = t.descendants().find(|d| {
                 d.has_tag_name("Parameters")
                     && d.parent()
@@ -545,6 +545,11 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
                 if v.len() > 12 {
                     tr.pan = (v[11] * 2.0 - 1.0).clamp(-1.0, 1.0);
                     tr.volume = v[12].clamp(0.0, 1.0);
+                    // The track equalizer: nine knobs (stored right to left) and On (9).
+                    for (k, &gi) in EQ_GPIF_INDEX.iter().enumerate() {
+                        tr.equalizer.knobs[k] = v[gi].clamp(0.0, 1.0);
+                    }
+                    tr.equalizer.on = v[9] >= 0.5;
                 }
             }
             match text(child(t, "PlaybackState")).as_str() {

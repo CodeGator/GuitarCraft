@@ -14,6 +14,9 @@
 //! * Drums: tuned and swept tones, filtered noise and the metallic ring of cymbals.
 
 use crate::audio::{NoteEvent, Timbre};
+use crate::model::{
+    EQ_HIGH_SHELF_HZ, EQ_LOW_SHELF_HZ, EQ_SIDE_Q, Equalizer, eq_knob_value,
+};
 use std::f32::consts::{PI, TAU};
 
 // ---------------------------------------------------------------------------------------------
@@ -1341,8 +1344,137 @@ impl Voice {
     }
 }
 
+/// A stereo biquad filter (transposed direct form II), coefficients from the RBJ cookbook.
+#[derive(Clone, Copy, Default)]
+struct Biquad {
+    b: [f32; 3],
+    a: [f32; 2],
+    z: [[f32; 2]; 2],
+}
+
+impl Biquad {
+    /// kind: 0 low shelf, 1 peak, 2 high shelf.
+    fn set(&mut self, kind: u8, fc: f32, db: f32, q: f32, sr: f32) {
+        let a = 10f32.powf(db / 40.0);
+        let w = TAU * (fc / sr).min(0.45);
+        let (sn, cs) = w.sin_cos();
+        let (b0, b1, b2, a0, a1, a2) = if kind == 1 {
+            let al = sn / (2.0 * q.max(0.05));
+            (1.0 + al * a, -2.0 * cs, 1.0 - al * a, 1.0 + al / a, -2.0 * cs, 1.0 - al / a)
+        } else {
+            let al2 = 2.0 * a.sqrt() * sn / 2.0 * std::f32::consts::SQRT_2;
+            let (ap, am) = (a + 1.0, a - 1.0);
+            if kind == 0 {
+                (
+                    a * (ap - am * cs + al2),
+                    2.0 * a * (am - ap * cs),
+                    a * (ap - am * cs - al2),
+                    ap + am * cs + al2,
+                    -2.0 * (am + ap * cs),
+                    ap + am * cs - al2,
+                )
+            } else {
+                (
+                    a * (ap + am * cs + al2),
+                    -2.0 * a * (am + ap * cs),
+                    a * (ap + am * cs - al2),
+                    ap - am * cs + al2,
+                    2.0 * (am - ap * cs),
+                    ap - am * cs - al2,
+                )
+            }
+        };
+        self.b = [b0 / a0, b1 / a0, b2 / a0];
+        self.a = [a1 / a0, a2 / a0];
+    }
+
+    fn run(&mut self, ch: usize, x: f32) -> f32 {
+        let z = &mut self.z[ch];
+        let y = self.b[0] * x + z[0];
+        z[0] = self.b[1] * x - self.a[0] * y + z[1];
+        z[1] = self.b[2] * x - self.a[1] * y;
+        y
+    }
+}
+
+/// One track's five-band equalizer: low shelf, three peaks, high shelf.
+#[derive(Clone, Default)]
+pub struct TrackEq {
+    settings: Option<Equalizer>,
+    bands: [Biquad; 5],
+    on: bool,
+}
+
+impl TrackEq {
+    /// Applies the track's settings; the filters keep their state, so playback carries on
+    /// smoothly while a knob turns.
+    pub fn set(&mut self, eq: &Equalizer, sr: f32) {
+        if self.settings.as_ref() == Some(eq) {
+            return;
+        }
+        self.settings = Some(*eq);
+        self.on = eq.audible();
+        let k = |i: usize| eq_knob_value(i, eq.knobs[i]);
+        let g = eq.gains_db();
+        self.bands[0].set(0, EQ_LOW_SHELF_HZ, g[0], EQ_SIDE_Q, sr);
+        self.bands[1].set(1, k(2), g[1], EQ_SIDE_Q, sr);
+        self.bands[2].set(1, k(5), g[2], k(3), sr);
+        self.bands[3].set(1, k(7), g[3], EQ_SIDE_Q, sr);
+        self.bands[4].set(2, EQ_HIGH_SHELF_HZ, g[4], EQ_SIDE_Q, sr);
+    }
+
+    /// Whether the equalizer changes the sound at all.
+    pub fn is_on(&self) -> bool {
+        self.on
+    }
+
+    pub fn run(&mut self, l: f32, r: f32) -> (f32, f32) {
+        if !self.on {
+            return (l, r);
+        }
+        let (mut l, mut r) = (l, r);
+        for b in &mut self.bands {
+            l = b.run(0, l);
+            r = b.run(1, r);
+        }
+        (l, r)
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_track_equalizer_boosts_and_cuts_its_own_band() {
+        let sr = 44100.0;
+        let gain_at = |on: bool, gains: [f32; 5], f: f32| {
+            let mut e = Equalizer { on, ..Equalizer::default() };
+            e.set_gains_db(gains);
+            let mut eq = TrackEq::default();
+            eq.set(&e, sr);
+            let mut peak = 0.0f32;
+            for i in 0..(sr as usize) {
+                let x = (TAU * f * i as f32 / sr).sin();
+                let (y, _) = eq.run(x, x);
+                if i > sr as usize / 2 {
+                    peak = peak.max(y.abs());
+                }
+            }
+            20.0 * peak.log10()
+        };
+        // Flat, or switched off, leaves the sound alone.
+        assert!(gain_at(true, [0.0; 5], 1000.0).abs() < 0.1);
+        assert!(gain_at(false, [12.0; 5], 1000.0).abs() < 0.1);
+        // Each band moves its own frequencies by about its gain.
+        assert!((gain_at(true, [12.0, 0.0, 0.0, 0.0, 0.0], 30.0) - 12.0).abs() < 1.0);
+        assert!(gain_at(true, [12.0, 0.0, 0.0, 0.0, 0.0], 5000.0).abs() < 1.0);
+        // Default centres: 367 Hz, 900 Hz, 3000 Hz.
+        assert!((gain_at(true, [0.0, 12.0, 0.0, 0.0, 0.0], 367.0) - 12.0).abs() < 0.5);
+        assert!((gain_at(true, [0.0, 0.0, -12.0, 0.0, 0.0], 900.0) + 12.0).abs() < 0.5);
+        assert!((gain_at(true, [0.0, 0.0, 0.0, 12.0, 0.0], 3000.0) - 12.0).abs() < 0.5);
+        assert!((gain_at(true, [0.0, 0.0, 0.0, 0.0, 12.0], 18000.0) - 12.0).abs() < 1.5);
+        assert!(gain_at(true, [0.0, 0.0, 0.0, 0.0, 12.0], 100.0).abs() < 1.0);
+    }
+
     use super::*;
 
     fn event(t: Timbre, freq: f32) -> NoteEvent {
