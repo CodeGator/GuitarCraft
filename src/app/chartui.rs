@@ -502,6 +502,11 @@ impl App {
                     self.show_about = true;
                     ui.close();
                 }
+                if ui.button("Check for Updates...").clicked() {
+                    let ctx = ui.ctx().clone();
+                    self.check_for_updates(&ctx);
+                    ui.close();
+                }
             });
         });
     }

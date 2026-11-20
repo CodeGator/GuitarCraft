@@ -994,5 +994,11 @@ impl App {
             self.guide_open = true;
             ui.close();
         }
+        ui.separator();
+        if item(ui, "Check for Updates...", "").clicked() {
+            let ctx = ui.ctx().clone();
+            self.check_for_updates(&ctx);
+            ui.close();
+        }
     }
 }
