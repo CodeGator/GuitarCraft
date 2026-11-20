@@ -574,6 +574,8 @@ impl App {
                 .frame(egui::Frame::NONE)
                 .show(ui, |ui| self.home_ui(ui));
             self.dialogs(&ctx);
+            // Tools > Chords & Scales needs no song, so it works here too.
+            self.chord_scales_window(&ctx);
             return;
         }
         if self.chart.is_some() {

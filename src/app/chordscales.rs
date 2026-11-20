@@ -8,7 +8,7 @@
 //! - Identify (the magnifier): click notes on the fretboard, one per string, and
 //!   the chord is named, with its other names and the scales that hold those notes.
 //! - Matching Chords for a scale, Matching Scales for a chord or arpeggio, play the
-//!   notes, put a chord on the beat under the cursor, or copy its name.
+//!   notes, or put a chord on the beat under the cursor.
 
 use super::App;
 use crate::chordshape;
@@ -79,7 +79,6 @@ pub struct ChordScales {
 enum Act {
     Play(Vec<(f32, u8, u8)>, [i32; 6]),
     Put { name: String, frets: [i8; 6] },
-    Copy(String),
 }
 
 /// What the window needs to know about the song.
@@ -743,10 +742,7 @@ impl ChordScales {
                     && env.can_put
                     && side_button(ui, w, "Put on beat", "", None, true).on_hover_text("Name the beat under the cursor and show its diagram (an empty beat gets the notes too)").clicked()
                 {
-                    *act = Some(Act::Put { name: name.clone(), frets: f });
-                }
-                if side_button(ui, w, &format!("Copy \u{201C}{name}\u{201D}"), "", None, true).on_hover_text("Copy the chord name to paste into a chart or text").clicked() {
-                    *act = Some(Act::Copy(name));
+                    *act = Some(Act::Put { name, frets: f });
                 }
             }
             m => {
@@ -876,11 +872,6 @@ impl ChordScales {
                     auto = !auto;
                     self.auto_play = auto;
                 }
-                if let Some(f) = found.first()
-                    && side_button(ui, w_side, &format!("Copy \u{201C}{}\u{201D}", theory::chord_name(f.root, f.kind, Some(f.bass))), "", None, true).clicked()
-                {
-                    *act = Some(Act::Copy(theory::chord_name(f.root, f.kind, Some(f.bass))));
-                }
             });
         });
         match jump {
@@ -919,9 +910,11 @@ impl App {
             return;
         }
         let tr = self.tr();
+        // On the start screen no song is showing: no track tuning, nothing to put notes into.
+        let song = !self.show_home;
         // The current track's tuning, lowest string first, when it is a six-string.
-        let track_tuning: Option<[i32; 6]> = (tr.has_strings() && tr.strings() == 6).then(|| std::array::from_fn(|s| tr.tuning[5 - s] as i32));
-        let can_put = self.chart.is_none();
+        let track_tuning: Option<[i32; 6]> = (song && tr.has_strings() && tr.strings() == 6).then(|| std::array::from_fn(|s| tr.tuning[5 - s] as i32));
+        let can_put = song && self.chart.is_none();
         let (song_pcs, song_label) = if can_put { self.song_notes() } else { (vec![], String::new()) };
         let env = Env { track_tuning, can_put, song_pcs, song_label };
         let mut cs = std::mem::take(&mut self.cs);
@@ -942,10 +935,6 @@ impl App {
         self.cs = cs;
         match act {
             Some(Act::Play(notes, tuning)) => self.play_cs(&notes, &tuning),
-            Some(Act::Copy(name)) => {
-                ctx.copy_text(name.clone());
-                self.status = format!("Copied {name}.");
-            }
             Some(Act::Put { name, frets }) => self.put_chord(name, frets),
             None => {}
         }

@@ -35,8 +35,8 @@ impl App {
                     });
                 });
             }
-            // The start screen (Browse) has no song to work on: as in Guitar Pro, only
-            // File (open and import) and Help are available.
+            // The start screen (Browse) has no song to work on: only File (open and
+            // import), Tools (its song-free tools) and Help are available.
             let home = self.show_home;
             ui.add_enabled_ui(!home, |ui| {
                 ui.menu_button("Edit", |ui| self.edit_menu(ui));
@@ -45,7 +45,9 @@ impl App {
                 ui.menu_button("Note", |ui| self.note_menu(ui));
                 ui.menu_button("Effects", |ui| self.effects_menu(ui));
                 ui.menu_button("Section", |ui| self.section_menu(ui));
-                ui.menu_button("Tools", |ui| self.tools_menu(ui));
+            });
+            ui.menu_button("Tools", |ui| self.tools_menu(ui));
+            ui.add_enabled_ui(!home, |ui| {
                 ui.menu_button("Sound", |ui| self.sound_menu(ui));
                 ui.menu_button("View", |ui| self.view_menu(ui));
                 ui.menu_button("Window", |ui| self.window_menu(ui));
@@ -772,12 +774,14 @@ impl App {
             self.open_chord_scales(super::chordscales::Mode::Scales);
             ui.close();
         }
-        if item(ui, "Transpose...", "").clicked() {
+        // On the start screen only the song-free tools work.
+        let song = !self.show_home;
+        if item_if(ui, song, "Transpose...", "") {
             self.transpose_open = true;
             ui.close();
         }
         ui.separator();
-        if item(ui, "Move/Swap Voices...", "Ctrl+Shift+M").clicked() {
+        if item_if(ui, song, "Move/Swap Voices...", "Ctrl+Shift+M") {
             self.vfrom = self.voice;
             self.vto = if self.voice == 0 { 1 } else { 0 };
             self.vrange = if self.selection().is_some() {
@@ -788,16 +792,16 @@ impl App {
             self.voices_open = true;
             ui.close();
         }
-        if item(ui, "Check Bar Duration", "F4").clicked() {
+        if item_if(ui, song, "Check Bar Duration", "F4") {
             self.check_bar_duration();
             ui.close();
         }
-        if item(ui, "Complete Bars with Rests", "").clicked() {
+        if item_if(ui, song, "Complete Bars with Rests", "") {
             self.complete_bars();
             ui.close();
         }
         ui.separator();
-        if item(ui, "Show Command Palette", "Ctrl+E").clicked() {
+        if item_if(ui, song, "Show Command Palette", "Ctrl+E") {
             self.cmd_open = true;
             self.cmd_text.clear();
             ui.close();
