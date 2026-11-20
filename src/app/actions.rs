@@ -21,6 +21,7 @@ impl App {
             || self.export_dlg.is_some()
             || self.print_preview.is_some()
             || self.style_dlg.is_some()
+            || self.prefs_dlg.is_some()
     }
 
     pub(super) fn check_bar_duration(&mut self) {
@@ -746,14 +747,20 @@ pub fn refit_track(t: &mut Track, old_tuning: &[u8], old_capo: u8) {
     refit_notes(t, old_tuning, old_capo);
 }
 
+/// Every keyboard shortcut, by heading, from the one list in `shortcuts.rs`.
 pub fn shortcut_rows(ui: &mut Ui) {
-    egui::Grid::new("keys").striped(true).show(ui, |ui| {
-        for (k, d) in super::keys::SHORTCUTS.iter().copied() {
-            ui.label(RichText::new(k).strong());
-            ui.label(d);
-            ui.end_row();
-        }
-    });
+    use super::shortcuts::{ACTIONS, Group, all_keys};
+    for g in Group::ALL {
+        ui.add_space(6.0);
+        ui.label(RichText::new(g.title()).strong().size(14.0));
+        egui::Grid::new(("keys", g.title())).striped(true).min_col_width(170.0).show(ui, |ui| {
+            for x in ACTIONS.iter().filter(|x| x.group == g) {
+                ui.label(RichText::new(all_keys(x.act)).strong());
+                ui.label(x.name);
+                ui.end_row();
+            }
+        });
+    }
 }
 
 /// Moves a pitch by steps of the major scale of a key (sharps > 0, flats < 0).

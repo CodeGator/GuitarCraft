@@ -415,7 +415,7 @@ impl App {
                             pv.page = pages - 1;
                         }
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.add(egui::Button::new(RichText::new("\u{1F5B6} Print").size(13.0)).min_size(Vec2::new(64.0, 24.0))).on_hover_text("Choose the printer and print (Ctrl+P)").clicked() {
+                            if ui.add(egui::Button::new(RichText::new("\u{1F5B6} Print").size(13.0)).min_size(Vec2::new(64.0, 24.0))).on_hover_text(super::shortcuts::tip("Choose the printer and print", super::shortcuts::Act::Print)).clicked() {
                                 print = true;
                             }
                         });
@@ -472,6 +472,9 @@ impl App {
                         cursor_std: None,
                         printing: true,
                         transparent: false,
+                        play_cursor: crate::score::PlayCursor::Smooth,
+                        play_bar: true,
+                        bar_errors: true,
                     };
                     crate::score::draw_page(p, &lay, &dc, pv.page, origin);
                 });

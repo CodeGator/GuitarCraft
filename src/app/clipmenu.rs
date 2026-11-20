@@ -5,6 +5,7 @@
 //! and tempo changes (the last two only after an all-track copy).
 
 use super::App;
+use super::shortcuts::{Act, sc};
 use egui::{Align2, Color32, RichText, Ui, Vec2};
 
 pub struct SpecialPaste {
@@ -25,31 +26,31 @@ impl App {
 
     /// Cut, copy, paste and Special Paste (shared by the Edit menu and the score's menu).
     pub(super) fn clipboard_items(&mut self, ui: &mut Ui) {
-        if item(ui, true, "Cut", "Ctrl+X") {
+        if item(ui, true, "Cut", &sc(Act::Cut)) {
             self.copy();
             self.last_copy_all = false;
             self.delete_at_cursor();
             ui.close();
         }
-        if item(ui, true, "Copy", "Ctrl+C") {
+        if item(ui, true, "Copy", &sc(Act::Copy)) {
             self.copy();
             self.last_copy_all = false;
             ui.close();
         }
         let paste = self.has_clipboard();
-        if item(ui, paste, "Paste", "Ctrl+V") {
+        if item(ui, paste, "Paste", &sc(Act::Paste)) {
             self.paste_any();
             ui.close();
         }
-        if item(ui, true, "All-Track Cut", "Ctrl+Shift+X") {
+        if item(ui, true, "All-Track Cut", &sc(Act::AllTrackCut)) {
             self.all_track_cut();
             ui.close();
         }
-        if item(ui, true, "All-Track Copy", "Ctrl+Shift+C") {
+        if item(ui, true, "All-Track Copy", &sc(Act::AllTrackCopy)) {
             self.all_track_copy();
             ui.close();
         }
-        if item(ui, paste, "Special Paste...", "Ctrl+Shift+V") {
+        if item(ui, paste, "Special Paste...", &sc(Act::SpecialPaste)) {
             self.open_special_paste();
             ui.close();
         }
@@ -103,7 +104,7 @@ impl App {
                     ui.checkbox(&mut sp.tempo, "Tempo changes (master track automations)");
                 })
                 .response
-                .on_disabled_hover_text("Sections and tempo changes need an all-track copy (Ctrl+Shift+C).");
+                .on_disabled_hover_text(format!("Sections and tempo changes need an all-track copy ({}).", super::shortcuts::sc(super::shortcuts::Act::AllTrackCopy)));
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

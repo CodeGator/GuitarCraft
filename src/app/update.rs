@@ -1,6 +1,7 @@
 //! Help > Check for Updates...: asks GitHub which release of GuitarCraft is the newest
-//! and says whether this copy is up to date. It only looks when the person asks (nothing
-//! is checked in the background and nothing about the person or their files is sent).
+//! and says whether this copy is up to date. It looks when the person asks, or at start
+//! when they chose so in Preferences > General (then the window only appears if there is
+//! a newer version). Nothing about the person or their files is sent.
 //! The web request goes through the `curl` program that comes with Windows, macOS and
 //! most Linux systems, on a separate thread so the window never freezes.
 
@@ -29,6 +30,8 @@ pub enum Outcome {
 pub struct UpdateState {
     pub open: bool,
     checking: bool,
+    /// A check started by itself: the window opens only for a newer version.
+    quiet: bool,
     outcome: Option<Outcome>,
     rx: Option<Receiver<Outcome>>,
 }
@@ -119,6 +122,17 @@ impl App {
     /// Help > Check for Updates...: opens the window and starts looking.
     pub(super) fn check_for_updates(&mut self, ctx: &egui::Context) {
         self.update.open = true;
+        self.update.quiet = false;
+        self.start_check(ctx);
+    }
+
+    /// The check at start (Preferences > General > Look for a new version).
+    pub(super) fn check_for_updates_quietly(&mut self, ctx: &egui::Context) {
+        self.update.quiet = true;
+        self.start_check(ctx);
+    }
+
+    fn start_check(&mut self, ctx: &egui::Context) {
         if self.update.checking {
             return;
         }
@@ -142,6 +156,9 @@ impl App {
             self.update.outcome = Some(o);
             self.update.checking = false;
             self.update.rx = None;
+            if self.update.quiet && matches!(self.update.outcome, Some(Outcome::Newer { .. })) {
+                self.update.open = true;
+            }
         }
         if !self.update.open {
             return;

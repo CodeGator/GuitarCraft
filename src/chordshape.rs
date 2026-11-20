@@ -236,8 +236,15 @@ fn cost(tuning: &[i32; 6], frets: &[i8; 6], f: &Formula, root: i32, bass: i32) -
     Some(c)
 }
 
-/// The best fingering in each four-fret stretch of the neck (starting at
-/// frets 1 to `last_start`; open strings are always allowed), with its cost.
+/// The highest stretch of the neck where open strings still go with fretted
+/// notes (the first position); higher up, every shape is a moveable one.
+const OPEN_UP_TO: i8 = 4;
+
+/// The best fingering whose lowest fretted note is at each fret from 1 to
+/// `last_start` (reaching at most four frets; at fret 1, also fingerings of
+/// open strings only), with its cost. Anchoring each fingering to its lowest
+/// fret keeps a cheap low fingering from standing in for every stretch above it,
+/// so each part of the neck gets a shape of its own.
 pub fn voicing_list(tuning: &[i32; 6], root: i32, f: &Formula, bass: Option<i32>, last_start: i8) -> Vec<(f32, [i8; 6])> {
     let bass = bass.unwrap_or(root);
     let mut allowed: Vec<i32> = f.tones.iter().map(|t| (root + t.0).rem_euclid(12)).collect();
@@ -246,10 +253,11 @@ pub fn voicing_list(tuning: &[i32; 6], root: i32, f: &Formula, bass: Option<i32>
     }
     let mut out = vec![];
     for start in 1..=last_start {
+        let open = start <= OPEN_UP_TO;
         let options: Vec<Vec<i8>> = (0..6)
             .map(|s| {
                 let mut o = vec![-1i8];
-                for fr in std::iter::once(0).chain(start..start + 4) {
+                for fr in std::iter::once(0).filter(|_| open).chain(start..start + 4) {
                     if allowed.contains(&((tuning[s] + fr as i32).rem_euclid(12))) {
                         o.push(fr);
                     }
@@ -259,14 +267,27 @@ pub fn voicing_list(tuning: &[i32; 6], root: i32, f: &Formula, bass: Option<i32>
             .collect();
         let mut frets = [-1i8; 6];
         let mut best: Option<(f32, [i8; 6])> = None;
+        // Near the nut, also the best moveable one (no open strings), so a
+        // shape like E major's D shape (x x 2 4 5 4) isn't lost to an open one.
+        let mut closed: Option<(f32, [i8; 6])> = None;
         search(&options, 0, &mut frets, &mut |fr| {
-            if let Some(c) = cost(tuning, fr, f, root, bass)
-                && best.map(|b| c < b.0 - 1e-6).unwrap_or(true)
-            {
-                best = Some((c, *fr));
+            let low = lowest_fret(fr);
+            if low != start && !(start == 1 && low == 0) {
+                return;
+            }
+            if let Some(c) = cost(tuning, fr, f, root, bass) {
+                if best.map(|b| c < b.0 - 1e-6).unwrap_or(true) {
+                    best = Some((c, *fr));
+                }
+                if open && !fr.contains(&0) && closed.map(|b| c < b.0 - 1e-6).unwrap_or(true) {
+                    closed = Some((c, *fr));
+                }
             }
         });
         out.extend(best);
+        if closed.map(|c| c.1) != best.map(|b| b.1) {
+            out.extend(closed);
+        }
     }
     out
 }
@@ -299,20 +320,32 @@ pub fn voicings(tuning: &[i32; 6], root: i32, quality: &str, bass: Option<i32>, 
     }
     let Some(f) = formula(quality) else { return vec![] };
     let mut all = voicing_list(tuning, root, &f, bass, (max_fret - 3).max(1));
-    // Leave out thin or awkward ones: judged without the cost of being high on
-    // the neck (every part of the neck gets its best), a fingering must be
-    // nearly as good as the best of them.
+    // Fragments of two or three strings aren't the chord's shapes (a power
+    // chord excepted), unless nothing fuller can be played.
+    let full = |v: &[i8; 6]| f.power || v.iter().filter(|&&x| x >= 0).count() >= 4;
+    if all.iter().any(|a| full(&a.1)) {
+        all.retain(|a| full(&a.1));
+    }
+    // Leave out awkward ones: judged without the cost of being high on the
+    // neck (every part of the neck gets its best), a fingering must not be far
+    // worse than the best of them. (Room for the stretchier moveable shapes,
+    // like the D and C shapes of the CAGED system.)
     let plain = |c: f32, v: &[i8; 6]| c - 0.5 * lowest_fret(v) as f32;
     let best = all.iter().map(|a| plain(a.0, &a.1)).fold(f32::MAX, f32::min);
-    all.retain(|a| plain(a.0, &a.1) <= best + 3.0);
-    // Nearest the nut first; the same fingering found in two stretches counts once.
-    all.sort_by(|a, b| lowest_fret(&a.1).cmp(&lowest_fret(&b.1)).then(a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal)));
+    all.retain(|a| plain(a.0, &a.1) <= best + 6.0);
+    // Where the hand is: the nut for a fingering with open strings, else its lowest fret.
+    let at = |v: &[i8; 6]| if v.contains(&0) { 0 } else { lowest_fret(v) };
+    // One fingering per place on the neck: of two a fret or less apart, the better one.
     let mut out: Vec<[i8; 6]> = vec![];
-    for (_, v) in all {
-        if !out.contains(&v) {
-            out.push(v);
+    let mut by_cost: Vec<&(f32, [i8; 6])> = all.iter().collect();
+    by_cost.sort_by(|a, b| plain(a.0, &a.1).partial_cmp(&plain(b.0, &b.1)).unwrap_or(std::cmp::Ordering::Equal));
+    for (_, v) in by_cost {
+        if !out.iter().any(|o| (at(o) - at(v)).abs() <= 1) {
+            out.push(*v);
         }
     }
+    // Nearest the nut first.
+    out.sort_by_key(|v| (at(v), lowest_fret(v)));
     if let Ok(mut c) = LISTS.lock() {
         c.get_or_insert_with(HashMap::new).insert(key, out.clone());
     }
@@ -477,6 +510,23 @@ mod voicing_tests {
         let dadgad = [38, 45, 50, 55, 57, 62];
         let d = voicings(&dadgad, 2, "sus4", None, 17);
         assert!(d.iter().any(|f| f.iter().filter(|&&x| x == 0).count() >= 4), "{d:?}");
+        // The CAGED system: a major chord has its open shape and the five
+        // moveable shapes (E, D, C, A and G) up the neck.
+        assert_eq!(
+            voicings(&std, 7, "", None, 17),
+            vec![[3, 2, 0, 0, 0, 3], [3, 5, 5, 4, 3, 3], [-1, -1, 5, 7, 8, 7], [-1, 10, 9, 7, 8, 7], [-1, 10, 12, 12, 12, 10], [15, 14, 12, 12, 12, 15]],
+            "G"
+        );
+        assert_eq!(
+            voicings(&std, 0, "", None, 17),
+            vec![[-1, 3, 2, 0, 1, 0], [-1, 3, 5, 5, 5, 3], [8, 7, 5, 5, 5, 8], [8, 10, 10, 9, 8, 8], [-1, -1, 10, 12, 13, 12], [-1, 15, 14, 12, 13, 12]],
+            "C"
+        );
+        // E major keeps its D and C shapes near the nut alongside the open E.
+        let e = voicings(&std, 4, "", None, 17);
+        for want in [[-1, -1, 2, 4, 5, 4], [-1, 7, 6, 4, 5, 4], [-1, 7, 9, 9, 9, 7], [12, 11, 9, 9, 9, 12], [12, 14, 14, 13, 12, 12]] {
+            assert!(e.contains(&want), "E is missing {want:?}: {e:?}");
+        }
         // Fingers: an open C uses fingers 3, 2, 1.
         assert_eq!(fingers(&[-1, 3, 2, 0, 1, 0]), [0, 3, 2, 0, 1, 0]);
         // A barre chord: F uses the index finger across fret 1.

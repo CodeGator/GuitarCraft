@@ -953,6 +953,20 @@ pub fn layout_ex(
     }
 }
 
+/// How the playback cursor moves (Preferences > Interface > Playing cursor style).
+#[derive(Clone, Copy, PartialEq, Eq, Default, Debug, serde::Serialize, serde::Deserialize)]
+pub enum PlayCursor {
+    /// No line: only the notes being heard are highlighted.
+    None,
+    /// The line glides from note to note.
+    #[default]
+    Smooth,
+    /// The line jumps to each note as it is played.
+    EachNote,
+    /// The line jumps on each metronome beat.
+    Metronome,
+}
+
 pub struct DrawCtx<'a> {
     pub song: &'a Song,
     pub ti: usize,
@@ -971,6 +985,12 @@ pub struct DrawCtx<'a> {
     pub printing: bool,
     /// For export only: leave the paper out (a transparent background).
     pub transparent: bool,
+    /// How the playback line moves.
+    pub play_cursor: PlayCursor,
+    /// Shade the bar being played.
+    pub play_bar: bool,
+    /// Show bars that are too short or too long in red.
+    pub bar_errors: bool,
 }
 
 /// Where a click landed: on a tab string or a position of the notation staff.
@@ -1295,11 +1315,13 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
                 Pos2::new(o.x + bl.x, top),
                 Pos2::new(o.x + bl.x + bl.w, bottom),
             );
-            p.rect_filled(
-                bar_r,
-                0.0,
-                Color32::from_rgba_unmultiplied(250, 150, 30, 14),
-            );
+            if dc.play_bar {
+                p.rect_filled(
+                    bar_r,
+                    0.0,
+                    Color32::from_rgba_unmultiplied(250, 150, 30, 14),
+                );
+            }
             let k = bl
                 .cols_t
                 .partition_point(|&t| t as f32 <= tick)
@@ -1322,12 +1344,25 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
                     .get(k + 1)
                     .map(|&x| x + bl.cols_w[k + 1] * 0.35)
                     .unwrap_or(bl.x + bl.w);
-            let f = ((tick - t0) / (t1 - t0)).clamp(0.0, 1.0);
+            let f = match dc.play_cursor {
+                PlayCursor::EachNote | PlayCursor::None => 0.0,
+                PlayCursor::Smooth => ((tick - t0) / (t1 - t0)).clamp(0.0, 1.0),
+                PlayCursor::Metronome => {
+                    // Jump on each beat of the time signature: where the line would be
+                    // at the start of the beat being played.
+                    let mb = &song.master[bl.bar];
+                    let beat = (QUARTER * 4 / mb.den.max(1) as u32).max(1) as f32;
+                    let at = (tick / beat).floor() * beat;
+                    ((at - t0) / (t1 - t0)).clamp(0.0, 1.0)
+                }
+            };
             let x = x0 - 6.0 * z + (x1 - x0) * f;
-            p.line_segment(
-                [Pos2::new(x, top), Pos2::new(x, bottom)],
-                PStroke::new(2.0 * z, PLAY),
-            );
+            if dc.play_cursor != PlayCursor::None {
+                p.line_segment(
+                    [Pos2::new(x, top), Pos2::new(x, bottom)],
+                    PStroke::new(2.0 * z, PLAY),
+                );
+            }
         }
     }
 
@@ -1721,7 +1756,7 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
             let bar = &track.bars[bi];
             let (top, bottom) = g.staff_span();
             let (top, bottom) = (y0 + top, y0 + bottom);
-            let wrong = bar.wrong_length(mb.ticks()) && !dc.printing;
+            let wrong = bar.wrong_length(mb.ticks()) && !dc.printing && dc.bar_errors;
             // Bars that are too short or too long show in red (except the one being edited).
             if wrong && dc.cursor.0 != bi {
                 p.rect_filled(

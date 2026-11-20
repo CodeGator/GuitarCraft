@@ -4,6 +4,7 @@ use super::popups::Popup;
 use super::{App, InspectorTab, Pending};
 use crate::model::*;
 use crate::score::Notation;
+use super::shortcuts::{Act, sc};
 use egui::{Key, Modifiers, Response, RichText, Ui};
 
 fn item(ui: &mut Ui, label: &str, sc: &str) -> Response {
@@ -35,8 +36,8 @@ impl App {
                     });
                 });
             }
-            // The start screen (Browse) has no song to work on: as in Guitar Pro, only
-            // File (open and import) and Help are available.
+            // The start screen (Browse) has no song to work on: only File (open and
+            // import), Tools (its song-free tools) and Help are available.
             let home = self.show_home;
             ui.add_enabled_ui(!home, |ui| {
                 ui.menu_button("Edit", |ui| self.edit_menu(ui));
@@ -45,7 +46,9 @@ impl App {
                 ui.menu_button("Note", |ui| self.note_menu(ui));
                 ui.menu_button("Effects", |ui| self.effects_menu(ui));
                 ui.menu_button("Section", |ui| self.section_menu(ui));
-                ui.menu_button("Tools", |ui| self.tools_menu(ui));
+            });
+            ui.menu_button("Tools", |ui| self.tools_menu(ui));
+            ui.add_enabled_ui(!home, |ui| {
                 ui.menu_button("Sound", |ui| self.sound_menu(ui));
                 ui.menu_button("View", |ui| self.view_menu(ui));
                 ui.menu_button("Window", |ui| self.window_menu(ui));
@@ -58,11 +61,11 @@ impl App {
         // On the start screen there is no open song: saving, closing, exporting,
         // printing and the stylesheet are greyed out.
         let song = !self.show_home;
-        if item(ui, "New", "Ctrl+N").clicked() {
+        if item(ui, "New", &sc(Act::New)).clicked() {
             self.request(Pending::New);
             ui.close();
         }
-        if item(ui, "New Chord Chart", "Ctrl+Shift+N").clicked() {
+        if item(ui, "New Chord Chart", &sc(Act::NewChart)).clicked() {
             self.request(Pending::NewChart);
             ui.close();
         }
@@ -96,7 +99,7 @@ impl App {
                 ui.close();
             }
         });
-        if item(ui, "Open...", "Ctrl+O").clicked() {
+        if item(ui, "Open...", &sc(Act::Open)).clicked() {
             self.request(Pending::Open);
             ui.close();
         }
@@ -125,24 +128,24 @@ impl App {
                 ui.close();
             }
         });
-        if item(ui, "Browse", "Ctrl+B").clicked() {
+        if item(ui, "Browse", &sc(Act::Browse)).clicked() {
             self.show_home = true;
             ui.close();
         }
         ui.separator();
-        if item_if(ui, !self.tabs.is_empty() && song, "Close All", "Ctrl+Shift+W") {
+        if item_if(ui, !self.tabs.is_empty() && song, "Close All", &sc(Act::CloseAll)) {
             self.request(Pending::CloseAll);
             ui.close();
         }
-        if item_if(ui, song, "Close", "Ctrl+W") {
+        if item_if(ui, song, "Close", &sc(Act::Close)) {
             self.request(Pending::Close);
             ui.close();
         }
-        if item_if(ui, song, "Save", "Ctrl+S") {
+        if item_if(ui, song, "Save", &sc(Act::Save)) {
             self.save(false);
             ui.close();
         }
-        if item_if(ui, song, "Save As...", "Ctrl+Shift+S") {
+        if item_if(ui, song, "Save As...", &sc(Act::SaveAs)) {
             self.save(true);
             ui.close();
         }
@@ -180,17 +183,17 @@ impl App {
             ui.close();
         }
         ui.separator();
-        if item_if(ui, song, "Print...", "Ctrl+P") {
+        if item_if(ui, song, "Print...", &sc(Act::Print)) {
             ui.close();
             self.print_song();
         }
         ui.separator();
-        if item_if(ui, song, "Stylesheet...", "F7") {
+        if item_if(ui, song, "Stylesheet...", &sc(Act::Stylesheet)) {
             self.open_stylesheet();
             ui.close();
         }
         ui.separator();
-        if item(ui, "Quit", "Alt+F4").clicked() {
+        if item(ui, "Quit", &sc(Act::Quit)).clicked() {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
             ui.close();
         }
@@ -257,16 +260,21 @@ impl App {
     }
 
     fn edit_menu(&mut self, ui: &mut Ui) {
-        if item_if(ui, !self.undo.is_empty(), "Undo", "Ctrl+Z") {
+        if item_if(ui, !self.undo.is_empty(), "Undo", &sc(Act::Undo)) {
             self.do_undo();
             ui.close();
         }
-        if item_if(ui, !self.redo.is_empty(), "Redo", "Ctrl+Y") {
+        if item_if(ui, !self.redo.is_empty(), "Redo", &sc(Act::Redo)) {
             self.do_redo();
             ui.close();
         }
         ui.separator();
         self.clipboard_items(ui);
+        ui.separator();
+        if item(ui, "Preferences...", &sc(Act::Prefs)).clicked() {
+            self.open_prefs();
+            ui.close();
+        }
         ui.separator();
         ui.menu_button("Voices", |ui| {
             for v in 0..VOICES {
@@ -274,7 +282,7 @@ impl App {
                     ui,
                     self.voice == v,
                     &format!("Voice {}", v + 1),
-                    &format!("Ctrl+{}", v + 1),
+                    &sc([Act::Voice1, Act::Voice2, Act::Voice3, Act::Voice4][v]),
                 )
                 .clicked()
                 {
@@ -288,7 +296,7 @@ impl App {
                     ui,
                     v != self.voice,
                     &format!("Move Note to Voice {}", v + 1),
-                    &format!("Alt+{}", v + 1),
+                    &sc([Act::MoveToVoice1, Act::MoveToVoice2, Act::MoveToVoice3, Act::MoveToVoice4][v]),
                 )
                 {
                     self.move_to_voice(v);
@@ -296,18 +304,18 @@ impl App {
                 }
             }
         });
-        if item(ui, "Select All", "Ctrl+A").clicked() {
+        if item(ui, "Select All", &sc(Act::SelectAll)).clicked() {
             self.key(Key::A, Modifiers::COMMAND, 0.0);
             ui.close();
         }
         ui.separator();
         ui.menu_button("Automations", |ui| {
-            if item(ui, "Edit Automations", "F10").clicked() {
+            if item(ui, "Edit Automations", &sc(Act::Automations)).clicked() {
                 self.open_automations(self.bar);
                 ui.close();
             }
         });
-        if item(ui, "Go to...", "Ctrl+G").clicked() {
+        if item(ui, "Go to...", &sc(Act::GoTo)).clicked() {
             self.goto_text = format!("{}", self.bar + 1);
             self.goto_open = true;
             ui.close();
@@ -315,11 +323,11 @@ impl App {
     }
 
     fn track_menu(&mut self, ui: &mut Ui) {
-        if item(ui, "Add...", "Ctrl+Shift+Ins").clicked() {
+        if item(ui, "Add...", &sc(Act::AddTrack)).clicked() {
             self.open_add_track(false);
             ui.close();
         }
-        if item_if(ui, self.song.tracks.len() > 1, "Delete", "Ctrl+Shift+Del") {
+        if item_if(ui, self.song.tracks.len() > 1, "Delete", &sc(Act::DeleteTrack)) {
             self.remove_track();
             ui.close();
         }
@@ -366,14 +374,14 @@ impl App {
             ui,
             self.track + 1 < self.song.tracks.len(),
             "Next Track",
-            "Ctrl+Down",
+            &sc(Act::NextTrack),
         )
         {
             self.track += 1;
             self.clamp_cursor();
             ui.close();
         }
-        if item_if(ui, self.track > 0, "Previous Track", "Ctrl+Up") {
+        if item_if(ui, self.track > 0, "Previous Track", &sc(Act::PrevTrack)) {
             self.track -= 1;
             self.clamp_cursor();
             ui.close();
@@ -384,28 +392,28 @@ impl App {
         #[cfg(test)]
         super::flows::MENU_ENABLED.with(|c| c.set(ui.is_enabled()));
         let mb = self.song.master[self.bar].clone();
-        if item(ui, "Insert Bar", "Ctrl+Ins").clicked() {
+        if item(ui, "Insert Bar", &sc(Act::InsertBar)).clicked() {
             self.insert_bar(self.bar);
             ui.close();
         }
-        if item_if(ui, self.song.bar_count() > 1, "Delete Bar", "Ctrl+Del") {
+        if item_if(ui, self.song.bar_count() > 1, "Delete Bar", &sc(Act::DeleteBar)) {
             self.delete_bar(self.bar);
             ui.close();
         }
         ui.separator();
-        if item(ui, "Key Signature...", "Ctrl+K").clicked() {
+        if item(ui, "Key Signature...", &sc(Act::KeySig)).clicked() {
             self.open_popup(Popup::KeySig);
             ui.close();
         }
-        if item(ui, "Time Signature...", "Ctrl+T").clicked() {
+        if item(ui, "Time Signature...", &sc(Act::TimeSig)).clicked() {
             self.open_popup(Popup::TimeSig);
             ui.close();
         }
-        if item(ui, "Tempo...", "F10").clicked() {
+        if item(ui, "Tempo...", &sc(Act::Automations)).clicked() {
             self.open_automations(self.bar);
             ui.close();
         }
-        if check(ui, mb.triplet_feel, "Triplet Feel", "Ctrl+/").clicked() {
+        if check(ui, mb.triplet_feel, "Triplet Feel", &sc(Act::TripletFeel)).clicked() {
             self.bar_edit(|m| m.triplet_feel = !m.triplet_feel);
             ui.close();
         }
@@ -414,7 +422,7 @@ impl App {
             ui.close();
         }
         ui.separator();
-        if check(ui, mb.repeat_open, "Repeat Open", "[").clicked() {
+        if check(ui, mb.repeat_open, "Repeat Open", &sc(Act::RepeatOpen)).clicked() {
             self.bar_edit(|m| m.repeat_open = !m.repeat_open);
             ui.close();
         }
@@ -422,7 +430,7 @@ impl App {
             self.open_popup(Popup::Endings);
             ui.close();
         }
-        if check(ui, mb.repeat_close > 0, "Repeat Close...", "]").clicked() {
+        if check(ui, mb.repeat_close > 0, "Repeat Close...", &sc(Act::RepeatClose)).clicked() {
             self.open_popup(Popup::Repeat);
             ui.close();
         }
@@ -438,7 +446,7 @@ impl App {
             ui.close();
         }
         ui.separator();
-        if check(ui, mb.line_break, "Force Break Line", "Ctrl+Return").clicked() {
+        if check(ui, mb.line_break, "Force Break Line", &sc(Act::ForceBreak)).clicked() {
             self.bar_edit(|m| m.line_break = !m.line_break);
             ui.close();
         }
@@ -452,11 +460,11 @@ impl App {
             .or(cur.notes.first())
             .cloned()
             .unwrap_or_default();
-        if item(ui, "Insert a Beat", "Ins").clicked() {
+        if item(ui, "Insert a Beat", &sc(Act::InsertBeat)).clicked() {
             self.insert_beat();
             ui.close();
         }
-        if item(ui, "Delete the Beats", "Shift+Del").clicked() {
+        if item(ui, "Delete the Beats", &sc(Act::DeleteBeats)).clicked() {
             self.delete_beats();
             ui.close();
         }
@@ -469,7 +477,7 @@ impl App {
                 }
             }
             ui.separator();
-            if check(ui, cur.dotted, "Dotted", ".").clicked() {
+            if check(ui, cur.dotted, "Dotted", &sc(Act::Dotted)).clicked() {
                 self.beat_edit(|b| {
                     b.dotted = !b.dotted;
                     b.double_dot = false;
@@ -498,33 +506,33 @@ impl App {
         });
         ui.separator();
         ui.add_enabled_ui(has, |ui| {
-            if check(ui, n.ghost, "Ghost Note", "O").clicked() {
+            if check(ui, n.ghost, "Ghost Note", &sc(Act::Ghost)).clicked() {
                 self.toggle_note_flag("Ghost note", |n| &mut n.ghost);
                 ui.close();
             }
-            if check(ui, n.accent, "Accented Note", ";").clicked() {
+            if check(ui, n.accent, "Accented Note", &sc(Act::Accent)).clicked() {
                 self.toggle_note_flag("Accent", |n| &mut n.accent);
                 ui.close();
             }
-            if check(ui, n.heavy_accent, "Heavily Accented Note", ":").clicked() {
+            if check(ui, n.heavy_accent, "Heavily Accented Note", &sc(Act::HeavyAccent)).clicked() {
                 self.toggle_note_flag("Heavy accent", |n| &mut n.heavy_accent);
                 ui.close();
             }
-            if check(ui, n.staccato, "Staccato", "!").clicked() {
+            if check(ui, n.staccato, "Staccato", &sc(Act::Staccato)).clicked() {
                 self.toggle_note_flag("Staccato", |n| &mut n.staccato);
                 ui.close();
             }
             ui.separator();
-            if check(ui, n.tie, "Tie Note", "L").clicked() {
+            if check(ui, n.tie, "Tie Note", &sc(Act::TieNote)).clicked() {
                 self.toggle_note_flag("Tie", |n| &mut n.tie);
                 ui.close();
             }
         });
-        if item(ui, "Rest", "R").clicked() {
+        if item(ui, "Rest", &sc(Act::Rest)).clicked() {
             self.key(Key::R, Modifiers::NONE, 0.0);
             ui.close();
         }
-        if check(ui, cur.fermata, "Fermata", "F").clicked() {
+        if check(ui, cur.fermata, "Fermata", &sc(Act::Fermata)).clicked() {
             self.beat_edit(|b| b.fermata = !b.fermata);
             ui.close();
         }
@@ -542,38 +550,38 @@ impl App {
                     }
                 }
             });
-            if item(ui, "One Semitone Down", "Alt+Shift+Down").clicked() {
+            if item(ui, "One Semitone Down", &sc(Act::SemitoneDown)).clicked() {
                 self.transpose(-1);
                 ui.close();
             }
-            if item(ui, "One Semitone Up", "Alt+Shift+Up").clicked() {
+            if item(ui, "One Semitone Up", &sc(Act::SemitoneUp)).clicked() {
                 self.transpose(1);
                 ui.close();
             }
-            if item(ui, "One Octave Down", "Alt+Shift+PgDown").clicked() {
+            if item(ui, "One Octave Down", &sc(Act::OctaveDown)).clicked() {
                 self.shift_octave(-1);
                 ui.close();
             }
-            if item(ui, "One Octave Up", "Alt+Shift+PgUp").clicked() {
+            if item(ui, "One Octave Up", &sc(Act::OctaveUp)).clicked() {
                 self.shift_octave(1);
                 ui.close();
             }
         });
         ui.separator();
-        if check(ui, cur.pick == 1, "Pickstroke Down", "Shift+D").clicked() {
+        if check(ui, cur.pick == 1, "Pickstroke Down", &sc(Act::PickDown)).clicked() {
             self.beat_edit(|b| b.pick = if b.pick == 1 { 0 } else { 1 });
             ui.close();
         }
-        if check(ui, cur.pick == 2, "Pickstroke Up", "Shift+U").clicked() {
+        if check(ui, cur.pick == 2, "Pickstroke Up", &sc(Act::PickUp)).clicked() {
             self.beat_edit(|b| b.pick = if b.pick == 2 { 0 } else { 2 });
             ui.close();
         }
         ui.separator();
-        if item(ui, "Chord...", "A").clicked() {
+        if item(ui, "Chord...", &sc(Act::Chord)).clicked() {
             self.open_chord_tool();
             ui.close();
         }
-        if item(ui, "Text...", "T").clicked() {
+        if item(ui, "Text...", &sc(Act::Text)).clicked() {
             self.open_popup(Popup::Text);
             ui.close();
         }
@@ -617,7 +625,7 @@ impl App {
                 self.open_popup(Popup::Grace);
                 ui.close();
             }
-            if check(ui, n.trill > 0, "Trill...", "N").clicked() {
+            if check(ui, n.trill > 0, "Trill...", &sc(Act::Trill)).clicked() {
                 self.open_popup(Popup::Trill);
                 ui.close();
             }
@@ -630,21 +638,21 @@ impl App {
         });
         ui.separator();
         ui.add_enabled_ui(has, |ui| {
-            if check(ui, n.let_ring, "Let Ring", "I").clicked() {
+            if check(ui, n.let_ring, "Let Ring", &sc(Act::LetRing)).clicked() {
                 self.toggle_note_flag("Let ring", |n| &mut n.let_ring);
                 ui.close();
             }
-            if check(ui, n.hammer, "Hammer On / Pull Off", "H").clicked() {
+            if check(ui, n.hammer, "Hammer On / Pull Off", &sc(Act::Hammer)).clicked() {
                 self.toggle_note_flag("Hammer-on / pull-off", |n| &mut n.hammer);
                 ui.close();
             }
         });
-        if check(ui, cur.technique == 1, "Tapping", ")").clicked() {
+        if check(ui, cur.technique == 1, "Tapping", &sc(Act::Tapping)).clicked() {
             self.beat_edit(|b| b.technique = if b.technique == 1 { 0 } else { 1 });
             ui.close();
         }
         ui.separator();
-        if check(ui, cur.technique == 2, "Slap", "$").clicked() {
+        if check(ui, cur.technique == 2, "Slap", &sc(Act::Slap)).clicked() {
             self.beat_edit(|b| b.technique = if b.technique == 2 { 0 } else { 2 });
             ui.close();
         }
@@ -654,21 +662,21 @@ impl App {
         }
         ui.separator();
         ui.add_enabled_ui(has, |ui| {
-            if check(ui, n.dead, "Dead Note", "X").clicked() {
+            if check(ui, n.dead, "Dead Note", &sc(Act::DeadNote)).clicked() {
                 self.toggle_note_flag("Dead note", |n| &mut n.dead);
                 ui.close();
             }
-            if check(ui, n.palm_mute, "Palm Mute on Note", "P").clicked() {
+            if check(ui, n.palm_mute, "Palm Mute on Note", &sc(Act::PalmMuteNote)).clicked() {
                 self.toggle_note_flag("Palm mute", |n| &mut n.palm_mute);
                 ui.close();
             }
             ui.separator();
-            if check(ui, n.bend > 0, "Bend...", "B").clicked() {
+            if check(ui, n.bend > 0, "Bend...", &sc(Act::Bend)).clicked() {
                 self.open_popup(Popup::Bend);
                 ui.close();
             }
             ui.menu_button("Slide", |ui| {
-                if check(ui, n.slide, "Legato Slide", "S").clicked() {
+                if check(ui, n.slide, "Legato Slide", &sc(Act::Slide)).clicked() {
                     self.toggle_note_flag("Slide", |n| &mut n.slide);
                     ui.close();
                 }
@@ -682,7 +690,7 @@ impl App {
                 }
             });
             ui.menu_button("Vibrato", |ui| {
-                if check(ui, n.vibrato, "Slight", "V").clicked() {
+                if check(ui, n.vibrato, "Slight", &sc(Act::Vibrato)).clicked() {
                     self.toggle_note_flag("Vibrato", |n| &mut n.vibrato);
                     ui.close();
                 }
@@ -692,17 +700,17 @@ impl App {
                 }
             });
             ui.separator();
-            if check(ui, n.harmonic, "Natural Harmonic", "Y").clicked() {
+            if check(ui, n.harmonic, "Natural Harmonic", &sc(Act::NaturalHarmonic)).clicked() {
                 self.toggle_note_flag("Natural harmonic", |n| &mut n.harmonic);
                 ui.close();
             }
-            if check(ui, n.pinch_harmonic, "Artificial Harmonic", "Ctrl+Alt+Y").clicked() {
+            if check(ui, n.pinch_harmonic, "Artificial Harmonic", &sc(Act::ArtificialHarmonic)).clicked() {
                 self.toggle_note_flag("Artificial harmonic", |n| &mut n.pinch_harmonic);
                 ui.close();
             }
         });
         ui.separator();
-        if check(ui, cur.stroke == Stroke::Down, "Brush Downstroke", "Ctrl+D").clicked() {
+        if check(ui, cur.stroke == Stroke::Down, "Brush Downstroke", &sc(Act::BrushDown)).clicked() {
             self.beat_edit(|b| {
                 b.stroke = if b.stroke == Stroke::Down {
                     Stroke::None
@@ -712,7 +720,7 @@ impl App {
             });
             ui.close();
         }
-        if check(ui, cur.stroke == Stroke::Up, "Brush Upstroke", "Ctrl+U").clicked() {
+        if check(ui, cur.stroke == Stroke::Up, "Brush Upstroke", &sc(Act::BrushUp)).clicked() {
             self.beat_edit(|b| {
                 b.stroke = if b.stroke == Stroke::Up {
                     Stroke::None
@@ -723,7 +731,7 @@ impl App {
             ui.close();
         }
         ui.separator();
-        if check(ui, cur.fade_in, "Fade In", "<").clicked() {
+        if check(ui, cur.fade_in, "Fade In", &sc(Act::FadeIn)).clicked() {
             self.beat_edit(|b| b.fade_in = !b.fade_in);
             ui.close();
         }
@@ -731,7 +739,7 @@ impl App {
 
     fn section_menu(&mut self, ui: &mut Ui) {
         let has = self.song.master[self.bar].marker.is_some();
-        if check(ui, has, "Edit...", "Shift+Ins").clicked() {
+        if check(ui, has, "Edit...", &sc(Act::Section)).clicked() {
             self.edit_section();
             ui.close();
         }
@@ -740,11 +748,11 @@ impl App {
             ui.close();
         }
         ui.separator();
-        if item(ui, "Previous Section", "Ctrl+Alt+Left").clicked() {
+        if item(ui, "Previous Section", &sc(Act::PrevSection)).clicked() {
             self.goto_section(-1);
             ui.close();
         }
-        if item(ui, "Next Section", "Ctrl+Alt+Right").clicked() {
+        if item(ui, "Next Section", &sc(Act::NextSection)).clicked() {
             self.goto_section(1);
             ui.close();
         }
@@ -772,12 +780,14 @@ impl App {
             self.open_chord_scales(super::chordscales::Mode::Scales);
             ui.close();
         }
-        if item(ui, "Transpose...", "").clicked() {
+        // On the start screen only the song-free tools work.
+        let song = !self.show_home;
+        if item_if(ui, song, "Transpose...", "") {
             self.transpose_open = true;
             ui.close();
         }
         ui.separator();
-        if item(ui, "Move/Swap Voices...", "Ctrl+Shift+M").clicked() {
+        if item_if(ui, song, "Move/Swap Voices...", &sc(Act::MoveVoices)) {
             self.vfrom = self.voice;
             self.vto = if self.voice == 0 { 1 } else { 0 };
             self.vrange = if self.selection().is_some() {
@@ -788,16 +798,16 @@ impl App {
             self.voices_open = true;
             ui.close();
         }
-        if item(ui, "Check Bar Duration", "F4").clicked() {
+        if item_if(ui, song, "Check Bar Duration", &sc(Act::CheckBars)) {
             self.check_bar_duration();
             ui.close();
         }
-        if item(ui, "Complete Bars with Rests", "").clicked() {
+        if item_if(ui, song, "Complete Bars with Rests", "") {
             self.complete_bars();
             ui.close();
         }
         ui.separator();
-        if item(ui, "Show Command Palette", "Ctrl+E").clicked() {
+        if item_if(ui, song, "Show Command Palette", &sc(Act::CommandPalette)) {
             self.cmd_open = true;
             self.cmd_text.clear();
             ui.close();
@@ -805,48 +815,48 @@ impl App {
     }
 
     fn sound_menu(&mut self, ui: &mut Ui) {
-        if item(ui, if self.playing { "Pause" } else { "Play" }, "Space").clicked() {
+        if item(ui, if self.playing { "Pause" } else { "Play" }, &sc(Act::PlayPause)).clicked() {
             self.toggle_play();
             ui.close();
         }
-        if item(ui, "Play from the Beginning", "Ctrl+Space").clicked() {
+        if item(ui, "Play from the Beginning", &sc(Act::PlayFromStart)).clicked() {
             self.play_from_start();
             ui.close();
         }
-        if item(ui, "Stop", "Esc").clicked() {
+        if item(ui, "Stop", &sc(Act::Stop)).clicked() {
             self.stop();
             ui.close();
         }
         ui.separator();
-        if item(ui, "First Bar", "Ctrl+Home").clicked() {
+        if item(ui, "First Bar", &sc(Act::FirstBar)).clicked() {
             self.stop();
             self.goto_bar(0);
             ui.close();
         }
-        if item(ui, "Rewind", "Ctrl+Left").clicked() {
+        if item(ui, "Rewind", &sc(Act::PrevBar)).clicked() {
             self.goto_bar(self.bar.saturating_sub(1));
             ui.close();
         }
-        if item(ui, "Fast Forward", "Ctrl+Right").clicked() {
+        if item(ui, "Fast Forward", &sc(Act::NextBar)).clicked() {
             self.goto_bar(self.bar + 1);
             ui.close();
         }
-        if item(ui, "Last Bar", "Ctrl+End").clicked() {
+        if item(ui, "Last Bar", &sc(Act::LastBar)).clicked() {
             self.stop();
             self.goto_bar(self.song.bar_count() - 1);
             ui.close();
         }
         ui.separator();
-        if item(ui, "Step Backward", "Alt+Left").clicked() {
+        if item(ui, "Step Backward", &sc(Act::StepBack)).clicked() {
             self.step(-1);
             ui.close();
         }
-        if item(ui, "Step Forward", "Alt+Right").clicked() {
+        if item(ui, "Step Forward", &sc(Act::StepForward)).clicked() {
             self.step(1);
             ui.close();
         }
         ui.separator();
-        if check(ui, self.looping, "Loop", "F9").clicked() {
+        if check(ui, self.looping, "Loop", &sc(Act::Loop)).clicked() {
             self.looping = !self.looping;
         }
         if check(ui, self.count_in, "Count-in", "").clicked() {
@@ -888,24 +898,24 @@ impl App {
     }
 
     fn view_menu(&mut self, ui: &mut Ui) {
-        if check(ui, self.show_palette, "Show Editing Palette", "F2").clicked() {
+        if check(ui, self.show_palette, "Show Editing Palette", &sc(Act::ShowPalette)).clicked() {
             self.show_palette = !self.show_palette;
         }
         if check(ui, self.show_inspector, "Show Inspector", "").clicked() {
             self.show_inspector = !self.show_inspector;
         }
-        if check(ui, self.show_tracks, "Show Global View", "F8").clicked() {
+        if check(ui, self.show_tracks, "Show Global View", &sc(Act::ShowGlobalView)).clicked() {
             self.show_tracks = !self.show_tracks;
         }
         ui.separator();
         if check(ui, self.show_fretboard, "Show Fretboard View", "").clicked() {
             self.show_fretboard = !self.show_fretboard;
         }
-        if check(ui, self.show_keyboard, "Show Keyboard View", "Ctrl+F6").clicked() {
+        if check(ui, self.show_keyboard, "Show Keyboard View", &sc(Act::KeyboardView)).clicked() {
             self.show_keyboard = !self.show_keyboard;
         }
         ui.separator();
-        if check(ui, !self.single_track, "Multitrack", "F3").clicked() {
+        if check(ui, !self.single_track, "Multitrack", &sc(Act::Multitrack)).clicked() {
             self.single_track = !self.single_track;
         }
         ui.menu_button("Notation", |ui| {
@@ -924,10 +934,10 @@ impl App {
             self.follow = !self.follow;
         }
         ui.separator();
-        if item(ui, "Zoom In", "Ctrl++").clicked() {
+        if item(ui, "Zoom In", &sc(Act::ZoomIn)).clicked() {
             self.zoom_step(1);
         }
-        if item(ui, "Zoom Out", "Ctrl+-").clicked() {
+        if item(ui, "Zoom Out", &sc(Act::ZoomOut)).clicked() {
             self.zoom_step(-1);
         }
         ui.separator();
@@ -944,7 +954,7 @@ impl App {
             }
         }
         ui.separator();
-        if check(ui, self.fullscreen, "Full Screen Mode", "F11").clicked() {
+        if check(ui, self.fullscreen, "Full Screen Mode", &sc(Act::FullScreen)).clicked() {
             self.toggle_fullscreen();
             ui.close();
         }
@@ -961,11 +971,11 @@ impl App {
         }
         if !self.tabs.is_empty() {
             ui.separator();
-            if item(ui, "Next Tab", "Ctrl+Tab").clicked() {
+            if item(ui, "Next Tab", &sc(Act::NextTab)).clicked() {
                 self.cycle_tab(1);
                 ui.close();
             }
-            if item(ui, "Previous Tab", "Ctrl+Shift+Tab").clicked() {
+            if item(ui, "Previous Tab", &sc(Act::PrevTab)).clicked() {
                 self.cycle_tab(-1);
                 ui.close();
             }
@@ -990,7 +1000,7 @@ impl App {
             self.show_help = true;
             ui.close();
         }
-        if item(ui, "Help Center...", "F1").clicked() {
+        if item(ui, "Help Center...", &sc(Act::Help)).clicked() {
             self.guide_open = true;
             ui.close();
         }

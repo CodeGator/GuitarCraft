@@ -78,9 +78,9 @@ impl App {
         let mt_resp = ui
             .interact(mt, ui.id().with("multitrack"), Sense::click())
             .on_hover_text(if self.single_track {
-                "Multitrack is off: only the selected track is shown (F3)"
+                super::shortcuts::tip("Multitrack is off: only the selected track is shown", super::shortcuts::Act::Multitrack)
             } else {
-                "Multitrack is on: all tracks with an open eye are shown (F3)"
+                super::shortcuts::tip("Multitrack is on: all tracks with an open eye are shown", super::shortcuts::Act::Multitrack)
             });
         let multi = !self.single_track;
         if multi {
@@ -568,8 +568,9 @@ impl App {
             ui.vertical_centered(|ui| {
                 ui.label(
                     RichText::new(format!(
-                        "{} has no strings. Use the Keyboard view (Ctrl+F6) to enter notes.",
-                        tr.name
+                        "{} has no strings. Use the Keyboard view ({}) to enter notes.",
+                        tr.name,
+                        super::shortcuts::sc(super::shortcuts::Act::KeyboardView)
                     ))
                     .color(Color32::from_gray(170)),
                 );
@@ -683,6 +684,9 @@ impl App {
                     cursor_std: self.std_cursor,
                     printing: false,
                     transparent: false,
+                    play_cursor: self.prefs.play_cursor,
+                    play_bar: self.prefs.highlight_played_bar,
+                    bar_errors: self.prefs.err_bar_duration,
                 };
                 for page in 0..lay.pages {
                     let o = lay.page_origin(page, left, rect.top());

@@ -355,7 +355,7 @@ impl App {
             }
             // New song.
             let pr = Rect::from_min_max(Pos2::new(full.right() - PLUS_W, full.top()), full.right_bottom());
-            let presp = ui.interact(pr, ui.id().with("tab-plus"), Sense::click()).on_hover_text("New song (Ctrl+N)");
+            let presp = ui.interact(pr, ui.id().with("tab-plus"), Sense::click()).on_hover_text(super::shortcuts::tip("New song", super::shortcuts::Act::New));
             ui.painter().rect_filled(pr, 0.0, if presp.hovered() { Color32::from_rgb(118, 130, 160) } else { Color32::from_rgb(98, 108, 136) });
             ui.painter().text(pr.center(), Align2::CENTER_CENTER, "+", FontId::proportional(18.0), Color32::WHITE);
             if presp.clicked() {

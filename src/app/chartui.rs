@@ -9,6 +9,7 @@ use super::menus::item_if as item;
 use super::panels::BLUE;
 use super::{App, Pending};
 use crate::chart::{self, ChordChart, Kind, MapEntry, Rgb, Section};
+use super::shortcuts::{Act, Binding, Place, find, sc};
 use egui::{Align2, Color32, FontFamily, FontId, RichText, Sense, Ui, Vec2};
 use std::path::PathBuf;
 
@@ -303,52 +304,60 @@ impl App {
 
     /// Shortcuts while a chord chart is open.
     pub(super) fn handle_chart_keys(&mut self, ctx: &egui::Context) {
-        if self.pending.is_some() {
+        // A question, or Preferences (where keys may be being recorded), has the keys.
+        if self.pending.is_some() || self.prefs_dlg.is_some() {
             return;
         }
         let typing = ctx.egui_wants_keyboard_input();
         let events = ctx.input(|i| i.events.clone());
         for ev in events {
             if let egui::Event::Key { key, pressed: true, modifiers: m, .. } = ev {
-                if !m.command {
-                    if key == egui::Key::F1 {
-                        self.show_help = true;
-                    }
-                    if key == egui::Key::F7 {
-                        self.open_chart_style(0);
-                    }
-                    if key == egui::Key::F10
-                        && let Some(st) = &mut self.chart
-                    {
-                        st.tempo_open = true;
-                    }
+                let b = Binding::of(key, m);
+                let Some(act) = find(Place::Chart, &b) else { continue };
+                // In a text field only Ctrl, Alt and function keys work, and Undo
+                // and Redo are the field's own.
+                if typing && (!b.works_while_typing() || matches!(act, Act::Undo | Act::Redo)) {
                     continue;
                 }
-                match key {
-                    egui::Key::S if m.shift => self.save_chart(true),
-                    egui::Key::S => self.save_chart(false),
-                    egui::Key::O => self.request(Pending::Open),
-                    egui::Key::N if m.shift => self.request(Pending::NewChart),
-                    egui::Key::N => self.request(Pending::New),
-                    egui::Key::P => self.print_song(),
-                    egui::Key::T => self.open_transpose(None),
-                    egui::Key::W => self.request(Pending::Close),
-                    egui::Key::Z if !typing && m.shift => self.chart_redo(),
-                    egui::Key::Z if !typing => self.chart_undo(),
-                    egui::Key::Y if !typing => self.chart_redo(),
-                    egui::Key::Plus | egui::Key::Equals => {
-                        if let Some(st) = &mut self.chart {
-                            st.zoom = (st.zoom * 1.1).min(3.0);
-                        }
-                    }
-                    egui::Key::Minus => {
-                        if let Some(st) = &mut self.chart {
-                            st.zoom = (st.zoom / 1.1).max(0.4);
-                        }
-                    }
-                    _ => {}
+                self.run_chart_act(act);
+            }
+        }
+    }
+
+    /// Runs an action of the shortcut list on the open chord chart.
+    fn run_chart_act(&mut self, act: Act) {
+        match act {
+            Act::New => self.request(Pending::New),
+            Act::NewChart => self.request(Pending::NewChart),
+            Act::Open => self.request(Pending::Open),
+            Act::Close => self.request(Pending::Close),
+            Act::Save => self.save_chart(false),
+            Act::SaveAs => self.save_chart(true),
+            Act::Print => self.print_song(),
+            Act::Prefs => self.open_prefs(),
+            Act::Undo => self.chart_undo(),
+            Act::Redo => self.chart_redo(),
+            Act::Help => self.show_help = true,
+            Act::Stylesheet => self.open_chart_style(0),
+            Act::Automations => {
+                if let Some(st) = &mut self.chart {
+                    st.tempo_open = true;
                 }
             }
+            Act::ZoomIn => {
+                if let Some(st) = &mut self.chart {
+                    st.zoom = (st.zoom * 1.1).min(3.0);
+                }
+            }
+            Act::ZoomOut => {
+                if let Some(st) = &mut self.chart {
+                    st.zoom = (st.zoom / 1.1).max(0.4);
+                }
+            }
+            Act::ChartTranspose => self.open_transpose(None),
+            Act::NextTab => self.cycle_tab(1),
+            Act::PrevTab => self.cycle_tab(-1),
+            _ => {}
         }
     }
 
@@ -356,15 +365,15 @@ impl App {
     pub(super) fn chart_menu_bar(&mut self, ui: &mut Ui) {
         egui::MenuBar::new().ui(ui, |ui| {
             ui.menu_button("File", |ui| {
-                if item(ui, true, "New Song", "Ctrl+N") {
+                if item(ui, true, "New Song", &sc(Act::New)) {
                     self.request(Pending::New);
                     ui.close();
                 }
-                if item(ui, true, "New Chord Chart", "Ctrl+Shift+N") {
+                if item(ui, true, "New Chord Chart", &sc(Act::NewChart)) {
                     self.request(Pending::NewChart);
                     ui.close();
                 }
-                if item(ui, true, "Open...", "Ctrl+O") {
+                if item(ui, true, "Open...", &sc(Act::Open)) {
                     self.request(Pending::Open);
                     ui.close();
                 }
@@ -373,15 +382,15 @@ impl App {
                     ui.close();
                 }
                 ui.separator();
-                if item(ui, true, "Close", "Ctrl+W") {
+                if item(ui, true, "Close", &sc(Act::Close)) {
                     self.request(Pending::Close);
                     ui.close();
                 }
-                if item(ui, true, "Save", "Ctrl+S") {
+                if item(ui, true, "Save", &sc(Act::Save)) {
                     self.save_chart(false);
                     ui.close();
                 }
-                if item(ui, true, "Save As...", "Ctrl+Shift+S") {
+                if item(ui, true, "Save As...", &sc(Act::SaveAs)) {
                     self.save_chart(true);
                     ui.close();
                 }
@@ -396,28 +405,33 @@ impl App {
                         ui.close();
                     }
                 });
-                if item(ui, true, "Print...", "Ctrl+P") {
+                if item(ui, true, "Print...", &sc(Act::Print)) {
                     ui.close();
                     self.print_song();
                 }
                 ui.separator();
-                if item(ui, true, "Quit", "Alt+F4") {
+                if item(ui, true, "Quit", &sc(Act::Quit)) {
                     ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
                     ui.close();
                 }
             });
             let (can_undo, can_redo) = self.chart.as_ref().map(|s| (!s.undo.is_empty(), !s.redo.is_empty())).unwrap_or((false, false));
             ui.menu_button("Edit", |ui| {
-                if item(ui, can_undo, "Undo", "Ctrl+Z") {
+                if item(ui, can_undo, "Undo", &sc(Act::Undo)) {
                     self.chart_undo();
                     ui.close();
                 }
-                if item(ui, can_redo, "Redo", "Ctrl+Y") {
+                if item(ui, can_redo, "Redo", &sc(Act::Redo)) {
                     self.chart_redo();
                     ui.close();
                 }
                 ui.separator();
-                if item(ui, true, "Transpose...", "Ctrl+T") {
+                if item(ui, true, "Preferences...", &sc(Act::Prefs)) {
+                    self.open_prefs();
+                    ui.close();
+                }
+                ui.separator();
+                if item(ui, true, "Transpose...", &sc(Act::ChartTranspose)) {
                     self.open_transpose(None);
                     ui.close();
                 }
@@ -452,7 +466,7 @@ impl App {
                 }
             });
             ui.menu_button("View", |ui| {
-                if item(ui, true, "Tempo...", "F10") {
+                if item(ui, true, "Tempo...", &sc(Act::Automations)) {
                     if let Some(st) = &mut self.chart {
                         st.tempo_open = true;
                     }
@@ -464,7 +478,7 @@ impl App {
                     }
                     ui.close();
                 }
-                if item(ui, true, "Stylesheet...", "F7") {
+                if item(ui, true, "Stylesheet...", &sc(Act::Stylesheet)) {
                     self.open_chart_style(0);
                     ui.close();
                 }
@@ -627,10 +641,10 @@ impl App {
             }
             ui.add_space(8.0);
             let (u, r) = self.chart.as_ref().map(|s| (!s.undo.is_empty(), !s.redo.is_empty())).unwrap_or((false, false));
-            if ui.add_enabled_ui(u, |ui| icon_toggle(ui, false, "Undo (Ctrl+Z)", icon_undo)).inner.clicked() {
+            if ui.add_enabled_ui(u, |ui| icon_toggle(ui, false, &super::shortcuts::tip("Undo", super::shortcuts::Act::Undo), icon_undo)).inner.clicked() {
                 self.chart_undo();
             }
-            if ui.add_enabled_ui(r, |ui| icon_toggle(ui, false, "Redo (Ctrl+Y)", icon_redo)).inner.clicked() {
+            if ui.add_enabled_ui(r, |ui| icon_toggle(ui, false, &super::shortcuts::tip("Redo", super::shortcuts::Act::Redo), icon_redo)).inner.clicked() {
                 self.chart_redo();
             }
             ui.add_space(12.0);
@@ -651,24 +665,24 @@ impl App {
             if ui.button(RichText::new("\u{266D}").size(15.0)).on_hover_text("Transpose the chart down a half step").clicked() {
                 self.transpose_step(-1);
             }
-            if ui.button("Transpose").on_hover_text("Move the chords to another key (Ctrl+T)").clicked() {
+            if ui.button("Transpose").on_hover_text(super::shortcuts::tip("Move the chords to another key", super::shortcuts::Act::ChartTranspose)).clicked() {
                 self.open_transpose(None);
             }
             if ui.button(RichText::new("\u{266F}").size(15.0)).on_hover_text("Transpose the chart up a half step").clicked() {
                 self.transpose_step(1);
             }
             ui.add_space(8.0);
-            if ui.button("\u{1F3A8} Stylesheet").on_hover_text("Fonts, sizes, colours and columns of this chart (F7)").clicked() {
+            if ui.button("\u{1F3A8} Stylesheet").on_hover_text(super::shortcuts::tip("Fonts, sizes, colours and columns of this chart", super::shortcuts::Act::Stylesheet)).clicked() {
                 self.open_chart_style(0);
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("\u{1F5B6} Print").on_hover_text("Print the chart (Ctrl+P)").clicked() {
+                if ui.button("\u{1F5B6} Print").on_hover_text(super::shortcuts::tip("Print the chart", super::shortcuts::Act::Print)).clicked() {
                     self.print_song();
                 }
                 if ui.button("Export PDF").clicked() {
                     self.open_export(super::printing::ExportKind::Pdf);
                 }
-                if ui.button("\u{1F4BE} Save").on_hover_text("Save the chord chart (Ctrl+S)").clicked() {
+                if ui.button("\u{1F4BE} Save").on_hover_text(super::shortcuts::tip("Save the chord chart", super::shortcuts::Act::Save)).clicked() {
                     self.save_chart(false);
                 }
             });
@@ -890,7 +904,7 @@ impl App {
                         ui.label(RichText::new("BPM:").color(Color32::from_gray(210)));
                         let changes = d.tempo_points().len() - 1;
                         let text = if changes == 0 { format!("\u{2669} = {}", d.bpm) } else { format!("\u{2669} = {}  (+{changes} change{})", d.bpm, if changes == 1 { "" } else { "s" }) };
-                        if ui.button(text).on_hover_text("Edit the tempo and its changes (F10)").clicked() {
+                        if ui.button(text).on_hover_text(super::shortcuts::tip("Edit the tempo and its changes", super::shortcuts::Act::Automations)).clicked() {
                             *open_tempo = true;
                         }
                     });
@@ -898,7 +912,7 @@ impl App {
                     ui.add(egui::TextEdit::multiline(&mut d.copyright).desired_width(fw).desired_rows(2).hint_text("\u{00A9} 2026 Writer name. All rights reserved."));
                     heading(ui, "STYLE");
                     ui.label(RichText::new("Fonts, sizes, colours, columns and what is printed are in the chart's stylesheet.").size(11.0).color(Color32::from_gray(165)));
-                    if ui.button("\u{1F3A8} Stylesheet... (F7)").clicked() {
+                    if ui.button(super::shortcuts::tip("\u{1F3A8} Stylesheet...", super::shortcuts::Act::Stylesheet)).clicked() {
                         *open_style = true;
                     }
                     heading(ui, "CHORD DIAGRAMS");

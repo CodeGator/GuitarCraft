@@ -199,7 +199,9 @@ pub struct Audio {
 }
 
 impl Audio {
-    pub fn new() -> Audio {
+    /// Sound through the named output device (the system's default when it is None
+    /// or no longer connected), with a fixed buffer size in samples when one is given.
+    pub fn with_output(device: Option<&str>, buffer: Option<u32>) -> Audio {
         let state = Arc::new(Mutex::new(PlayerState {
             playing: false,
             pos: 0,
@@ -218,7 +220,9 @@ impl Audio {
             _stream: None,
             error: None,
         };
-        match a.start() {
+        // A buffer size the device refuses falls back to the device's own.
+        let tried = a.start(device, buffer).or_else(|e| if buffer.is_some() { a.start(device, None) } else { Err(e) });
+        match tried {
             Ok(s) => a._stream = Some(s),
             Err(e) => a.error = Some(e),
         }
@@ -252,16 +256,22 @@ impl Audio {
         }
     }
 
-    fn start(&self) -> Result<cpal::Stream, String> {
+    fn start(&self, name: Option<&str>, buffer: Option<u32>) -> Result<cpal::Stream, String> {
         let host = cpal::default_host();
-        let device = host
-            .default_output_device()
+        let chosen = name.and_then(|n| {
+            host.output_devices().ok()?.find(|d| d.name().map(|x| x == n).unwrap_or(false))
+        });
+        let device = chosen
+            .or_else(|| host.default_output_device())
             .ok_or_else(|| "No sound output device found".to_string())?;
         let cfg = device.default_output_config().map_err(|e| e.to_string())?;
         let channels = cfg.channels() as usize;
         let sr = cfg.sample_rate().0 as f32;
         self.state.lock().unwrap().sample_rate = sr;
-        let config: cpal::StreamConfig = cfg.config();
+        let mut config: cpal::StreamConfig = cfg.config();
+        if let Some(b) = buffer {
+            config.buffer_size = cpal::BufferSize::Fixed(b);
+        }
         let st = self.state.clone();
         let err_fn = |e| eprintln!("audio error: {e}");
         let stream = match cfg.sample_format() {
@@ -316,6 +326,14 @@ impl Audio {
         .map_err(|e| e.to_string())?;
         stream.play().map_err(|e| e.to_string())?;
         Ok(stream)
+    }
+
+    /// The names of the sound output devices that are connected now.
+    pub fn output_device_names() -> Vec<String> {
+        cpal::default_host()
+            .output_devices()
+            .map(|it| it.filter_map(|d| d.name().ok()).collect())
+            .unwrap_or_default()
     }
 
     pub fn sample_rate(&self) -> f32 {

@@ -23,6 +23,8 @@ mod menus;
 mod palette;
 mod panels;
 mod popups;
+mod prefs;
+mod shortcuts;
 mod printing;
 mod side;
 mod stylesheet;
@@ -239,6 +241,12 @@ pub struct App {
     /// Whether Insert and Delete were held at the last frame (Windows hides some of their shortcuts).
     ins_down: bool,
     del_down: bool,
+    /// Edit > Preferences: the person's settings, kept between runs.
+    prefs: prefs::Prefs,
+    /// The Preferences window, while open.
+    prefs_dlg: Option<prefs::PrefsDlg>,
+    /// Something was copied this frame: mark the system clipboard so pasting is offered.
+    clip_mark: bool,
 }
 
 impl App {
@@ -257,6 +265,9 @@ impl App {
             home,
             show,
         } = launch;
+        // Pictures and tests always start from the standard settings, not the person's.
+        let own_settings = screenshot.is_none() && !cfg!(test);
+        let no_file_asked = open.is_none();
         let music_font = crate::setup_fonts(ctx);
         crate::setup_style(ctx);
         // Open on the start screen (File > Browse), as Guitar Pro 8 does. Screenshot runs
@@ -394,7 +405,12 @@ impl App {
             quitting: false,
             ins_down: false,
             del_down: false,
+            prefs: if own_settings { prefs::Prefs::load() } else { prefs::Prefs::default() },
+            prefs_dlg: None,
+            clip_mark: false,
         };
+        // The keys the person chose (the defaults for pictures and tests).
+        shortcuts::set_keymap(shortcuts::Keymap::from_saved(&app.prefs.shortcuts));
         if app.screenshot.is_none() {
             app.recent = home::load_recent();
         }
@@ -418,6 +434,13 @@ impl App {
                 "bar" => app.open_popup(popups::Popup::TimeSig),
                 "key" => app.open_popup(popups::Popup::KeySig),
                 "single" => app.single_track = true,
+                // Preferences, on a given tab: prefs, prefs1 ... prefs4.
+                p if p.starts_with("prefs") => {
+                    app.open_prefs();
+                    if let Some(d) = app.prefs_dlg.as_mut() {
+                        d.tab = p[5..].parse().unwrap_or(0).min(prefs::TABS.len() - 1);
+                    }
+                }
                 "more" => app.song_more = true,
                 "playing" => {
                     // A picture of playback part way through bar 1 (no sound).
@@ -760,6 +783,9 @@ impl App {
             app.clamp_cursor();
         }
         app.total_secs = app.song_seconds();
+        if own_settings && no_file_asked {
+            app.prefs_at_start(ctx);
+        }
         app
     }
 
@@ -857,7 +883,7 @@ impl App {
     fn ensure_audio(&mut self) {
         if self.audio.is_none() {
             self.audio = Some(if self.sound_allowed {
-                Audio::new()
+                Audio::with_output(self.prefs.output_device.as_deref(), self.prefs.buffer)
             } else {
                 Audio::silent()
             });
@@ -1289,15 +1315,32 @@ impl App {
     // ----- files -----
 
     fn new_song(&mut self) {
+        // Preferences > General can start new songs from a template.
+        let k = self.prefs.default_template;
+        if k > 0 && k < home::TEMPLATES.len() {
+            self.new_from_template(k);
+            return;
+        }
         self.begin_new_doc();
         self.song = Song::new_blank();
         self.song.style = stylesheet::default_style();
+        self.prefs.fill_song(&mut self.song);
         self.path = None;
         self.reset_after_load();
         self.show_home = false;
         self.status = "New song. Click a string and type fret numbers.".into();
         // The first thing to do with an empty document is to add a track.
         self.open_add_track(true);
+    }
+
+    /// A new song from one of the standard templates.
+    fn new_from_template(&mut self, k: usize) {
+        self.begin_new_doc();
+        self.song = home::template(k);
+        self.prefs.fill_song(&mut self.song);
+        self.path = None;
+        self.reset_after_load();
+        self.show_home = false;
     }
 
     fn reset_after_load(&mut self) {
@@ -1314,6 +1357,7 @@ impl App {
         self.sel_anchor = None;
         self.total_secs = self.song_seconds();
         self.inspector = InspectorTab::Song;
+        self.apply_forced_view();
     }
 
     /// The folder file dialogs start in: the open song's folder, otherwise the
@@ -1580,13 +1624,7 @@ impl App {
             }
             // The empty template is an empty document: it asks for its first track.
             Pending::Template(0) => self.new_song(),
-            Pending::Template(k) => {
-                self.begin_new_doc();
-                self.song = home::template(k);
-                self.path = None;
-                self.reset_after_load();
-                self.show_home = false;
-            }
+            Pending::Template(k) => self.new_from_template(k),
             Pending::Close => self.close_song(),
             Pending::CloseAll => self.close_all(),
             Pending::NewChart => self.new_chart(),
@@ -1811,7 +1849,7 @@ impl App {
 
     /// Shortcuts that work on the start screen too.
     fn handle_global_keys(&mut self, ctx: &egui::Context) {
-        if self.pending.is_some() {
+        if self.pending.is_some() || self.prefs_dlg.is_some() {
             return;
         }
         let events = ctx.input(|i| i.events.clone());
@@ -1823,16 +1861,19 @@ impl App {
                 ..
             } = ev
             {
-                if modifiers.command {
-                    match key {
-                        Key::O => self.request(Pending::Open),
-                        Key::N => self.request(Pending::New),
-                        _ => {}
-                    }
-                } else if key == Key::Escape {
+                // Esc leaves the start screen; other keys come from the shortcut list.
+                if key == Key::Escape && !modifiers.any() {
                     self.show_home = false;
-                } else if key == Key::F1 {
-                    self.show_help = true;
+                    continue;
+                }
+                let b = shortcuts::Binding::of(key, modifiers);
+                match shortcuts::find(shortcuts::Place::Home, &b) {
+                    Some(shortcuts::Act::New) => self.request(Pending::New),
+                    Some(shortcuts::Act::NewChart) => self.request(Pending::NewChart),
+                    Some(shortcuts::Act::Open) => self.request(Pending::Open),
+                    Some(shortcuts::Act::Prefs) => self.open_prefs(),
+                    Some(shortcuts::Act::Help) => self.show_help = true,
+                    _ => {}
                 }
             }
         }

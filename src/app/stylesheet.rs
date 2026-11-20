@@ -903,7 +903,7 @@ fn header_tab(ui: &mut Ui, dlg: &mut StyleDlg) {
         .size(12.0)
         .color(Color32::from_gray(160)),
     );
-    ui.label(RichText::new("A line is left out when its song information is empty. Edit the information in the Song panel (F5).").size(12.0).color(Color32::from_gray(160)));
+    ui.label(RichText::new(super::shortcuts::tip("A line is left out when its song information is empty. Edit the information in the Song panel", super::shortcuts::Act::SongInspector) + ".").size(12.0).color(Color32::from_gray(160)));
 }
 
 fn texts_tab(ui: &mut Ui, dlg: &mut StyleDlg) {
