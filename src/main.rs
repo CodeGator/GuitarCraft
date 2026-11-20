@@ -23,6 +23,7 @@ mod musicxml;
 mod render;
 mod score;
 mod style;
+mod synth;
 mod theory;
 mod textmidi;
 

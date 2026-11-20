@@ -458,3 +458,22 @@ fn the_star_key_toggles_a_dot_on_a_note_or_a_rest() {
     text(&mut r, "*");
     assert!(r.app.cur_beat().dotted && !r.app.cur_beat().double_dot);
 }
+
+#[test]
+fn the_update_window_shows_each_answer_and_closes_with_escape() {
+    use super::update::Outcome;
+    let mut r = song_with_a_note();
+    for o in [
+        Outcome::UpToDate { latest: "0.4.0".into() },
+        Outcome::Newer { latest: "9.9.9".into(), url: "https://github.com/CodeGator/GuitarCraft/releases".into(), notes: "Notes".into() },
+        Outcome::NoReleases,
+        Outcome::Failed("Couldn't reach GitHub.".into()),
+    ] {
+        r.app.show_update_outcome(o);
+        r.frames(2);
+        assert!(r.app.update.open);
+        r.key(Key::Escape, Modifiers::NONE);
+        r.frames(2);
+        assert!(!r.app.update.open);
+    }
+}

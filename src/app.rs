@@ -29,6 +29,7 @@ mod stylesheet;
 mod templates;
 mod tabs;
 mod tools;
+mod update;
 pub mod trackicons;
 mod tuning;
 mod voices;
@@ -133,6 +134,8 @@ pub struct App {
     batch: Option<batch::BatchDlg>,
     /// The About window's tab and the Open Source list.
     about: about::AboutState,
+    /// Help > Check for Updates.
+    update: update::UpdateState,
     title_cache: String,
     show_home: bool,
     single_track: bool,
@@ -308,6 +311,7 @@ impl App {
             file_menu_demo: None,
             batch: None,
             about: Default::default(),
+            update: Default::default(),
             title_cache: String::new(),
             show_home: start_on_home,
             single_track: false,
@@ -526,6 +530,17 @@ impl App {
                         "about3" => 2,
                         _ => 0,
                     };
+                }
+                "update" | "update2" | "update3" => {
+                    app.show_update_outcome(match part.as_str() {
+                        "update2" => update::Outcome::UpToDate { latest: env!("CARGO_PKG_VERSION").into() },
+                        "update3" => update::Outcome::Newer {
+                            latest: "9.9.9".into(),
+                            url: "https://github.com/CodeGator/GuitarCraft/releases".into(),
+                            notes: "A sample of what a release's notes look like.".into(),
+                        },
+                        _ => update::Outcome::NoReleases,
+                    });
                 }
                 "batch" => app.open_batch(),
                 "tabs" | "tabshome" | "tabschart" | "quitprompt" => {

@@ -439,6 +439,7 @@ impl App {
                 });
         }
         self.about_window(ctx);
+        self.update_window(ctx);
     }
 
     fn update_title(&mut self, ctx: &egui::Context) {
