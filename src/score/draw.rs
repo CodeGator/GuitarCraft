@@ -174,7 +174,7 @@ pub fn draw_bar_content(p: &Painter, c: &BarCtx) {
         let Some(&bx) = c.xs.get(bj) else { continue };
         let x = c.o.x + bx;
         let mut above = y0 + g.chord_y;
-        if beat.chord_diagram && !beat.is_rest() && st.chords_in_score {
+        if beat.has_diagram() && st.chords_in_score {
             let top = above - 46.0 * z * dk;
             draw_diagram(
                 p,
@@ -185,7 +185,7 @@ pub fn draw_bar_content(p: &Painter, c: &BarCtx) {
                 st.chord_style,
                 c.ink,
             );
-            if let Some(ch) = &beat.chord {
+            if let Some(ch) = beat.chord.as_ref().filter(|_| !beat.chord_name_hidden) {
                 p.text(
                     Pos2::new(x, top - 2.0 * z),
                     Align2::CENTER_BOTTOM,
@@ -195,7 +195,7 @@ pub fn draw_bar_content(p: &Painter, c: &BarCtx) {
                 );
             }
             above = top - 16.0 * z;
-        } else if let Some(ch) = &beat.chord {
+        } else if let Some(ch) = beat.chord.as_ref().filter(|_| !beat.chord_name_hidden) {
             p.text(
                 Pos2::new(x, above),
                 Align2::CENTER_BOTTOM,
@@ -1804,12 +1804,8 @@ pub fn draw_diagram(
     let w = gap * (n as f32 - 1.0);
     let left = top.x - w * 0.5;
     let y0 = top.y + 8.0 * z;
-    let fretted: Vec<u8> = beat
-        .notes
-        .iter()
-        .filter(|n| n.fret > 0)
-        .map(|n| n.fret)
-        .collect();
+    let shown = beat.diagram_frets(n);
+    let fretted: Vec<u8> = shown.iter().flatten().copied().filter(|&f| f > 0).collect();
     let max = fretted.iter().copied().max().unwrap_or(0);
     let base = if max <= 5 {
         1
@@ -1843,16 +1839,16 @@ pub fn draw_diagram(
     for s in 0..n {
         let string = (n - 1 - s) as u8;
         let x = left + s as f32 * gap;
-        match beat.note_on(string) {
-            Some(nn) if nn.fret == 0 => {
+        match shown[string as usize] {
+            Some(0) => {
                 p.circle_stroke(
                     Pos2::new(x, y0 - 4.0 * z),
                     2.0 * z,
                     PStroke::new(0.9 * z, ink),
                 );
             }
-            Some(nn) => {
-                let row = nn.fret as i32 - base as i32;
+            Some(fret) => {
+                let row = fret as i32 - base as i32;
                 if (0..5).contains(&row) {
                     p.circle_filled(Pos2::new(x, y0 + (row as f32 + 0.5) * fh), dot * z, ink);
                 }

@@ -1,7 +1,7 @@
 //! Guitar Pro 6 files (.gpx), for File > Export > GPX. A .gpx file is a small
 //! file system in 4096-byte sectors ("BCFS"), compressed with Guitar Pro's own
 //! scheme ("BCFZ"). Laid out as in a .gpx file Guitar Pro 8 saved for the
-//! person (samples/Morning Walk - GP8.gpx):
+//! person (tests/fixtures/gp8/Morning Walk - GP8.gpx):
 //!
 //! - sector 0: a map of the sectors in use, one bit per sector after it
 //!   (lowest bit first; 0 = in use, 1 = free);

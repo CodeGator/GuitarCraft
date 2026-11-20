@@ -10,9 +10,12 @@ exist under another name. Check before starting work on one, and tick items off 
 
 ## To do
 
-- [ ] **Polyphonic tuner**: toolbar tuning-fork button; tunes all strings from one strum (cents
-      shown as bars, green when in tune), plus a single-string (monophonic) section. Follows the
-      current track's tuning.
+- [x] **Polyphonic tuner**: added 2026-11-20. Toolbar tuning fork (and Tools > Tuner):
+      one strum shows every string's offset as a cents bar, green when within 3 cents; a
+      single-string section below; choice of input device. Follows the current track's
+      tuning and capo. Listens only while the window is open. Tested on made-up sounds; not
+      yet tried with a real guitar. A string that isn't played can light up when another
+      string's harmonic falls on its note.
 - [~] **Preferences window** (Ctrl+,, Edit > Preferences): started 2026-11-20 in
       `src/app/prefs.rs`, saved to `%APPDATA%\GuitarCraft\preferences.json`. Working: default
       template, force zoom, force page layout, reopen last session, update check frequency
@@ -28,8 +31,14 @@ exist under another name. Check before starting work on one, and tick items off 
 - [ ] **Drum view** instrument view (fretboard and keyboard views already exist).
 - [ ] **MIDI capture**: note entry from a MIDI keyboard, beat by beat; choice of MIDI input and
       output devices.
-- [ ] **Per-track equalizer** in the mixer: low / mid / high, with instrument presets.
-- [ ] **Focus / Unfocus knob** in the mixer: turns the selected track up and the others down.
+- [x] **Per-track equalizer** in the mixer. Added 2026-11-20, laid out like Guitar Pro 8's:
+      On switch, presets, and Low, Low Medium (dB, Hz), Medium (Q, dB, Hz), High Medium
+      (dB, Hz) and High knobs. Saved in .gc, .gp and .gpx files (matched with Guitar Pro 8
+      files, see tests/fixtures/README.md); GP5 keeps only Low, Medium and High. Estimated, not
+      confirmed: the Low and High shelf frequencies.
+- [x] **Focus / Unfocus knob** in the mixer: turns the selected track up and the others down.
+      Added 2026-11-20: the knob on the Master row (EQ column); follows the selected track;
+      double-click to reset. Not saved with the song (how Guitar Pro 8 treats it is unchecked).
 - [ ] **Instrument (sound) change automation** partway through a song.
 - [ ] **Multi-bar rests** (Ctrl+R).
 - [ ] **File password protection**: lock a file; lock icon on its tab; unlock prompt.

@@ -2,7 +2,7 @@
 //! instruments (see synth.rs), so songs can be heard without any sound bank.
 
 use crate::model::*;
-use crate::synth::Voice;
+use crate::synth::{TrackEq, Voice};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::sync::{Arc, Mutex};
 
@@ -110,9 +110,32 @@ pub struct PlayerState {
     pub sounding: Vec<(usize, u8, u8)>,
     /// One-shot preview notes played even when stopped.
     pub preview: Vec<NoteEvent>,
+    /// Each track's equalizer and extra gain (the mixer's Focus knob), and its mix bus;
+    /// all empty while no track needs them, so the plain mix costs nothing extra.
+    eq: Vec<TrackEq>,
+    gain: Vec<f32>,
+    bus: Vec<(f32, f32)>,
 }
 
 impl PlayerState {
+    /// Sets every track's equalizer and extra gain, in track order.
+    pub fn set_track_mix(&mut self, eqs: &[Equalizer], gains: &[f32]) {
+        let any_eq = eqs.iter().any(|e| e.audible());
+        let any_gain = gains.iter().any(|g| (g - 1.0).abs() > 1e-4);
+        let n = if any_eq || any_gain { eqs.len().max(gains.len()) } else { 0 };
+        self.bus.resize(n, (0.0, 0.0));
+        if any_eq {
+            self.eq.resize_with(eqs.len(), TrackEq::default);
+            let sr = self.sample_rate;
+            for (eq, e) in self.eq.iter_mut().zip(eqs) {
+                eq.set(e, sr);
+            }
+        } else {
+            self.eq.clear();
+        }
+        self.gain = if any_gain { gains.to_vec() } else { vec![] };
+    }
+
     fn render(&mut self, out: &mut [f32], channels: usize) {
         let sr = self.sample_rate;
         for e in self.preview.drain(..) {
@@ -155,12 +178,33 @@ impl PlayerState {
                 }
             }
             let (mut l, mut r) = (0.0f32, 0.0f32);
+            let bus = &mut self.bus;
             self.voices.retain_mut(|v| {
                 let (a, b, alive) = v.next(sr);
-                l += a;
-                r += b;
+                match bus.get_mut(v.track) {
+                    Some(t) if !v.click => {
+                        t.0 += a;
+                        t.1 += b;
+                    }
+                    _ => {
+                        l += a;
+                        r += b;
+                    }
+                }
                 alive
             });
+            for (k, t) in self.bus.iter_mut().enumerate() {
+                let (mut a, mut b) = *t;
+                if let Some(eq) = self.eq.get_mut(k)
+                    && eq.is_on()
+                {
+                    (a, b) = eq.run(a, b);
+                }
+                let g = self.gain.get(k).copied().unwrap_or(1.0);
+                l += a * g;
+                r += b * g;
+                *t = (0.0, 0.0);
+            }
             l = (l * self.master).tanh();
             r = (r * self.master).tanh();
             let base = i * channels;
@@ -214,6 +258,9 @@ impl Audio {
             loop_range: None,
             sounding: vec![],
             preview: vec![],
+            eq: vec![],
+            gain: vec![],
+            bus: vec![],
         }));
         let mut a = Audio {
             state,
@@ -250,6 +297,9 @@ impl Audio {
                 loop_range: None,
                 sounding: vec![],
                 preview: vec![],
+                eq: vec![],
+                gain: vec![],
+                bus: vec![],
             })),
             _stream: None,
             error: None,
@@ -826,7 +876,11 @@ pub fn render_song(song: &Song, sr: f32, speed: f32) -> Vec<f32> {
         loop_range: None,
         sounding: vec![],
         preview: vec![],
+        eq: vec![],
+        gain: vec![],
+        bus: vec![],
     };
+    st.set_track_mix(&song.tracks.iter().map(|t| t.equalizer).collect::<Vec<_>>(), &[]);
     let frames = end.min((sr * 60.0 * 30.0) as u64) as usize;
     let mut out = vec![0.0f32; frames * 2];
     for chunk in out.chunks_mut(2048) {
@@ -841,6 +895,64 @@ pub fn render_song(song: &Song, sr: f32, speed: f32) -> Vec<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The mixer's Focus gains and equalizers reach the sound, track by track, while the
+    /// metronome stays as it is.
+    #[test]
+    fn track_gains_and_equalizers_change_only_their_track() {
+        let song = Song::demo();
+        let sr = 44100.0;
+        let energy = |gains: &[f32], eqs: &[Equalizer], metronome: bool| {
+            let opt = ScheduleOptions {
+                from_bar: 0,
+                metronome,
+                count_in: false,
+                speed: 1.0,
+                only_bars: Some((0, 1)),
+            };
+            let sch = build_schedule(&song, sr, &opt);
+            let mut st = PlayerState {
+                playing: true,
+                pos: 0,
+                end: sch.end,
+                events: sch.events,
+                next_ev: 0,
+                voices: vec![],
+                sample_rate: sr,
+                master: 0.5,
+                loop_range: None,
+                sounding: vec![],
+                preview: vec![],
+                eq: vec![],
+                gain: vec![],
+                bus: vec![],
+            };
+            st.set_track_mix(eqs, gains);
+            let mut buf = vec![0.0f32; 44100 * 2 * 2];
+            for chunk in buf.chunks_mut(1024) {
+                st.render(chunk, 2);
+            }
+            buf.iter().map(|x| x * x).sum::<f32>()
+        };
+        let n = song.tracks.len();
+        let flat = vec![Equalizer::default(); n];
+        let all = energy(&vec![1.0; n], &flat, false);
+        assert!(all > 1.0);
+        // Every track silenced: nothing left.
+        assert!(energy(&vec![0.0; n], &flat, false) < all * 1e-6);
+        // Only the first track left: quieter than all, but not silent.
+        let mut one = vec![0.0; n];
+        one[0] = 1.0;
+        let first = energy(&one, &flat, false);
+        assert!(first > all * 0.05 && first < all * 0.95, "{first} of {all}");
+        // The metronome isn't a track: it plays on when every track is silenced.
+        assert!(energy(&vec![0.0; n], &flat, true) > 0.01);
+        // An equalizer that cuts every band makes its track quieter.
+        let mut cut = flat.clone();
+        cut[0].on = true;
+        cut[0].set_gains_db([-15.0; 5]);
+        assert!(energy(&one, &cut, false) < first * 0.3);
+    }
 
     #[test]
     fn demo_song_makes_sound() {
@@ -878,6 +990,9 @@ mod tests {
             loop_range: None,
             sounding: vec![],
             preview: vec![],
+            eq: vec![],
+            gain: vec![],
+            bus: vec![],
         };
         let mut buf = vec![0.0f32; 44100 * 2 * 3];
         for chunk in buf.chunks_mut(1024) {
@@ -936,6 +1051,9 @@ mod tests {
             loop_range: Some((a, b)),
             sounding: vec![],
             preview: vec![],
+            eq: vec![],
+            gain: vec![],
+            bus: vec![],
         };
         let mut buf = vec![0.0f32; ((b - a) as usize * 3) * 2];
         st.render(&mut buf, 2);

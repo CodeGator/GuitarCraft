@@ -290,6 +290,8 @@ pub fn import(data: &[u8]) -> Result<Song, String> {
         let col = [r.u8()?, r.u8()?, r.u8()?];
         r.u8()?;
         let mut shown = (true, true, false);
+        let mut eq = [0.0f32; 3];
+        // GP5's three equalizer bands go to Guitar Pro 8's Low, Medium and High.
         if v >= V::Gp50 {
             let f2 = r.i16()?;
             shown = (f2 & 0x0002 != 0, f2 & 0x0001 != 0, f2 & 0x0200 != 0);
@@ -300,7 +302,11 @@ pub fn import(data: &[u8]) -> Result<Song, String> {
             r.skip(12 + 12)?;
             r.skip(16)?;
             if v == V::Gp51 {
-                r.skip(4)?;
+                // Equalizer: low, mid and high, then gain, as signed tenths of a dB, negated.
+                for g in &mut eq {
+                    *g = -(r.i8()? as f32) / 10.0;
+                }
+                r.i8()?;
                 r.int_byte_str()?;
                 r.int_byte_str()?;
             }
@@ -333,6 +339,10 @@ pub fn import(data: &[u8]) -> Result<Song, String> {
             t.instrument = Instrument::Bass;
         }
         // Which staves the track shows, and auto let ring.
+        if eq.iter().any(|g| *g != 0.0) {
+            t.equalizer.on = true;
+            t.equalizer.set_gains_db([eq[0], 0.0, eq[1], 0.0, eq[2]]);
+        }
         t.show_std = shown.0 || !shown.1;
         t.show_tab = shown.1 || !shown.0;
         t.auto_let_ring = shown.2;

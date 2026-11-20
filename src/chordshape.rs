@@ -312,13 +312,25 @@ static LISTS: Mutex<Option<HashMap<String, Vec<[i8; 6]>>>> = Mutex::new(None);
 /// `max_fret`, nearest the nut first. `quality` is the name after the root
 /// ("m7", "sus4", "add9"). Worked out once and remembered.
 pub fn voicings(tuning: &[i32; 6], root: i32, quality: &str, bass: Option<i32>, max_fret: i8) -> Vec<[i8; 6]> {
-    let key = format!("{tuning:?}|{root}|{quality}|{bass:?}|{max_fret}");
+    voicings_omitting(tuning, root, quality, &[], bass, max_fret)
+}
+
+/// The same, leaving out the chord's notes at the given distances above the root
+/// (0 the root, 3 or 4 the third, 7 the fifth ...). Leaving out every note is ignored.
+pub fn voicings_omitting(tuning: &[i32; 6], root: i32, quality: &str, omit: &[i32], bass: Option<i32>, max_fret: i8) -> Vec<[i8; 6]> {
+    let key = format!("{tuning:?}|{root}|{quality}|{omit:?}|{bass:?}|{max_fret}");
     if let Ok(c) = LISTS.lock()
         && let Some(v) = c.as_ref().and_then(|m| m.get(&key))
     {
         return v.clone();
     }
-    let Some(f) = formula(quality) else { return vec![] };
+    let Some(mut f) = formula(quality) else { return vec![] };
+    if !omit.is_empty() {
+        let kept: Vec<(i32, bool)> = f.tones.iter().copied().filter(|t| !omit.contains(&t.0)).collect();
+        if !kept.is_empty() {
+            f.tones = kept;
+        }
+    }
     let mut all = voicing_list(tuning, root, &f, bass, (max_fret - 3).max(1));
     // Fragments of two or three strings aren't the chord's shapes (a power
     // chord excepted), unless nothing fuller can be played.

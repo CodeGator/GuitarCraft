@@ -162,14 +162,20 @@ impl GpOptions {
 /// (strings counted from the lowest, frets from the diagram's first fret).
 fn diagram_xml(t: &Track, name: &str) -> String {
     let n = t.strings().max(1);
-    let beat = t.bars.iter().flat_map(|b| b.beats.iter()).find(|b| b.chord.as_deref() == Some(name) && !b.is_rest());
+    let beat = t
+        .bars
+        .iter()
+        .flat_map(|b| b.beats.iter())
+        .find(|b| b.chord.as_deref() == Some(name) && (!b.is_rest() || b.chord_frets.is_some()));
+    // Strings counted from the lowest.
     let notes: Vec<(usize, u8)> = beat
-        .map(|b| b.notes.iter().filter(|x| (x.string as usize) < n).map(|x| (n - 1 - x.string as usize, x.fret)).collect())
+        .map(|b| b.diagram_frets(n).iter().enumerate().filter_map(|(s, f)| f.map(|f| (n - 1 - s, f))).collect())
         .unwrap_or_default();
     let fretted: Vec<u8> = notes.iter().map(|x| x.1).filter(|&f| f > 0).collect();
     let max = fretted.iter().copied().max().unwrap_or(0);
     let base = if max <= 5 { 0 } else { fretted.iter().copied().min().unwrap_or(1).saturating_sub(1) };
     let show = beat.map(|b| b.chord_diagram).unwrap_or(false);
+    let name_shown = !beat.map(|b| b.chord_name_hidden).unwrap_or(false);
     let mut x = format!(
         "<Diagram stringCount=\"{n}\" fretCount=\"5\" baseFret=\"{base}\" barsStates=\"{}\">",
         vec!["1"; n].join(" ")
@@ -179,7 +185,7 @@ fn diagram_xml(t: &Track, name: &str) -> String {
     }
     let _ = write!(
         x,
-        "<Property name=\"ShowName\" type=\"bool\" value=\"true\"/><Property name=\"ShowDiagram\" type=\"bool\" value=\"{show}\"/><Property name=\"ShowFingering\" type=\"bool\" value=\"false\"/></Diagram>"
+        "<Property name=\"ShowName\" type=\"bool\" value=\"{name_shown}\"/><Property name=\"ShowDiagram\" type=\"bool\" value=\"{show}\"/><Property name=\"ShowFingering\" type=\"bool\" value=\"false\"/></Diagram>"
     );
     x
 }
@@ -332,7 +338,10 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
             (t.instrument.midi_program(), a, b)
         };
         let mut strip = [0.5f32; 16];
-        strip[9] = 0.0;
+        for (k, &gi) in EQ_GPIF_INDEX.iter().enumerate() {
+            strip[gi] = t.equalizer.knobs[k].clamp(0.0, 1.0);
+        }
+        strip[9] = if t.equalizer.on { 1.0 } else { 0.0 };
         strip[11] = (t.pan.clamp(-1.0, 1.0) + 1.0) * 0.5;
         strip[12] = t.volume.clamp(0.0, 1.0);
         let params: Vec<String> = strip.iter().map(|v| format!("{v:.6}")).collect();
@@ -1202,13 +1211,58 @@ mod tests {
         assert_eq!(back.tracks[1].bars[0].beats[0].fx.wah, 1);
         assert_eq!(back.tracks[1].bars[0].beats[1].fx.wah, 2);
         // And from the file Guitar Pro 8 saved.
-        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("samples").join("Morning Walk - wah.gp");
-        if let Ok(data) = std::fs::read(p) {
+        let data = crate::fixture("gp8/Morning Walk - wah.gp");
+        {
             let gp = crate::gpif::import_gp(&data).unwrap();
             let bass = gp.tracks.iter().position(|t| t.instrument == Instrument::Bass).unwrap();
             assert_eq!(gp.tracks[bass].bars[0].beats[0].fx.wah, 1);
             assert_eq!(gp.tracks[bass].bars[0].beats[1].fx.wah, 2);
         }
+    }
+
+    /// The track equalizer, checked against Guitar Pro 8 files: "code A" and "code B" set
+    /// each knob to a different pair of (left, default, right), which shows which number is
+    /// which knob; "default", "max" and "min" have every knob at one place.
+    #[test]
+    fn track_equalizer_read_and_written_like_guitar_pro() {
+        let read = |name: &str| {
+            let song = crate::gpif::import_gp(&crate::fixture(&format!("gp8/{name}"))).unwrap();
+            song.tracks.iter().find(|t| t.equalizer.on).expect("a track with the EQ on").equalizer
+        };
+        let close = |a: [f32; 9], b: [f32; 9]| {
+            a.iter().zip(b).all(|(x, y)| (x - y).abs() < 0.02)
+        };
+        let e = read("Morning Walk - track eq code A.gp");
+        assert!(close(e.knobs, [0.0, 0.0, 0.0, 0.5, 0.5, 1.0, 1.0, 1.0, 0.5]), "{e:?}");
+        let e = read("Morning Walk - track eq code B.gp");
+        assert!(close(e.knobs, [0.0, 0.5, 1.0, 0.0, 1.0, 0.0, 0.5, 1.0, 0.5]), "{e:?}");
+        // Every knob at its default, fully right, fully left.
+        for (name, v) in [("default", 0.5), ("max", 1.0), ("min", 0.0)] {
+            let e = read(&format!("Morning Walk - track eq {name}.gp"));
+            assert!(close(e.knobs, [v; 9]), "{name}: {e:?}");
+        }
+        // Tooltip values from Guitar Pro 8: the Hz and Q knobs' ends and defaults.
+        assert!((eq_knob_value(2, 0.0) - 45.0).abs() < 0.5);
+        assert!((eq_knob_value(2, 0.5) - 367.0).abs() < 1.0);
+        assert!((eq_knob_value(2, 1.0) - 3000.0).abs() < 1.0);
+        assert!((eq_knob_value(5, 0.5) - 900.0).abs() < 1.0);
+        assert!((eq_knob_value(5, 1.0) - 18000.0).abs() < 1.0);
+        assert!((eq_knob_value(7, 0.5) - 3000.0).abs() < 1.0);
+        assert!((eq_knob_value(3, 0.0) - 0.5).abs() < 0.001);
+        assert!((eq_knob_value(3, 0.5) - 1.2).abs() < 0.03);
+        assert!((eq_knob_value(3, 1.0) - 3.0).abs() < 0.001);
+        assert!((eq_knob_value(0, 1.0) - 15.0).abs() < 0.01);
+        // Written back the same way.
+        let mut song = Song::demo();
+        song.tracks[0].equalizer =
+            Equalizer { on: true, knobs: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9] };
+        let xml = gpif_xml(&song);
+        assert!(xml.contains(
+            "<Parameters>0.900000 0.700000 0.800000 0.500000 0.600000 0.400000 0.200000 0.300000 0.100000 1.000000 "
+        ));
+        let back = crate::gpif::import_gp(&export_gp(&song).unwrap()).unwrap();
+        assert_eq!(back.tracks[0].equalizer, song.tracks[0].equalizer);
+        assert!(!back.tracks[1].equalizer.on);
     }
 
     /// Arpeggio as Guitar Pro 8 writes it (from the person's GP8 file with a
@@ -1227,8 +1281,8 @@ mod tests {
         let back = crate::gpif::import_gp(&export_gp(&song).unwrap()).unwrap();
         assert_eq!(back.tracks[1].bars[0].beats[0].fx.arpeggio, 1);
         assert_eq!(back.tracks[1].bars[0].beats[1].fx.arpeggio, 2);
-        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("samples").join("Morning Walk - Arpeggio.gp");
-        if let Ok(data) = std::fs::read(p) {
+        let data = crate::fixture("gp8/Morning Walk - Arpeggio.gp");
+        {
             let gp = crate::gpif::import_gp(&data).unwrap();
             let bass = gp.tracks.iter().position(|t| t.instrument == Instrument::Bass).unwrap();
             assert_eq!(gp.tracks[bass].bars[0].beats[0].fx.arpeggio, 1);
@@ -1251,8 +1305,8 @@ mod tests {
         let fx = &back.tracks[0].bars[0].beats[0].fx;
         assert_eq!((fx.arpeggio, fx.arp_len, fx.arp_falls), (2, 240, 1.0));
         // The person's file: a quarter-note arpeggio starting on time.
-        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("samples").join("Morning Walk - Arpeggio.gp");
-        if let Ok(data) = std::fs::read(p) {
+        let data = crate::fixture("gp8/Morning Walk - Arpeggio.gp");
+        {
             let gp = crate::gpif::import_gp(&data).unwrap();
             let bass = gp.tracks.iter().position(|t| t.instrument == Instrument::Bass).unwrap();
             let fx = &gp.tracks[bass].bars[0].beats[0].fx;
@@ -1274,8 +1328,8 @@ mod tests {
         let back = crate::gpif::import_gp(&export_gp(&song).unwrap()).unwrap();
         assert_eq!(back.tracks[1].bars[0].beats[0].fx.golpe, 1);
         assert_eq!(back.tracks[1].bars[0].beats[1].fx.golpe, 2);
-        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("samples").join("Morning Walk - golpe.gp");
-        if let Ok(data) = std::fs::read(p) {
+        let data = crate::fixture("gp8/Morning Walk - golpe.gp");
+        {
             let gp = crate::gpif::import_gp(&data).unwrap();
             let bass = gp.tracks.iter().position(|t| t.instrument == Instrument::Bass).unwrap();
             assert_eq!(gp.tracks[bass].bars[0].beats[0].fx.golpe, 1);
@@ -1308,8 +1362,8 @@ mod tests {
         let back = crate::gpif::import_gp(&export_gp(&song).unwrap()).unwrap();
         let m = &back.tracks[0].bars[0].beats[0].notes[0];
         assert!(m.fx.shift_slide && m.fx.slide_in_above && m.fx.slide_out_up && !m.slide);
-        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("samples").join("Morning Walk - pick scrape.gp");
-        if let Ok(data) = std::fs::read(p) {
+        let data = crate::fixture("gp8/Morning Walk - pick scrape.gp");
+        {
             let gp = crate::gpif::import_gp(&data).unwrap();
             let bass = gp.tracks.iter().position(|t| t.instrument == Instrument::Bass).unwrap();
             let b = &gp.tracks[bass].bars[0].beats;
@@ -1331,8 +1385,8 @@ mod tests {
         let back = crate::gpif::import_gp(&export_gp(&song).unwrap()).unwrap();
         assert_eq!(back.tracks[1].bars[0].beats[0].notes[0].fx.lh_finger, 5);
         assert_eq!(back.tracks[1].bars[0].beats[1].notes[0].fx.rh_finger, 2);
-        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("samples").join("Morning Walk - fingering.gp");
-        if let Ok(data) = std::fs::read(p) {
+        let data = crate::fixture("gp8/Morning Walk - fingering.gp");
+        {
             let gp = crate::gpif::import_gp(&data).unwrap();
             let bass = gp.tracks.iter().position(|t| t.instrument == Instrument::Bass).unwrap();
             let f: Vec<(u8, u8)> = gp.tracks[bass].bars[..5]
@@ -1357,8 +1411,8 @@ mod tests {
         assert!(!xml.contains("GuitarCraftExtras"));
         let back = crate::gpif::import_gp(&export_gp(&song).unwrap()).unwrap();
         assert!(back.tracks[1].bars[0].beats[0].fx.timer && back.tracks[1].bars[2].beats[0].fx.timer);
-        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("samples").join("Morning Walk - timer.gp");
-        if let Ok(data) = std::fs::read(p) {
+        let data = crate::fixture("gp8/Morning Walk - timer.gp");
+        {
             let gp = crate::gpif::import_gp(&data).unwrap();
             let bass = gp.tracks.iter().position(|t| t.instrument == Instrument::Bass).unwrap();
             assert!(gp.tracks[bass].bars[0].beats[0].fx.timer);
@@ -1380,8 +1434,8 @@ mod tests {
         let order = back.play_order();
         let start = order.iter().position(|&b| b == 5).unwrap();
         assert_eq!(&order[start..start + 5], &[5, 5, 5, 5, 6]);
-        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("samples").join("Morning Walk - bar repeats.gp");
-        if let Ok(data) = std::fs::read(p) {
+        let data = crate::fixture("gp8/Morning Walk - bar repeats.gp");
+        {
             let gp = crate::gpif::import_gp(&data).unwrap();
             assert!(gp.master[5].repeat_open && gp.master[5].repeat_close == 4);
         }
@@ -1389,8 +1443,7 @@ mod tests {
 
     #[test]
     fn reads_legato_from_guitar_pro_file() {
-        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("samples").join("Morning Walk - legato.gp");
-        let Ok(data) = std::fs::read(p) else { return };
+        let data = crate::fixture("gp8/Morning Walk - legato.gp");
         let song = crate::gpif::import_gp(&data).unwrap();
         let bass = song.tracks.iter().position(|t| t.instrument == Instrument::Bass).unwrap();
         let bar = &song.tracks[bass].bars[0];
@@ -1516,26 +1569,19 @@ mod tests {
         );
     }
 
+    /// The demo song saved by Guitar Pro 8 opens as the demo song, and GuitarCraft's part
+    /// settings are byte for byte the ones Guitar Pro 8 wrote.
     #[test]
-    fn opens_sample_saved_by_guitar_pro() {
-        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("samples")
-            .join("Empty.gp");
-        let Ok(data) = std::fs::read(&p) else { return };
-        let song = crate::gpif::import_gp(&data).expect("opens the sample");
-        assert_eq!(song.tracks.len(), 2);
-        assert_eq!(song.tracks[0].instrument, Instrument::Bass);
-        assert_eq!(song.tracks[0].tuning, STANDARD_BASS.to_vec());
-        assert!((song.tracks[0].volume - 0.795).abs() < 0.001);
-        assert_eq!(song.tracks[0].short_name, "el.bs.");
-        assert!((song.tracks[0].palm_mute - 0.3).abs() < 0.001);
-        assert!(!song.tracks[1].auto_let_ring);
-        // The bass track is hidden in the sample (its eye is off); the other is shown.
-        assert!(!song.tracks[0].visible);
-        assert!(song.tracks[1].visible);
-        assert_eq!(song.bar_count(), 10);
-        // Our own part settings have the same layout as the sample's.
-        let ours = part_configuration(&song);
+    fn opens_the_demo_saved_by_guitar_pro() {
+        let data = crate::fixture("gp8/Morning Walk Gp8.gp");
+        let song = crate::gpif::import_gp(&data).expect("opens");
+        let demo = Song::demo();
+        assert_eq!(song.tracks.len(), demo.tracks.len());
+        for (a, b) in song.tracks.iter().zip(&demo.tracks) {
+            assert_eq!((&a.name, a.instrument, &a.tuning), (&b.name, b.instrument, &b.tuning));
+            assert!(a.visible);
+        }
+        assert_eq!(song.bar_count(), demo.bar_count());
         let mut z = zip::ZipArchive::new(std::io::Cursor::new(&data[..])).unwrap();
         let mut theirs = vec![];
         std::io::Read::read_to_end(
@@ -1543,6 +1589,6 @@ mod tests {
             &mut theirs,
         )
         .unwrap();
-        assert_eq!(ours.len(), theirs.len());
+        assert_eq!(part_configuration(&song), theirs);
     }
 }

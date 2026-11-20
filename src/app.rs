@@ -13,6 +13,7 @@ mod chartstyle;
 mod chartui;
 mod chartxpose;
 mod chordscales;
+mod chordedit;
 mod chordlib;
 mod clipmenu;
 mod cursor;
@@ -33,6 +34,7 @@ mod tabs;
 mod tools;
 mod update;
 pub mod trackicons;
+mod tuner;
 mod tuning;
 mod voices;
 mod widgets;
@@ -114,6 +116,14 @@ pub struct App {
     looping: bool,
     speed: f32,
     master_volume: f32,
+    /// The track whose equalizer window is open.
+    eq_track: Option<usize>,
+    tuner: tuner::TunerDlg,
+    /// The mixer's Focus knob, -1..1: above 0 the selected track stands out (the others
+    /// are turned down), below 0 it is pushed back.
+    focus: f32,
+    /// The equalizers and track gains last sent to the player.
+    mix_sent: (Vec<crate::model::Equalizer>, Vec<f32>),
     status: String,
     last_digit: Option<(u8, f64, usize, usize, usize)>,
     show_fretboard: bool,
@@ -163,9 +173,7 @@ pub struct App {
     icon_menu_open: bool,
     tuning_dlg: Option<tuning::TuningDlg>,
     chord_open: bool,
-    chord_text: String,
-    chord_root: usize,
-    chord_type: usize,
+    chord_ed: chordedit::ChordEd,
     /// The Chords & Scales tool.
     cs: chordscales::ChordScales,
     lyrics_open: bool,
@@ -303,6 +311,10 @@ impl App {
             looping: false,
             speed: 100.0,
             master_volume: 0.9,
+            eq_track: None,
+            tuner: tuner::TunerDlg::default(),
+            focus: 0.0,
+            mix_sent: (vec![], vec![]),
             status: "Ready. Click the score or use the arrow keys, then type fret numbers.".into(),
             last_digit: None,
             show_fretboard: false,
@@ -343,9 +355,7 @@ impl App {
             icon_menu_open: false,
             tuning_dlg: None,
             chord_open: false,
-            chord_text: String::new(),
-            chord_root: 0,
-            chord_type: 0,
+            chord_ed: Default::default(),
             cs: Default::default(),
             lyrics_open: false,
             lyrics_snap: false,
@@ -464,6 +474,23 @@ impl App {
                     app.inspector = InspectorTab::Track;
                     app.open_tuning();
                 }
+                "eq" => {
+                    // The first track's equalizer turned, and the Focus knob, for checking.
+                    let e = &mut app.song.tracks[0].equalizer;
+                    e.on = true;
+                    e.knobs = [0.5, 0.622, 0.403, 0.5, 0.5, 0.684, 0.5, 0.324, 0.5];
+                    app.eq_track = Some(0);
+                    app.focus = 0.5;
+                }
+                "tuner" => {
+                    // The tuner with a made-up strum (no microphone), for checking.
+                    app.open_tuner();
+                    app.tuner.sample = Some(crate::tuner::Readout {
+                        level: 0.08,
+                        strings: vec![Some(1.0), Some(12.0), None, Some(-24.0), Some(-2.0), Some(-60.0)],
+                        mono: Some(110.0 * (7.0f32 / 1200.0).exp2()),
+                    });
+                }
                 "partial" => {
                     app.inspector = InspectorTab::Track;
                     app.open_tuning();
@@ -502,7 +529,7 @@ impl App {
                 "guide" => app.guide_open = true,
                 "palette-cmd" => app.cmd_open = true,
                 "directions" => app.dir_open = true,
-                "chord" => app.chord_open = true,
+                "chord" => app.open_chord_tool(),
                 "chordlib" => app.chord_lib_open = true,
                 "exportpdf" => app.open_export(printing::ExportKind::Pdf),
                 "printpreview" => app.print_song(),
@@ -890,6 +917,9 @@ impl App {
             if let Some(e) = self.audio.as_ref().and_then(|a| a.error.clone()) {
                 self.status = format!("Sound unavailable: {e}");
             }
+            // A new player starts with a plain mix: send the equalizers and Focus again.
+            self.mix_sent = (vec![], vec![]);
+            self.sync_track_mix();
         }
     }
 
@@ -1736,6 +1766,35 @@ impl App {
         self.playing = true;
         self.last_play_pos = 0;
         self.status = "Playing…".into();
+    }
+
+    /// Each track's gain from the Focus knob: the selected track against the others.
+    fn focus_gains(&self) -> Vec<f32> {
+        let f = self.focus.clamp(-1.0, 1.0);
+        (0..self.song.tracks.len())
+            .map(|k| match (k == self.track, f >= 0.0) {
+                (true, true) => 1.0 + 0.3 * f,
+                (true, false) => 1.0 + 0.85 * f,
+                (false, true) => 1.0 - 0.85 * f,
+                (false, false) => 1.0,
+            })
+            .collect()
+    }
+
+    /// Sends the tracks' equalizers and Focus gains to the player when they have changed
+    /// (a knob turned, another track selected, another tab shown). Called every frame.
+    pub(super) fn sync_track_mix(&mut self) {
+        let eqs: Vec<_> = self.song.tracks.iter().map(|t| t.equalizer).collect();
+        let gains = self.focus_gains();
+        if self.mix_sent.0 == eqs && self.mix_sent.1 == gains {
+            return;
+        }
+        if let Some(a) = &self.audio
+            && let Ok(mut st) = a.state.lock()
+        {
+            st.set_track_mix(&eqs, &gains);
+        }
+        self.mix_sent = (eqs, gains);
     }
 
     fn pause(&mut self) {

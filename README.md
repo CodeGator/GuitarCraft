@@ -121,7 +121,7 @@ cargo build --release   # the program, in target/release/
 cargo test --workspace  # the tests, including the xtask helper commands
 ```
 
-The tests check, among other things, that songs survive a round trip through `.gp` and `.gp5` files, and that GuitarCraft writes the score-view part of a `.gp` file exactly as Guitar Pro 8 does (`samples/Empty.gp` is a song saved by Guitar Pro 8 for this).
+The tests check, among other things, that songs survive a round trip through `.gp` and `.gp5` files, and that GuitarCraft reads and writes marks, track settings and other parts of a `.gp` file the way Guitar Pro 8 does (checked against files saved by Guitar Pro 8, in `tests/fixtures/`; its README lists each file and the test that reads it).
 
 A few command-line options help with checking and converting:
 

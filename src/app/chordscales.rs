@@ -956,7 +956,7 @@ impl App {
     }
 
     /// Plays notes (when, string counted from the highest, fret) as a preview.
-    fn play_cs(&mut self, notes: &[(f32, u8, u8)], tuning: &[i32; 6]) {
+    pub(super) fn play_cs(&mut self, notes: &[(f32, u8, u8)], tuning: &[i32; 6]) {
         if !self.sound_allowed {
             return;
         }

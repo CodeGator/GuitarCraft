@@ -556,10 +556,10 @@ fn top_chords(song: &Song, tis: &[usize]) -> Vec<(usize, usize, usize)> {
         }
         for (bi, bar) in t.bars.iter().enumerate() {
             for (j, b) in bar.beats.iter().enumerate() {
-                if !b.chord_diagram || b.is_rest() {
+                if !b.has_diagram() {
                     continue;
                 }
-                let mut shape: Vec<(u8, u8)> = b.notes.iter().map(|n| (n.string, n.fret)).collect();
+                let mut shape: Vec<(u8, u8)> = b.diagram_frets(t.strings()).iter().enumerate().filter_map(|(s, f)| f.map(|f| (s as u8, f))).collect();
                 shape.sort();
                 let key = (b.chord.clone(), shape);
                 if !seen.contains(&key) {
@@ -706,7 +706,7 @@ pub fn layout_ex(
         let diagrams = st.chords_in_score
             && t.bars
                 .iter()
-                .any(|b| b.beats.iter().any(|x| x.chord_diagram && !x.is_rest()));
+                .any(|b| b.beats.iter().any(|x| x.has_diagram()));
         let dk = if diagrams {
             st.chords_in_score_size / 9.0
         } else {
@@ -1153,7 +1153,7 @@ pub fn draw_page(p: &Painter, lay: &Layout, dc: &DrawCtx, page: usize, origin: P
                     y += ch * pz;
                 }
                 let top = Pos2::new(x + w * pz * 0.5, y + 18.0 * k * pz);
-                if let Some(name) = &beat.chord {
+                if let Some(name) = beat.chord.as_ref().filter(|_| !beat.chord_name_hidden) {
                     let mut f = st.font_chord.id(pz * k.max(0.5));
                     if st.chord_style == 1 {
                         f = FontSpec::new("Ink Free", st.font_chord.size, true, false)
@@ -1250,7 +1250,7 @@ fn section_anchor(song: &Song, lay: &Layout, bl: &BarLay, y0: f32, z: f32) -> (f
     let beats = &song.tracks[lay.blocks[0].ti].bars[bl.bar].beats;
     let above = beats.iter().any(|b| b.chord.is_some() || b.text.is_some());
     let diagram =
-        beats.iter().any(|b| b.chord_diagram && !b.is_rest()) && song.style.chords_in_score;
+        beats.iter().any(|b| b.has_diagram()) && song.style.chords_in_score;
     let y = if diagram {
         y0 + g0.chord_y - 46.0 * z * song.style.chords_in_score_size / 9.0 - 18.0 * z
     } else if above {

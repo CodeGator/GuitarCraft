@@ -400,9 +400,8 @@ mod tests {
 
     #[test]
     fn reads_guitar_pro_saved_stylesheet() {
-        // A Guitar Pro 8 file the person saved, when present.
-        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("samples").join("Empty.gp");
-        let Ok(data) = std::fs::read(p) else { return };
+        // The demo song saved by Guitar Pro 8.
+        let data = crate::fixture("gp8/Morning Walk Gp8.gp");
         let mut z = zip::ZipArchive::new(std::io::Cursor::new(&data[..])).unwrap();
         let mut bin = vec![];
         std::io::Read::read_to_end(&mut z.by_name("Content/BinaryStylesheet").unwrap(), &mut bin).unwrap();

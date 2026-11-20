@@ -18,7 +18,12 @@ impl App {
                 if let Some(name) = &b.chord
                     && !out.iter().any(|(n, _)| n == name)
                 {
-                    out.push((name.clone(), b.clone()));
+                    let mut sample = b.clone();
+                    // A chord with no fingering of its own is drawn the way the Chord window would.
+                    if sample.chord_frets.is_none() && sample.is_rest() && self.tr().strings() == 6 {
+                        sample.chord_frets = crate::chart::shape(name);
+                    }
+                    out.push((name.clone(), sample));
                 }
             }
         }
@@ -33,6 +38,7 @@ impl App {
         let chords = self.track_chords();
         let mut put: Option<(String, Beat)> = None;
         let mut add = false;
+        let mut edit = false;
         let mut remove = false;
         let selected = self.cur_beat().chord.clone();
         egui::Window::new("Chord Library")
@@ -76,7 +82,10 @@ impl App {
                         }
                         p.text(Pos2::new(cell.center().x, cell.top() + 4.0), Align2::CENTER_TOP, name, FontId::new(13.0, FontFamily::Name("serif-bold".into())), Color32::BLACK);
                         crate::score::draw_diagram(p, &tr, beat, Pos2::new(cell.center().x, cell.top() + 22.0), 1.15, self.song.style.chord_style, Color32::BLACK);
-                        if resp.on_hover_text(format!("Put {name} on this beat")).clicked() {
+                        if resp.double_clicked() {
+                            edit = true;
+                        }
+                        if resp.on_hover_text(format!("Click to put {name} on this beat; double-click to change it")).clicked() {
                             put = Some((name.clone(), beat.clone()));
                         }
                     }
@@ -88,6 +97,8 @@ impl App {
                 let beat = &mut s.tracks[t].bars[b].beats[j];
                 beat.chord = Some(name.clone());
                 beat.chord_diagram = sample.chord_diagram;
+                beat.chord_frets = sample.chord_frets;
+                beat.chord_name_hidden = sample.chord_name_hidden;
                 // An empty beat gets the chord's notes too.
                 if notes_empty {
                     beat.notes = sample.notes.clone();
@@ -95,7 +106,7 @@ impl App {
             });
             self.status = "Chord added.".into();
         }
-        if add {
+        if add || edit {
             self.open_chord_tool();
         }
         if remove && let Some(name) = selected {
@@ -105,6 +116,8 @@ impl App {
                         if b.chord.as_deref() == Some(name.as_str()) {
                             b.chord = None;
                             b.chord_diagram = false;
+                            b.chord_frets = None;
+                            b.chord_name_hidden = false;
                         }
                     }
                 }

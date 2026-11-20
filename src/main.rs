@@ -25,6 +25,15 @@ mod score;
 mod style;
 mod synth;
 mod theory;
+mod tuner;
+
+/// A file from tests/fixtures/ for a test; the test fails if it is missing (see
+/// tests/fixtures/README.md for what each file is).
+#[cfg(test)]
+pub fn fixture(path: &str) -> Vec<u8> {
+    let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(path);
+    std::fs::read(&p).unwrap_or_else(|e| panic!("test fixture {} missing: {e}", p.display()))
+}
 mod textmidi;
 
 use egui::{FontData, FontDefinitions, FontFamily};
@@ -133,11 +142,14 @@ fn main() -> eframe::Result {
         if a == "--gpx-tests" {
             // Files for finding out which part of a .gpx file Guitar Pro 8 objects to:
             // our export; Guitar Pro 8's own files packed by us; our score with
-            // Guitar Pro 8's other files. Written next to the samples.
-            let dir = std::path::PathBuf::from(args.next().unwrap_or_else(|| "samples".into()));
+            // Guitar Pro 8's other files (from tests/fixtures/gp8). Written to shots/gpx-checks.
+            let dir = std::path::PathBuf::from(
+                args.next().unwrap_or_else(|| "shots/gpx-checks".into()),
+            );
+            let _ = std::fs::create_dir_all(&dir);
             let demo = model::Song::demo();
             let mut made = vec![("Check GPX 1 - GuitarCraft export", gpx::export_gpx(&demo))];
-            let gp8 = std::fs::read(dir.join("Morning Walk - GP8.gpx"))
+            let gp8 = std::fs::read("tests/fixtures/gp8/Morning Walk - GP8.gpx")
                 .map_err(|e| e.to_string())
                 .and_then(|d| gpif::gpx_files(&d));
             match gp8 {

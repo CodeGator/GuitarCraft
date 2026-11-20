@@ -332,7 +332,14 @@ pub fn export_gp5(song: &Song) -> Vec<u8> {
         for _ in 0..4 {
             w.i32(-1);
         }
-        w.zeros(4);
+        // Equalizer: low, mid and high, then gain, as signed tenths of a dB, negated (so at
+        // most 12.7 dB). GP5 has only three bands: Low, Medium and High.
+        let g = t.equalizer.gains_db();
+        for x in [g[0], g[2], g[4]] {
+            let x = if t.equalizer.on { x } else { 0.0 };
+            w.i8((-x * 10.0).round().clamp(-127.0, 127.0) as i8);
+        }
+        w.i8(0);
         w.int_byte_str("");
         w.int_byte_str("");
     }
@@ -409,17 +416,11 @@ fn write_beat(w: &mut W, t: &Track, beat: &Beat, tempo: Option<u32>) {
         w.u8(0);
         w.int_byte_str(name);
         if beat.chord_diagram && t.has_strings() && t.strings() <= 6 {
-            let first = beat
-                .notes
-                .iter()
-                .map(|n| n.fret)
-                .filter(|&f| f > 0)
-                .min()
-                .unwrap_or(1)
-                .max(1);
+            let shown = beat.diagram_frets(t.strings());
+            let first = shown.iter().flatten().copied().filter(|&f| f > 0).min().unwrap_or(1).max(1);
             w.i32(first as i32);
-            for s in 0..6u8 {
-                w.i32(beat.note_on(s).map(|n| n.fret as i32).unwrap_or(-1));
+            for s in 0..6usize {
+                w.i32(shown.get(s).copied().flatten().map(|f| f as i32).unwrap_or(-1));
             }
         } else {
             w.i32(0);
@@ -681,6 +682,16 @@ mod tests {
         assert_eq!(back2.master[2].direction_target, DIR_SEGNO);
         assert_eq!(back2.master[5].direction_jump, 7);
         assert_eq!(back2.master[9].direction_target, DIR_CODA);
+        let mut song3 = song.clone();
+        song3.tracks[0].equalizer.on = true;
+        song3.tracks[0].equalizer.set_gains_db([3.5, 0.0, -12.0, 0.0, 6.0]);
+        let back3 = crate::gpimport::import(&export_gp5(&song3)).expect("reads back");
+        let g = back3.tracks[0].equalizer.gains_db();
+        assert!(back3.tracks[0].equalizer.on);
+        for (a, b) in g.iter().zip([3.5, 0.0, -12.0, 0.0, 6.0]) {
+            assert!((a - b).abs() < 0.01, "{g:?}");
+        }
+        assert!(!back3.tracks[1].equalizer.on);
         for (x, y) in song.master.iter().zip(back.master.iter()) {
             assert_eq!(
                 (

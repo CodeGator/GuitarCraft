@@ -776,6 +776,10 @@ impl App {
     }
 
     fn tools_menu(&mut self, ui: &mut Ui) {
+        if item(ui, "Tuner...", "").clicked() {
+            self.open_tuner();
+            ui.close();
+        }
         if item(ui, "Chords & Scales...", "").clicked() {
             self.open_chord_scales(super::chordscales::Mode::Scales);
             ui.close();
