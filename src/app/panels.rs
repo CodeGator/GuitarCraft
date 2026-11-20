@@ -53,10 +53,10 @@ impl App {
                     }
                 });
             ui.add_space(6.0);
-            if icon_toggle(ui, false, "Undo (Ctrl+Z)", icon_undo).clicked() {
+            if icon_toggle(ui, false, &super::shortcuts::tip("Undo", super::shortcuts::Act::Undo), icon_undo).clicked() {
                 self.do_undo();
             }
-            if icon_toggle(ui, false, "Redo (Ctrl+Y)", icon_redo).clicked() {
+            if icon_toggle(ui, false, &super::shortcuts::tip("Redo", super::shortcuts::Act::Redo), icon_redo).clicked() {
                 self.do_redo();
             }
             // Centre the transport and display.
@@ -152,7 +152,7 @@ impl App {
                 if icon_toggle(
                     ui,
                     self.show_keyboard,
-                    "Keyboard view (Ctrl+F6)",
+                    &super::shortcuts::tip("Keyboard view", super::shortcuts::Act::KeyboardView),
                     icon_keyboard,
                 )
                 .clicked()
@@ -317,7 +317,7 @@ impl App {
                 ui.id().with("lcd_tempo"),
                 Sense::click(),
             )
-            .on_hover_text("Edit the tempo (F10)");
+            .on_hover_text(super::shortcuts::tip("Edit the tempo", super::shortcuts::Act::Automations));
         if tempo_resp.hovered() {
             ui.painter().rect_stroke(
                 tr_rect.expand(3.0),
@@ -434,8 +434,11 @@ impl App {
             egui::Window::new("Keyboard shortcuts")
                 .open(&mut self.show_help)
                 .resizable(false)
+                .default_width(520.0)
                 .show(ctx, |ui| {
-                    super::actions::shortcut_rows(ui);
+                    egui::ScrollArea::vertical().min_scrolled_height((ctx.content_rect().height() - 140.0).clamp(240.0, 640.0)).show(ui, |ui| {
+                        super::actions::shortcut_rows(ui);
+                    });
                 });
         }
         self.about_window(ctx);
@@ -511,18 +514,34 @@ impl App {
         }
         self.fix_cursor_mode();
         self.ensure_tab();
-        // Ctrl+Tab and Ctrl+Shift+Tab move between the open tabs.
-        let cycle = ctx.input_mut(|i| {
-            if i.consume_key(egui::Modifiers::CTRL | egui::Modifiers::SHIFT, egui::Key::Tab) {
-                -1
-            } else if i.consume_key(egui::Modifiers::CTRL, egui::Key::Tab) {
-                1
-            } else {
+        // Next / Previous Tab (Ctrl+Tab, Ctrl+Shift+Tab) work on every screen, so they
+        // are taken here before the other keys. Keys with more modifiers are tried
+        // first: Ctrl would also match Ctrl+Shift.
+        let cycle = if self.prefs_dlg.is_some() {
+            0
+        } else {
+            use super::shortcuts::{Act, Trigger, keys_of};
+            let mut tab_keys: Vec<(super::shortcuts::Binding, i32)> =
+                keys_of(Act::PrevTab).into_iter().map(|b| (b, -1)).chain(keys_of(Act::NextTab).into_iter().map(|b| (b, 1))).collect();
+            tab_keys.sort_by_key(|(b, _)| std::cmp::Reverse(b.ctrl as u8 + b.alt as u8 + b.shift as u8));
+            ctx.input_mut(|i| {
+                for (b, dir) in tab_keys {
+                    if let Trigger::Key(k) = b.trigger {
+                        let m = egui::Modifiers { alt: b.alt, ctrl: b.ctrl, shift: b.shift, mac_cmd: false, command: b.ctrl };
+                        if i.consume_key(m, k) {
+                            return dir;
+                        }
+                    }
+                }
                 0
-            }
-        });
+            })
+        };
         if cycle != 0 {
             self.cycle_tab(cycle);
+        }
+        // Remember the open files for Preferences > Open last session's documents.
+        if ctx.input(|i| i.viewport().close_requested()) && self.screenshot.is_none() && !cfg!(test) {
+            super::prefs::save_session(&self.open_paths());
         }
         if ctx.input(|i| i.viewport().close_requested()) && !self.quitting && self.any_dirty() && self.screenshot.is_none()
         {

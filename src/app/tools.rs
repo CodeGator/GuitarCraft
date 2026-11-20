@@ -195,6 +195,10 @@ pub fn commands() -> Vec<(&'static str, Cmd)> {
     ]
 }
 
+/// Help > User Guide. Shortcuts are written as `({Act})`, the name of an action in
+/// the shortcut list: the guide shows the person's key for it, and leaves the
+/// brackets out when it has none (see `shortcuts::fill_keys`). Keys that can't be
+/// changed (arrows, digits, Tab) are written as they are.
 const GUIDE: [(&str, &str); 13] = [
     (
         "The main screen",
@@ -202,43 +206,43 @@ const GUIDE: [(&str, &str); 13] = [
     ),
     (
         "Moving around",
-        "Click anywhere in the score to place the cursor, or use the arrow keys: left and right move between beats, up and down between strings. Ctrl + arrows jump a bar or a track, Tab moves to the next track's staff. Click a square in the bar overview, a bar number or a section name to jump there. Drag across the score to select beats.",
+        "Click anywhere in the score to place the cursor, or use the arrow keys: left and right move between beats, up and down between strings. Next bar ({NextBar}) and previous bar ({PrevBar}) jump a bar, next track ({NextTrack}) and previous track ({PrevTrack}) change track, and Tab moves to the next track's staff. Click a square in the bar overview, a bar number or a section name to jump there. Drag across the score to select beats.",
     ),
     (
         "Writing notes",
-        "Put the cursor on a string and type the fret number (type two digits quickly for frets above 9). + makes the note shorter and \u{2212} longer; R makes a rest; . dots it. Moving right past the last beat adds a new beat with the same length, and a new bar when the bar is full. The fretboard and keyboard views (View menu) also add notes when clicked.",
+        "Put the cursor on a string and type the fret number (type two digits quickly for frets above 9). Shorter ({Shorter}) and longer ({Longer}) change the note's length; Rest ({Rest}) makes a rest and Dotted ({Dotted}) dots it. Moving right past the last beat adds a new beat with the same length, and a new bar when the bar is full. The fretboard and keyboard views (View menu) also add notes when clicked.",
     ),
     (
         "Effects and symbols",
-        "Use the palette, the Note and Effects menus or the shortcuts (H hammer-on, S slide, B bend, V vibrato, P palm mute, I let ring, X dead note, O ghost note, Y harmonic, N trill, F fermata). Bars that are too short or too long are shaded red; Tools \u{25B8} Check Bar Duration (F4) finds them.",
+        "Use the palette, the Note and Effects menus or the shortcuts: hammer-on ({Hammer}), slide ({Slide}), bend ({Bend}), vibrato ({Vibrato}), palm mute ({PalmMuteNote}), let ring ({LetRing}), dead note ({DeadNote}), ghost note ({Ghost}), harmonic ({NaturalHarmonic}), trill ({Trill}), fermata ({Fermata}). Bars that are too short or too long are shaded red; Tools \u{25B8} Check Bar Duration ({CheckBars}) finds them.",
     ),
     (
         "Bars, repeats and directions",
-        "Bar \u{25B8} Insert/Delete bar changes every track at once. Repeat open/close are [ and ]; alternate endings choose which pass plays a bar. Bar \u{25B8} Directions (D) adds Segno, Coda and Fine signs and D.C./D.S. jumps; playback follows them. Ctrl+Enter forces a new line after the bar.",
+        "Bar \u{25B8} Insert/Delete bar changes every track at once. Repeat open ({RepeatOpen}) and repeat close ({RepeatClose}) mark repeats; alternate endings choose which pass plays a bar. Bar \u{25B8} Directions ({Directions}) adds Segno, Coda and Fine signs and D.C./D.S. jumps; playback follows them. Force Break Line ({ForceBreak}) starts a new line after the bar.",
     ),
     (
         "Sections",
-        "Section \u{25B8} Edit (Shift+Ins) names the bar's section; names written in [brackets] get a frame. Ctrl+Alt+Left/Right moves between sections, and double-clicking a section under the bar overview selects it.",
+        "Section \u{25B8} Edit ({Section}) names the bar's section; names written in [brackets] get a frame. Next section ({NextSection}) and previous section ({PrevSection}) move between sections, and double-clicking a section under the bar overview selects it.",
     ),
     (
         "Tracks and the mixer",
-        "Add tracks from the Track menu (Ctrl+Shift+Ins) or the + in the tracks list. Each row has show/hide (eye), mute, solo, volume and pan. Right-click a track for more. The Track tab sets the name, tuning, capo, sound and interpretation; changing the tuning can keep the notes' pitch.",
+        "Add tracks from the Track menu ({AddTrack}) or the + in the tracks list. Each row has show/hide (eye), mute, solo, volume and pan. Right-click a track for more. The Track tab sets the name, tuning, capo, sound and interpretation; changing the tuning can keep the notes' pitch.",
     ),
     (
         "Lyrics and chords",
-        "Track \u{25B8} Show Lyrics Editor: type the words, separate syllables with spaces or hyphens, join words with +, and put comments in [brackets]. Note \u{25B8} Chord (A) names a chord, can detect it from the notes, and can show a diagram above the staff.",
+        "Track \u{25B8} Show Lyrics Editor: type the words, separate syllables with spaces or hyphens, join words with +, and put comments in [brackets]. Note \u{25B8} Chord ({Chord}) names a chord, can detect it from the notes, and can show a diagram above the staff.",
     ),
     (
         "Playing back",
-        "Space plays from the cursor and pauses, Ctrl+Space plays from the start, Esc stops. Click the score while playing to jump there. Loop (F9) repeats the selection; the speed button sets a slower or faster speed, and the speed trainer raises it on each loop. The metronome and count-in are in the toolbar and the Sound menu.",
+        "Play ({PlayPause}) plays from the cursor and pauses, Play from the Beginning ({PlayFromStart}) starts at the top, and Stop ({Stop}) stops. Click the score while playing to jump there. Loop ({Loop}) repeats the selection; the speed button sets a slower or faster speed, and the speed trainer raises it on each loop. The metronome and count-in are in the toolbar and the Sound menu.",
     ),
     (
         "Voices",
-        "Each track has four voices, for parts with their own rhythm on one staff. Pick the voice to edit with the 1\u{2013}4 buttons at the top of the palette or Ctrl+1\u{2013}4. Alt+1\u{2013}4 moves the note under the cursor, or every note you've selected, into another voice at the same place in the bar. Tools \u{25B8} Move/Swap Voices (Ctrl+Shift+M) moves, copies or swaps voices for the selection, the bar or the whole track.",
+        "Each track has four voices, for parts with their own rhythm on one staff. Pick the voice to edit with the 1\u{2013}4 buttons at the top of the palette or Voice 1 ({Voice1}) to Voice 4 ({Voice4}). Move to Voice 1 ({MoveToVoice1}) to Voice 4 ({MoveToVoice4}) moves the note under the cursor, or every note you've selected, into another voice at the same place in the bar. Tools \u{25B8} Move/Swap Voices ({MoveVoices}) moves, copies or swaps voices for the selection, the bar or the whole track.",
     ),
     (
         "Copy and paste",
-        "Ctrl+C / Ctrl+X / Ctrl+V copy, cut and paste beats of the current track; pasting goes in at the cursor. Ctrl+Shift+C / Ctrl+Shift+X copy or cut whole bars of every track, and the next paste inserts those bars.",
+        "Copy ({Copy}), Cut ({Cut}) and Paste ({Paste}) work on beats of the current track; pasting goes in at the cursor. All-Track Copy ({AllTrackCopy}) and All-Track Cut ({AllTrackCut}) take whole bars of every track, and the next paste inserts those bars.",
     ),
     (
         "Files",
@@ -246,7 +250,7 @@ const GUIDE: [(&str, &str); 13] = [
     ),
     (
         "Views",
-        "View \u{25B8} Page - Vertical, Page - Horizontal, Page - Grid, Screen - Vertical and Screen - Horizontal change how the music is laid out. Ctrl + mouse wheel or Ctrl +/\u{2212} zoom. F2, F8, F5/F6 and F11 show or hide the palette, tracks list, settings and full screen. F3 switches between all tracks and one track.",
+        "View \u{25B8} Page - Vertical, Page - Horizontal, Page - Grid, Screen - Vertical and Screen - Horizontal change how the music is laid out. Ctrl + mouse wheel, Zoom In ({ZoomIn}) and Zoom Out ({ZoomOut}) zoom. The palette ({ShowPalette}), tracks list ({ShowGlobalView}), song settings ({SongInspector}), track settings ({TrackInspector}) and full screen ({FullScreen}) can be shown or hidden, and Multitrack ({Multitrack}) switches between all tracks and one track.",
     ),
 ];
 
@@ -355,6 +359,7 @@ impl App {
         self.trainer_window(ctx);
         self.guide_window(ctx);
         self.stylesheet_window(ctx);
+        self.prefs_window(ctx);
     }
 
     fn directions_window(&mut self, ctx: &egui::Context) {
@@ -615,7 +620,7 @@ impl App {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     for (title, body) in GUIDE {
                         ui.label(RichText::new(title).strong().size(15.0));
-                        ui.label(body);
+                        ui.label(super::shortcuts::fill_keys(body));
                         ui.add_space(8.0);
                     }
                     ui.label(RichText::new("All keyboard shortcuts").strong().size(15.0));
@@ -623,6 +628,15 @@ impl App {
                 });
             });
         self.guide_open = open;
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn every_guide_shortcut_names_an_action() {
+    for (title, body) in GUIDE {
+        let filled = super::shortcuts::fill_keys(body);
+        assert!(!filled.contains('{') && !filled.contains('}'), "{title}: an unknown action in {{...}}");
     }
 }
 

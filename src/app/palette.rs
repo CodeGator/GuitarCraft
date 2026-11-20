@@ -158,7 +158,7 @@ impl App {
                 if used && !on {
                     ui.painter().circle_filled(Pos2::new(r.right() - 4.0, r.top() + 4.0), 2.5, dot);
                 }
-                if resp.on_hover_text(format!("Edit voice {} (Ctrl+{})", v + 1, v + 1)).clicked() {
+                if resp.on_hover_text(super::shortcuts::tip(&format!("Edit voice {}", v + 1), [super::shortcuts::Act::Voice1, super::shortcuts::Act::Voice2, super::shortcuts::Act::Voice3, super::shortcuts::Act::Voice4][v])).clicked() {
                     self.set_voice(v);
                 }
             }
@@ -198,10 +198,10 @@ impl App {
                 k if k < 0 => "\u{266D}".repeat((-k).min(3) as usize),
                 _ => "\u{266F}\u{266F}\u{266F}".into(),
             };
-            if glyph_button(ui, mb.key != 0, &ks, sym(11.0), "Key signature\u{2026} (Ctrl+K)").clicked() {
+            if glyph_button(ui, mb.key != 0, &ks, sym(11.0), &super::shortcuts::tip("Key signature\u{2026}", super::shortcuts::Act::KeySig)).clicked() {
                 self.open_popup(Popup::KeySig);
             }
-            if glyph_button(ui, false, &format!("{}\n{}", mb.num, mb.den), bolds(9.5), "Time signature\u{2026} (Ctrl+T)").clicked() {
+            if glyph_button(ui, false, &format!("{}\n{}", mb.num, mb.den), bolds(9.5), &super::shortcuts::tip("Time signature\u{2026}", super::shortcuts::Act::TimeSig)).clicked() {
                 self.open_popup(Popup::TimeSig);
             }
             if glyph_button(ui, mb.triplet_feel, "\u{266B}\u{00B3}", sym(14.0), "Triplet feel (swing eighths) from this bar").clicked() {
@@ -383,7 +383,7 @@ impl App {
                 if glyph_button(ui, false, "\u{266D}\u{266F}", sym(13.0), "Change accidental: write the same note the other way (F\u{266F} \u{2194} G\u{266D})").clicked() {
                     self.note_edit(|x| x.spell = if x.spell == 2 { 1 } else { 2 });
                 }
-                if paint_button(ui, false, "Lower by a semitone (Ctrl+\u{2193})", |p, r, c| {
+                if paint_button(ui, false, &super::shortcuts::tip("Lower by a semitone", super::shortcuts::Act::SemitoneDown), |p, r, c| {
                     tiny_note(p, Pos2::new(r.center().x + 1.0, r.top() + 11.0), c, 0, false);
                     p.line_segment([Pos2::new(r.left() + 2.0, r.top()), Pos2::new(r.left() + 2.0, r.bottom() - 2.0)], st(c, 1.2));
                     arrow_head(p, Pos2::new(r.left() + 2.0, r.bottom()), Vec2::new(0.0, 1.0), c);
@@ -392,7 +392,7 @@ impl App {
                 {
                     self.transpose(-1);
                 }
-                if paint_button(ui, false, "Raise by a semitone (Ctrl+\u{2191})", |p, r, c| {
+                if paint_button(ui, false, &super::shortcuts::tip("Raise by a semitone", super::shortcuts::Act::SemitoneUp), |p, r, c| {
                     tiny_note(p, Pos2::new(r.left() + 4.0, r.bottom() - 2.0), c, 0, false);
                     p.line_segment([Pos2::new(r.right() - 2.0, r.bottom()), Pos2::new(r.right() - 2.0, r.top() + 2.0)], st(c, 1.2));
                     arrow_head(p, Pos2::new(r.right() - 2.0, r.top()), Vec2::new(0.0, -1.0), c);
@@ -839,7 +839,7 @@ impl App {
             if glyph_button(ui, cur.text.is_some(), "TXT", serif(10.0), "Text\u{2026} (T)").clicked() {
                 self.open_popup(Popup::Text);
             }
-            if paint_button(ui, mb.marker.is_some(), "Section\u{2026} (Shift+Ins)", |p, r, c| {
+            if paint_button(ui, mb.marker.is_some(), &super::shortcuts::tip("Section\u{2026}", super::shortcuts::Act::Section), |p, r, c| {
                 p.rect_stroke(r.shrink(1.0), 3.0, st(c, 1.2), egui::StrokeKind::Inside);
                 p.text(r.center(), Align2::CENTER_CENTER, "A", FontId::new(11.0, FontFamily::Name("serif-bold".into())), c);
             })
@@ -897,7 +897,7 @@ impl App {
 
         // ---- Automations.
         row(ui, |ui| {
-            if glyph_button(ui, mb.tempo.is_some(), "\u{2669}=", sym(13.0), "Tempo automation\u{2026} (F10)").clicked() {
+            if glyph_button(ui, mb.tempo.is_some(), "\u{2669}=", sym(13.0), &super::shortcuts::tip("Tempo automation\u{2026}", super::shortcuts::Act::Automations)).clicked() {
                 self.open_automations(self.bar);
             }
             ui.add_enabled_ui(false, |ui| {

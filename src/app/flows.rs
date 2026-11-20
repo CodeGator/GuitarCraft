@@ -477,3 +477,66 @@ fn the_update_window_shows_each_answer_and_closes_with_escape() {
         assert!(!r.app.update.open);
     }
 }
+
+// ----- shortcuts chosen by the person (Preferences > Shortcuts) -----
+
+#[test]
+fn a_changed_shortcut_runs_and_the_old_key_is_free() {
+    use super::shortcuts::{Act, Binding, keymap, set_keymap};
+    let mut r = song_with_a_note();
+    let mut km = keymap();
+    km.set(Act::Rest, vec![Binding::of(Key::Q, Modifiers::NONE)]);
+    set_keymap(km);
+    press(&mut r, Key::R, Modifiers::NONE);
+    assert!(!r.app.cur_beat().is_rest(), "R does nothing now");
+    press(&mut r, Key::Q, Modifiers::NONE);
+    assert!(r.app.cur_beat().is_rest(), "Q makes a rest");
+    assert_eq!(super::shortcuts::sc(Act::Rest), "Q", "the menus show the new key");
+}
+
+#[test]
+fn shift_period_is_a_fade_out_only() {
+    let mut r = song_with_a_note();
+    // A keyboard sends the key and the symbol it types in the same frame.
+    r.frame(vec![
+        Event::Key { key: Key::Period, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::SHIFT },
+        Event::Text(">".into()),
+    ]);
+    r.frames(1);
+    assert!(r.app.cur_beat().fx.fade_out, "> is a fade out");
+    assert!(!r.app.cur_beat().dotted, "and not a dot as well");
+}
+
+#[test]
+fn ctrl_b_shows_the_start_screen() {
+    let mut r = song_with_a_note();
+    press(&mut r, Key::B, Modifiers::COMMAND);
+    assert!(r.app.show_home, "Ctrl+B is Browse, as the File menu says");
+}
+
+#[test]
+fn preferences_record_a_new_shortcut() {
+    use super::shortcuts::{Act, sc};
+    let mut r = song_with_a_note();
+    press(&mut r, Key::Comma, Modifiers::COMMAND);
+    assert!(r.app.prefs_dlg.is_some(), "Ctrl+, opens Preferences");
+    // Change, then Ctrl+Alt+B: Bend gets it, and the score doesn't see the key.
+    r.app.prefs_dlg.as_mut().unwrap().tab = 5;
+    r.app.prefs_dlg.as_mut().unwrap().recording = Some((Act::Bend, false));
+    let before = r.app.song.clone();
+    press(&mut r, Key::B, CA);
+    assert_eq!(sc(Act::Bend), "Ctrl+Alt+B");
+    assert!(r.app.prefs.shortcuts.contains_key("Bend"), "kept in the preferences");
+    assert!(r.app.song == before && r.app.popup.is_none(), "the key went to Preferences only");
+    // A key another action uses is asked about first: R is Rest.
+    r.app.prefs_dlg.as_mut().unwrap().recording = Some((Act::Bend, false));
+    press(&mut r, Key::R, Modifiers::NONE);
+    assert!(r.app.prefs_dlg.as_ref().unwrap().clash.is_some(), "R is taken by Rest");
+    assert_eq!(sc(Act::Rest), "R", "nothing changed yet");
+    // Esc while recording cancels and keeps the window open.
+    r.app.prefs_dlg.as_mut().unwrap().clash = None;
+    r.app.prefs_dlg.as_mut().unwrap().recording = Some((Act::Bend, false));
+    press(&mut r, Key::Escape, Modifiers::NONE);
+    assert!(r.app.prefs_dlg.as_ref().is_some_and(|d| d.recording.is_none()), "Esc cancels, the window stays");
+    assert_eq!(sc(Act::Bend), "Ctrl+Alt+B");
+}

@@ -389,9 +389,10 @@ impl App {
             Rect::from_center_size(Pos2::new(full.center().x, y + 36.0), Vec2::new(220.0, 26.0));
         let r_chart =
             Rect::from_center_size(Pos2::new(full.center().x, y + 72.0), Vec2::new(220.0, 26.0));
+        let (k_new, k_open) = (format!("({})", super::shortcuts::sc(super::shortcuts::Act::New)), format!("({})", super::shortcuts::sc(super::shortcuts::Act::Open)));
         for (r, label, key, which) in [
-            (r_new, "New File", "(Ctrl+N)", 0),
-            (r_open, "Open File…", "(Ctrl+O)", 1),
+            (r_new, "New File", k_new.as_str(), 0),
+            (r_open, "Open File…", k_open.as_str(), 1),
             (r_chart, "New Chord Chart", "", 2),
         ] {
             let resp = ui.interact(r, ui.id().with(("home_btn", which)), Sense::click());
@@ -622,6 +623,9 @@ impl App {
                     cursor_std: None,
                     printing: false,
                     transparent: false,
+                    play_cursor: crate::score::PlayCursor::Smooth,
+                    play_bar: true,
+                    bar_errors: true,
                 };
                 let painter = ui.painter().with_clip_rect(prev_r);
                 score::draw_page(&painter, &lay, &dc, 0, lay.page_origin(0, o.x, o.y));

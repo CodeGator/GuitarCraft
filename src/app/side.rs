@@ -197,7 +197,7 @@ impl App {
                     if ui
                         .add(egui::Button::new("Open...").fill(Color32::from_rgb(70, 74, 84)))
                         .on_hover_text(
-                            "How the score looks: page, staves, header and footer, fonts (F7)",
+                            super::shortcuts::tip("How the score looks: page, staves, header and footer, fonts", super::shortcuts::Act::Stylesheet),
                         )
                         .clicked()
                     {
