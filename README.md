@@ -2,7 +2,7 @@
 
 <p align="center"><img src="docs/readme/editing.png" alt="GuitarCraft editing the demo song: the editing palette on the left, a steel guitar and a bass in standard notation and tablature, the song information on the right and the tracks with their mixer below" width="800"></p>
 
-**GuitarCraft** is a desktop app for writing, editing and playing guitar music, in tablature and standard notation, written in Rust.
+**GuitarCraft** is a desktop app, written in Rust, for writing, editing and playing guitar music in tablature and standard notation, and for making chord charts: lyrics with the chords above them, ready to print.
 
 It is a **clean-room clone of Guitar Pro 8**, generated with [Craft Anything](https://github.com/storytold/craft-anything). "Clean room" means the original program was never opened, run, decompiled or read: GuitarCraft was built from screenshots, the public user guide, and the community-documented file formats.
 
@@ -12,7 +12,7 @@ GuitarCraft opens and saves Guitar Pro files (`.gp` and `.gp5`) and also opens `
 
 ## Status
 
-**Version 0.2.0, an early version for trying out (November 2026).** It is usable for writing and playing songs, but it is young: please save your work often, and keep a copy of any song you care about before editing it.
+**An early version for trying out.** It is usable for writing and playing songs, but it is young: please save your work often, and keep a copy of any song you care about before editing it.
 
 Not there yet: numbered (jianpu) notation, and importing TablEdit and Power Tab files. Expect rough edges and differences from the original.
 
@@ -25,7 +25,7 @@ Not planned for now: the original's recorded sound banks and effects, the pedalb
 <img src="docs/readme/tuning.png" alt="The Tuning window: a tuning chosen from the library, each string with its note and a play button, flats or sharps, capo and partial capo" width="395">
 </p>
 
-## What's new
+## Features
 
 ### Chords & Scales
 
@@ -94,13 +94,14 @@ Or build GuitarCraft yourself. It only takes a few minutes:
 
 To open a song directly: `cargo run --release -- "path/to/song.gp"`
 
-## How to get involved
+## Feedback
 
 GuitarCraft is young, and the most useful help is:
 
 1. **Try it** with your own songs and tell us what happens, especially files that open wrongly or differ from the original.
 2. **Report bugs** in the Issues page, with the song file when you can share it.
-3. **Improve it.** The code is all here; pull requests are welcome.
+
+GuitarCraft isn't taking code contributions or pull requests for now.
 
 ## About the author
 
