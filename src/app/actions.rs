@@ -372,6 +372,7 @@ impl App {
                 .open(&mut open)
                 .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
                 .show(ctx, |ui| {
+                    ui.set_min_width(super::widgets::DIALOG_W);
                     ui.horizontal(|ui| {
                         ui.label(format!("Bar (1\u{2013}{}):", self.song.bar_count()));
                         let r = ui.add(
@@ -419,6 +420,7 @@ impl App {
             let mut open = true;
             let mut apply = false;
             egui::Window::new("Transpose").collapsible(false).resizable(false).open(&mut open).anchor(Align2::CENTER_CENTER, Vec2::ZERO).show(ctx, |ui| {
+                ui.set_min_width(super::widgets::DIALOG_W);
                 ui.horizontal(|ui| {
                     ui.label("Semitones:");
                     ui.add(egui::DragValue::new(&mut self.transpose_amt).range(-24..=24));
@@ -778,6 +780,68 @@ pub fn diatonic_shift(pitch: i32, key: i8, steps: i32) -> i32 {
     root + noct * 12 + MAJOR[nd.rem_euclid(7) as usize] + extra
 }
 
+impl App {
+    /// The palette's flat, natural and sharp: the note is written with that sign on the same
+    /// line or space of the staff, so its pitch (and fret) moves to match: a sharp on a G makes
+    /// it G sharp, one fret higher. Only this note changes; the key signature is left alone.
+    pub(super) fn set_accidental(&mut self, want: i8) {
+        if self.cur_beat().is_rest() && self.selection().is_none() {
+            self.status = "Put a note on this beat first.".into();
+            return;
+        }
+        if !self.tr().has_strings() || self.tr().clef() == Clef::Percussion {
+            self.status = "Accidentals are for notes on a string.".into();
+            return;
+        }
+        let sel = self.selection();
+        let cursor_string = self.string as u8;
+        let on_string = self.cur_beat().note_on(cursor_string).is_some();
+        let stuck = std::cell::Cell::new(0u32);
+        let stuck_ref = &stuck;
+        self.edit(move |s, t, b, j, st| {
+            let change = |song: &mut Song, bi: usize, bj: usize, only: Option<u8>| {
+                let key = song.master[bi].key;
+                let track = song.tracks[t].clone();
+                let beat = &mut song.tracks[t].bars[bi].beats[bj];
+                let snapshot = beat.clone();
+                for n in beat.notes.iter_mut() {
+                    if only.is_some_and(|o| o != n.string) {
+                        continue;
+                    }
+                    let Some(now) = crate::score::written_alter(&track, &snapshot, key, n) else { continue };
+                    let fret = n.fret as i32 + want as i32 - now as i32;
+                    if !(0..=30).contains(&fret) {
+                        stuck_ref.set(stuck_ref.get() + 1);
+                        continue;
+                    }
+                    n.fret = fret as u8;
+                    n.spell = match want {
+                        1 => 1,
+                        -1 => 2,
+                        _ => 0,
+                    };
+                }
+            };
+            match sel {
+                Some((sa, sb)) => {
+                    for bi in sa.0..=sb.0 {
+                        let count = s.tracks[t].bars[bi].beats.len();
+                        let from = if bi == sa.0 { sa.1 } else { 0 };
+                        let to = if bi == sb.0 { sb.1 } else { count.saturating_sub(1) };
+                        for bj in from..=to.min(count.saturating_sub(1)) {
+                            change(s, bi, bj, None);
+                        }
+                    }
+                }
+                None => change(s, b, j, if on_string { Some(st as u8) } else { None }),
+            }
+        });
+        if stuck.get() > 0 {
+            self.status = "That note can't go any lower or higher on its string.".into();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -792,3 +856,4 @@ mod tests {
         assert_eq!(diatonic_shift(60, 0, -1), 59);
     }
 }
+

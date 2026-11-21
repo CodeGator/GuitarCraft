@@ -1054,6 +1054,18 @@ fn read_beat(
             Note::new((nstr - 1 - s) as u8, f.clamp(0, 36) as u8)
         };
         n.dead = p.contains_key("Muted");
+        // The spelling the file chose: a flat or a sharp on the staff.
+        if let Some(pt) = p
+            .get("TransposedPitch")
+            .or_else(|| p.get("ConcertPitch"))
+            .and_then(|x| child(*x, "Pitch"))
+        {
+            n.spell = match text(child(pt, "Accidental")).as_str() {
+                "#" => 1,
+                "b" => 2,
+                _ => 0,
+            };
+        }
         n.fx.lh_finger = crate::gpifwrite::finger_from_letter(&text(child(*nn, "LeftFingering")));
         n.fx.rh_finger = crate::gpifwrite::finger_from_letter(&text(child(*nn, "RightFingering")));
         n.palm_mute = p.contains_key("PalmMuted");

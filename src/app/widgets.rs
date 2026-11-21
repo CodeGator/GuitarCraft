@@ -2,6 +2,9 @@
 
 use egui::{Color32, Pos2, Rect, Stroke as PStroke, Vec2};
 
+/// The width every small popup and message box shares, so they look alike.
+pub const DIALOG_W: f32 = 400.0;
+
 pub fn sanitize(s: &str) -> String {
     let t: String = s
         .chars()

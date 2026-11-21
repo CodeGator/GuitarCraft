@@ -355,6 +355,7 @@ impl App {
         let b = self.bar;
         let mut mb = self.song.master[b].clone();
         egui::Window::new(format!("Directions \u{2013} bar {}", b + 1)).open(&mut open).resizable(false).collapsible(false).show(ctx, |ui| {
+            ui.set_min_width(super::widgets::DIALOG_W);
             ui.label(RichText::new("Target at the start of the bar").strong());
             ui.horizontal_wrapped(|ui| {
                 for (k, name) in TARGET_NAMES.iter().enumerate() {
@@ -490,6 +491,7 @@ impl App {
         }
         let mut open = true;
         egui::Window::new("Speed trainer").open(&mut open).resizable(false).collapsible(false).show(ctx, |ui| {
+            ui.set_min_width(super::widgets::DIALOG_W);
             ui.checkbox(&mut self.trainer_on, "Raise the speed each time the loop repeats");
             egui::Grid::new("trainer").num_columns(2).show(ui, |ui| {
                 ui.label("Start at");

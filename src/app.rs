@@ -592,6 +592,16 @@ impl App {
                         _ => update::Outcome::NoReleases,
                     });
                 }
+                "accidentals" => {
+                    // The bass line with a sharp on its first note and a flat on its second.
+                    app.track = 1;
+                    app.bar = 0;
+                    app.beat = 0;
+                    app.set_accidental(1);
+                    app.beat = 1;
+                    app.set_accidental(-1);
+                    app.beat = 0;
+                }
                 "batch" => app.open_batch(),
                 "tabs" | "tabshome" | "tabschart" | "quitprompt" => {
                     // Several files open at once: the demo song, a chord chart and a new song.

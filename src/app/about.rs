@@ -113,7 +113,7 @@ fn application_tab(ui: &mut egui::Ui, st: &mut AboutState) {
     let icon = st
         .icon
         .get_or_insert_with(|| {
-            let png: &[u8] = include_bytes!("../../assets/app-icon/guitarcraft-256.png");
+            let png: &[u8] = include_bytes!("../../assets/app-icon/codegator-256.png");
             let img = image::load_from_memory(png)
                 .map(|i| i.to_rgba8())
                 .unwrap_or_default();

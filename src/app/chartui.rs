@@ -1092,7 +1092,7 @@ impl App {
             ChartSig::Key { .. } => "Key Signature",
         };
         egui::Window::new(title).collapsible(false).resizable(false).anchor(Align2::CENTER_TOP, Vec2::new(0.0, 140.0)).show(ctx, |ui| {
-            ui.set_min_width(300.0);
+            ui.set_min_width(super::widgets::DIALOG_W);
             match &mut sig {
                 ChartSig::Time { num, den } => {
                     ui.label(RichText::new("The whole chart").weak());

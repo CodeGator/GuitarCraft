@@ -126,6 +126,8 @@ impl App {
         let simile = self.song.tracks[self.track].bars[self.bar].simile;
         let n = cur.note_on(self.string as u8).or(cur.notes.first()).cloned().unwrap_or_default();
         let has = !cur.is_rest();
+        // The sign the note is written with (whatever the key signature says).
+        let alter = if has { crate::score::written_alter(self.tr(), &cur, mb.key, &n).unwrap_or(0) } else { 0 };
         let lh_names: [&str; 5] = if self.song.style.lh_type == 1 { ["P", "1", "2", "3", "4"] } else { ["T", "1", "2", "3", "4"] };
         let rh_names: [&str; 5] = match self.song.style.rh_type {
             1 => ["p", "i", "m", "a", "x"],
@@ -368,14 +370,14 @@ impl App {
                 ui.add_enabled_ui(false, |ui| {
                     glyph_button(ui, false, "\u{1D12B}", sym(16.0), "Double flat (not in GuitarCraft yet)");
                 });
-                if glyph_button(ui, has && n.spell == 2, "\u{266D}", sym(16.0), "Flat: write the note with a flat").clicked() {
-                    self.note_edit(|x| x.spell = 2);
+                if glyph_button(ui, has && n.spell == 2 && alter == -1, "\u{266D}", sym(16.0), "Flat: lower the note a semitone and write it with a flat").clicked() {
+                    self.set_accidental(-1);
                 }
-                if glyph_button(ui, has && n.spell == 0, "\u{266E}", sym(16.0), "Natural: spell the note from the key signature").clicked() {
-                    self.note_edit(|x| x.spell = 0);
+                if glyph_button(ui, has && n.spell == 0 && alter == 0, "\u{266E}", sym(16.0), "Natural: write the note without a sharp or flat").clicked() {
+                    self.set_accidental(0);
                 }
-                if glyph_button(ui, has && n.spell == 1, "\u{266F}", sym(16.0), "Sharp: write the note with a sharp").clicked() {
-                    self.note_edit(|x| x.spell = 1);
+                if glyph_button(ui, has && n.spell == 1 && alter == 1, "\u{266F}", sym(16.0), "Sharp: raise the note a semitone and write it with a sharp").clicked() {
+                    self.set_accidental(1);
                 }
                 ui.add_enabled_ui(false, |ui| {
                     glyph_button(ui, false, "\u{1D12A}", sym(15.0), "Double sharp (not in GuitarCraft yet)");

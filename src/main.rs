@@ -361,11 +361,28 @@ pub fn setup_style(ctx: &egui::Context) {
     ctx.style_mut_of(egui::Theme::Dark, |s| {
         s.spacing.button_padding = egui::vec2(8.0, 4.0);
         s.visuals.panel_fill = egui::Color32::from_rgb(36, 38, 43);
-        s.visuals.window_fill = egui::Color32::from_rgb(44, 47, 53);
+        // Popups and message boxes: lighter than the panels behind them, with a
+        // clear edge, rounder corners, a softer shadow, and text that is easy to read.
+        s.visuals.window_fill = egui::Color32::from_rgb(58, 62, 71);
+        s.visuals.window_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(104, 110, 124));
+        s.visuals.window_corner_radius = egui::CornerRadius::same(8);
+        s.visuals.menu_corner_radius = egui::CornerRadius::same(6);
+        s.visuals.window_shadow = egui::Shadow {
+            offset: [0, 6],
+            blur: 24,
+            spread: 0,
+            color: egui::Color32::from_black_alpha(110),
+        };
+        s.visuals.popup_shadow = s.visuals.window_shadow;
+        s.visuals.widgets.noninteractive.fg_stroke.color = egui::Color32::from_gray(228);
+        s.visuals.widgets.open.fg_stroke.color = egui::Color32::WHITE;
+        s.visuals.weak_text_color = Some(egui::Color32::from_gray(178));
+        s.spacing.window_margin = egui::Margin::same(14);
+        s.spacing.item_spacing = egui::vec2(8.0, 7.0);
         s.visuals.selection.bg_fill = egui::Color32::from_rgb(55, 100, 180);
         s.visuals.selection.stroke.color = egui::Color32::WHITE;
-        s.visuals.widgets.inactive.weak_bg_fill = egui::Color32::from_rgb(56, 60, 67);
-        s.visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(56, 60, 67);
+        s.visuals.widgets.inactive.weak_bg_fill = egui::Color32::from_rgb(84, 90, 103);
+        s.visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(84, 90, 103);
         s.visuals.extreme_bg_color = egui::Color32::from_rgb(26, 28, 32);
     });
 }

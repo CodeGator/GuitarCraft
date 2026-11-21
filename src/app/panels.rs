@@ -373,6 +373,7 @@ impl App {
                 .resizable(false)
                 .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
                 .show(ctx, |ui| {
+                    ui.set_min_width(super::widgets::DIALOG_W);
                     ui.label(format!(
                         "\u{201C}{}\u{201D} has changes that haven't been saved.",
                         self.doc_label()

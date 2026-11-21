@@ -585,3 +585,41 @@ fn the_chord_window_names_a_chord_and_shows_its_diagram_on_an_empty_beat() {
     let b = r.app.cur_beat();
     assert!(b.chord.is_none() && b.chord_frets.is_none() && !b.chord_diagram);
 }
+
+#[test]
+fn sharps_and_flats_change_the_note_and_leave_the_key_signature_alone() {
+    let mut r = song_with_a_note();
+    let key = r.app.song.master[r.app.bar].key;
+    let pitch = |r: &Rig| {
+        let b = r.app.cur_beat();
+        r.app.tr().pitch(&b.notes[0]) as i32
+    };
+    let alter = |r: &Rig| {
+        let b = r.app.cur_beat().clone();
+        crate::score::written_alter(r.app.tr(), &b, key, &b.notes[0]).unwrap()
+    };
+    let (p0, a0) = (pitch(&r), alter(&r) as i32);
+    let natural = p0 - a0;
+    r.app.set_accidental(1);
+    r.frames(1);
+    assert_eq!(pitch(&r), natural + 1, "a sharp raises the note to sharp");
+    assert_eq!(alter(&r), 1);
+    assert_eq!(r.app.cur_beat().notes[0].spell, 1);
+    // Asking again changes nothing.
+    r.app.set_accidental(1);
+    assert_eq!(pitch(&r), natural + 1);
+    r.app.set_accidental(-1);
+    r.frames(1);
+    assert_eq!(pitch(&r), natural - 1, "a flat lowers it to flat");
+    assert_eq!(alter(&r), -1);
+    r.app.set_accidental(0);
+    r.frames(1);
+    assert_eq!(pitch(&r), natural);
+    assert_eq!(alter(&r), 0);
+    assert_eq!(r.app.song.master[r.app.bar].key, key, "the key signature is never touched");
+    assert!(r.app.song.master.iter().all(|m| m.key == key));
+    // The whole thing can be undone.
+    r.app.set_accidental(1);
+    r.app.do_undo();
+    assert_eq!(pitch(&r), natural);
+}
