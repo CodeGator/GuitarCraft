@@ -33,8 +33,10 @@ exist under another name. Check before starting work on one, and tick items off 
 - [ ] **Action list** (Ctrl+Alt+E) and **Expression text** (Ctrl+Shift+E). The command palette
       (Ctrl+E) already exists.
 - [ ] **Drum view** instrument view (fretboard and keyboard views already exist).
-- [ ] **MIDI capture**: note entry from a MIDI keyboard, beat by beat; choice of MIDI input and
-      output devices.
+- [~] **MIDI capture**: note entry from a MIDI keyboard, beat by beat; choice of MIDI input and
+      output devices. Started 2026-11-22, plan in `midi-design.md`: output devices, MIDI
+      playback and bends work (heard on the Windows GS Wavetable Synth); single-note entry from
+      an input is written but never tried with a real keyboard; chords from input not done.
 - [x] **Per-track equalizer** in the mixer. Added 2026-11-20, laid out like Guitar Pro 8's:
       On switch, presets, and Low, Low Medium (dB, Hz), Medium (Q, dB, Hz), High Medium
       (dB, Hz) and High knobs. Saved in .gc, .gp and .gpx files (matched with Guitar Pro 8

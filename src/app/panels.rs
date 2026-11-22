@@ -570,6 +570,7 @@ impl App {
         } else {
             self.handle_global_keys(&ctx);
         }
+        self.handle_midi_input(&ctx);
         let sounding = self.poll_playback();
         if self.playing || !sounding.is_empty() {
             ctx.request_repaint();

@@ -5,7 +5,9 @@ the two pickers in Preferences > Audio & MIDI, `midi_output` / `midi_input` save
 and a live "messages received" count for the input. Step 2 (note previews also go to the MIDI output) built the same day and heard working through the Windows GS Wavetable Synth. Step 3 (playback events carry MIDI pitch, channel and program; `audio::MidiNote`) built the
 same day, tested without hardware. Step 4 (playback to the MIDI output, built-in sound off by default while an output is open,
 `midi_builtin_too` preference) built the same day, not yet heard by the author. Step 5 (bends as pitch bend: the four bend shapes, sent only when no other note of the channel
-sounds with it; slides and vibrato not sent) built the same day, not yet heard. Steps 6 to 8 are not started.
+sounds with it; slides and vibrato not sent) built the same day, not yet heard. Step 6 (MIDI input: single notes entered at the cursor, then the cursor moves on; string and fret
+chosen by `midi::string_and_fret`) built the same day, tested only with unit tests because no
+MIDI keyboard was available. Steps 7 and 8 are not started.
 
 This covers the two greyed-out boxes in Preferences > Audio & MIDI (MIDI output, MIDI input)
 and the "MIDI capture" item in `gp8-feature-gaps.md`. The two halves are independent: output

@@ -775,6 +775,30 @@ impl App {
         }
     }
 
+    /// Enters the notes played on the MIDI input at the cursor, one beat for each, and moves on.
+    /// Called every frame. Nothing is entered while the song plays or when no score shows.
+    pub(super) fn handle_midi_input(&mut self, ctx: &egui::Context) {
+        if !self.midi.input_open() {
+            return;
+        }
+        // Nothing wakes the screen when a key is pressed, so look again soon.
+        ctx.request_repaint_after(std::time::Duration::from_millis(50));
+        let played = self.midi.take_played();
+        if played.is_empty() || self.playing || self.show_home || self.chart.is_some() || self.prefs_dlg.is_some() {
+            return;
+        }
+        for pitch in played {
+            let used: Vec<u8> = self.cur_beat().notes.iter().map(|n| n.string).collect();
+            match crate::midi::string_and_fret(self.tr(), pitch, self.string, &used) {
+                Some((string, fret)) => {
+                    self.set_fret(string, fret);
+                    self.move_right(false);
+                }
+                None => self.status = "That note is out of range for this track.".into(),
+            }
+        }
+    }
+
     /// The built-in sound stays quiet: a MIDI output is open and Preferences doesn't ask for both.
     pub(super) fn mute_builtin(&self) -> bool {
         self.midi.output_open() && !self.prefs.midi_builtin_too

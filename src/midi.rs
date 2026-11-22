@@ -8,7 +8,7 @@ use crate::model::{InstrumentType, Track};
 use midir::{MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender, sync_channel};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, SyncSender, channel, sync_channel};
 use std::time::{Duration, Instant};
 
 const CLIENT: &str = "GuitarCraft";
@@ -40,6 +40,48 @@ pub fn input_port_names() -> Vec<String> {
         Ok(m) => m.ports().iter().filter_map(|p| m.port_name(p).ok()).collect(),
         Err(_) => vec![],
     }
+}
+
+/// The pitch of a Note On message (any channel, velocity above 0), if that is what this is.
+/// A Note On with velocity 0 is a Note Off and gives nothing.
+pub fn note_on_pitch(bytes: &[u8]) -> Option<u8> {
+    match bytes {
+        [s, pitch, vel, ..] if s & 0xF0 == 0x90 && *vel > 0 && *pitch < 128 => Some(*pitch),
+        _ => None,
+    }
+}
+
+/// The string and fret that play `pitch` on a track, or None when the track can't play it.
+/// `prefer` is the string the cursor is on, tried first; otherwise the lowest fret wins.
+/// `used` are the strings already carrying a note in the beat, which are avoided when
+/// another will do. Instruments without strings keep their notes on virtual strings that
+/// start at pitch 0, so the fret is the pitch and the string is any free one.
+pub fn string_and_fret(track: &Track, pitch: u8, prefer: usize, used: &[u8]) -> Option<(usize, u8)> {
+    let n = track.strings();
+    if n == 0 {
+        return None;
+    }
+    if !track.has_strings() {
+        let free = (0..n).find(|s| !used.contains(&(*s as u8))).unwrap_or(0);
+        return Some((free, pitch));
+    }
+    let fret_on = |s: usize| -> Option<u8> {
+        let base = track.tuning[s] as i32 + track.capo_at(s) as i32;
+        let f = pitch as i32 - base;
+        (0..=track.frets as i32).contains(&f).then_some(f as u8)
+    };
+    // The cursor's string, unless another note of the beat already sits on it.
+    if prefer < n
+        && !used.contains(&(prefer as u8))
+        && let Some(f) = fret_on(prefer)
+    {
+        return Some((prefer, f));
+    }
+    let best = (0..n)
+        .filter(|s| !used.contains(&(*s as u8)))
+        .filter_map(|s| fret_on(s).map(|f| (f, s)))
+        .min();
+    best.map(|(f, s)| (s, f))
 }
 
 /// What the MIDI thread is asked to do.
@@ -194,6 +236,8 @@ pub struct Midi {
     input: Option<MidiInputConnection<()>>,
     /// Counts the messages arriving from the input, so the screen can show activity.
     activity: Arc<AtomicU32>,
+    /// The pitches of the notes played on the input, waiting to be entered.
+    played: Option<Receiver<u8>>,
 }
 
 impl Midi {
@@ -224,6 +268,7 @@ impl Midi {
     /// Opens the named input port (None closes it).
     pub fn set_input(&mut self, name: Option<&str>) -> Result<(), String> {
         self.input = None;
+        self.played = None;
         let Some(name) = name else {
             return Ok(());
         };
@@ -236,17 +281,23 @@ impl Midi {
             .find(|p| m.port_name(p).is_ok_and(|n| n == name))
             .ok_or_else(|| format!("MIDI input \"{name}\" isn't connected"))?;
         let count = self.activity.clone();
+        let (tx, rx): (Sender<u8>, Receiver<u8>) = channel();
         self.input = Some(
             m.connect(
                 &port,
                 "GuitarCraft input",
-                move |_, _, _| {
+                move |_, bytes, _| {
                     count.fetch_add(1, Ordering::Relaxed);
+                    // Only the notes pressed matter; the screen picks them up on its next frame.
+                    if let Some(p) = note_on_pitch(bytes) {
+                        let _ = tx.send(p);
+                    }
                 },
                 (),
             )
             .map_err(|e| e.to_string())?,
         );
+        self.played = Some(rx);
         Ok(())
     }
 
@@ -261,6 +312,11 @@ impl Midi {
     /// A way for the audio thread to send notes to the output (None when none is open).
     pub fn sender(&self) -> Option<SyncSender<MidiCmd>> {
         self.output.clone()
+    }
+
+    /// The notes played on the input since last asked, as pitches, in order.
+    pub fn take_played(&self) -> Vec<u8> {
+        self.played.as_ref().map(|r| r.try_iter().collect()).unwrap_or_default()
     }
 
     /// How many messages the input has received so far.
@@ -328,6 +384,59 @@ mod tests {
         assert_eq!(m.activity(), 0);
         m.preview_note(0, 0, 60, 90, 100); // no output open: nothing happens
         assert!(m.sender().is_none());
+    }
+
+    fn guitar() -> Track {
+        // Standard tuning: string 0 is the high E (64), string 5 the low E (40).
+        Track::of_instrument(crate::model::Instrument::CleanGuitar, "Guitar")
+    }
+
+    #[test]
+    fn only_notes_pressed_are_taken_from_the_input() {
+        assert_eq!(note_on_pitch(&[0x90, 60, 100]), Some(60));
+        assert_eq!(note_on_pitch(&[0x95, 72, 1]), Some(72), "any channel");
+        assert_eq!(note_on_pitch(&[0x90, 60, 0]), None, "velocity 0 is a note off");
+        assert_eq!(note_on_pitch(&[0x80, 60, 64]), None);
+        assert_eq!(note_on_pitch(&[0xB0, 64, 127]), None, "the sustain pedal");
+        assert_eq!(note_on_pitch(&[0x90, 60]), None, "too short");
+        assert_eq!(note_on_pitch(&[]), None);
+    }
+
+    #[test]
+    fn a_played_pitch_finds_a_string_and_fret() {
+        let g = guitar();
+        assert_eq!(g.tuning, vec![64, 59, 55, 50, 45, 40]);
+        // The cursor's string is used when it can play the note.
+        assert_eq!(string_and_fret(&g, 64, 0, &[]), Some((0, 0)));
+        assert_eq!(string_and_fret(&g, 64, 1, &[]), Some((1, 5)));
+        // When the cursor's string can't play it, the lowest fret wins (an open string).
+        assert_eq!(string_and_fret(&g, 59, 0, &[]), Some((1, 0)));
+        // A string that can play it keeps it, even at a high fret.
+        assert_eq!(string_and_fret(&g, 59, 5, &[]), Some((5, 19)));
+        // A string already used in the beat is avoided.
+        assert_eq!(string_and_fret(&g, 64, 0, &[0]), Some((1, 5)));
+        // Too low and too high for the guitar.
+        assert_eq!(string_and_fret(&g, 30, 0, &[]), None);
+        assert_eq!(string_and_fret(&g, 127, 0, &[]), None);
+        // The highest fret works, the next does not.
+        assert_eq!(string_and_fret(&g, 64 + g.frets, 0, &[]), Some((0, g.frets)));
+    }
+
+    #[test]
+    fn a_capo_moves_the_fret() {
+        let mut g = guitar();
+        g.capo = 2;
+        // The open high E now sounds F#; E itself can't be played on string 0.
+        assert_eq!(string_and_fret(&g, 66, 0, &[]), Some((0, 0)));
+        assert_ne!(string_and_fret(&g, 64, 0, &[]).map(|p| p.0), Some(0));
+    }
+
+    #[test]
+    fn keyboards_and_drums_use_the_pitch_as_the_fret() {
+        let drums = Track::of_instrument(crate::model::Instrument::Drums, "Drums");
+        assert_eq!(string_and_fret(&drums, 38, 0, &[]), Some((0, 38)));
+        // A second note of the beat goes on the next free string.
+        assert_eq!(string_and_fret(&drums, 42, 0, &[0]), Some((1, 42)));
     }
 
     #[test]
