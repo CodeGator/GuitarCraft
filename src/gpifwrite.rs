@@ -1067,8 +1067,8 @@ pub(crate) fn part_configuration(song: &Song) -> Vec<u8> {
     b.push(0);
     b.extend_from_slice(&(flags.len() as i32).to_be_bytes());
     b.extend_from_slice(&flags);
-    for f in &flags {
-        b.push(0);
+    for (f, t) in flags.iter().zip(&song.tracks) {
+        b.push(t.multirest as u8);
         b.extend_from_slice(&1i32.to_be_bytes());
         b.push(*f);
     }

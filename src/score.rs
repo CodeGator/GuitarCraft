@@ -184,6 +184,8 @@ pub struct BarLay {
     pub cols_x: Vec<f32>,
     pub cols_w: Vec<f32>,
     pub cols_end: f32,
+    /// How many bars this one stands for (more than 1 for a multirest).
+    pub run: usize,
 }
 
 impl BarLay {
@@ -741,6 +743,7 @@ pub fn layout_ex(
         clef: bool,
         time: bool,
         key_shown: bool,
+        run: usize,
     }
     let head_w = |clef: bool, time: bool, rep: bool, keys: usize| -> f32 {
         let mut h = 10.0 * z;
@@ -764,7 +767,14 @@ pub fn layout_ex(
     let mut used = 0.0;
     let mut prev_sig = (0u8, 0u8);
     let mut prev_key = 0i8;
+    let mut skip_to = 0usize;
     for bi in 0..song.bar_count() {
+        // The bars a multirest stands for are drawn by its first bar (one track at a time).
+        if bi < skip_to {
+            continue;
+        }
+        let run = if tis.len() == 1 { song.multirest_len(tis[0], bi) } else { 1 };
+        skip_to = bi + run;
         let mb = &song.master[bi];
         let sig_changed = (mb.num, mb.den) != prev_sig;
         let section = st.time_each_section && mb.marker.is_some();
@@ -773,7 +783,11 @@ pub fn layout_ex(
         let key_changed = mb.key != prev_key;
         prev_key = mb.key;
         let kn = mb.key.unsigned_abs() as usize;
-        let (onsets, widths) = bar_columns(song, &tis, bi, z);
+        let (onsets, widths) = if run > 1 {
+            (vec![0], vec![70.0 * z])
+        } else {
+            bar_columns(song, &tis, bi, z)
+        };
         let sum: f32 = widths.iter().sum();
         let sys_start = cur_g.is_empty();
         let first_system = groups.is_empty();
@@ -800,6 +814,7 @@ pub fn layout_ex(
                 clef,
                 time,
                 key_shown: kn > 0,
+                run,
             });
         } else {
             used += w;
@@ -811,6 +826,7 @@ pub fn layout_ex(
                 clef,
                 time: time_here,
                 key_shown: keys_here > 0,
+                run,
             });
         }
         if mb.line_break && !cur_g.is_empty() {
@@ -902,6 +918,9 @@ pub fn layout_ex(
             }
             let end = bx + 8.0 * z;
             bar_pos[p.bi] = (systems.len(), bars.len());
+            for hidden in p.bi + 1..p.bi + p.run {
+                bar_pos[hidden] = bar_pos[p.bi];
+            }
             bars.push(BarLay {
                 bar: p.bi,
                 x,
@@ -915,6 +934,7 @@ pub fn layout_ex(
                 cols_x: cx.clone(),
                 cols_w: cw.clone(),
                 cols_end: bx,
+                run: p.run,
             });
             x = end;
         }
@@ -2017,6 +2037,33 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
                     );
                 }
             }
+            // Several empty bars shown as one: a thick bar across the staff, and their number.
+            if bl.run > 1 {
+                let mut mids = vec![];
+                for (sy, _) in g.std_staves() {
+                    mids.push((y0 + sy + 2.0 * g.ls, g.ls));
+                }
+                if g.tab {
+                    mids.push((y0 + g.tab_top + (g.strings as f32 - 1.0) * g.ts * 0.5, g.ts * 0.8));
+                }
+                let (lx, rx) = (bx + 12.0 * z, ex - 12.0 * z);
+                for (my, sp) in &mids {
+                    p.rect_filled(Rect::from_min_max(Pos2::new(lx, my - sp * 0.5), Pos2::new(rx, my + sp * 0.5)), 0.0, INK);
+                    for x in [lx, rx] {
+                        p.line_segment([Pos2::new(x, my - sp * 1.4), Pos2::new(x, my + sp * 1.4)], PStroke::new(1.5 * z, INK));
+                    }
+                }
+                if let Some((my, sp)) = mids.first() {
+                    p.text(
+                        Pos2::new((lx + rx) * 0.5, my - sp * 2.4),
+                        Align2::CENTER_BOTTOM,
+                        format!("{}", bl.run),
+                        serif_bi(15.0 * z),
+                        INK,
+                    );
+                }
+                continue;
+            }
             // A repeat sign for the previous bar (or two) stands in for the notes.
             if bar.simile > 0 {
                 let first_note = bl
@@ -2120,7 +2167,10 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
     // The cursor: a yellow box in the staff being edited (notation or tab) and a
     // grey box on the same note in the other staff.
     if dc.show_cursor
-        && let Some(bl) = sys.bars.iter().find(|b| b.bar == dc.cursor.0)
+        && let Some(bl) = sys
+            .bars
+            .iter()
+            .find(|b| b.bar == dc.cursor.0 || (b.run > 1 && (b.bar..b.bar + b.run).contains(&dc.cursor.0)))
     {
         let track = &song.tracks[dc.ti];
         let (cxs, _) = bl.voice_xs(track.bars[dc.cursor.0].voice(dc.voice));
@@ -2362,5 +2412,90 @@ mod hit_tests {
             hit_test(&lay, &song, 0, sys.page, Pos2::new(time_x, y)).map(|h| h.3),
             Some(Some(Hit::Head(2)))
         );
+    }
+}
+
+#[cfg(test)]
+mod multirest_tests {
+    use super::*;
+
+    /// A song of `n` empty bars on one track, with its multirest on.
+    fn empty_song(n: usize) -> Song {
+        let mut s = Song::new_blank();
+        s.tracks.truncate(1);
+        s.master = vec![MasterBar::default(); n];
+        for t in &mut s.tracks {
+            t.bars = (0..n).map(|_| Bar::empty()).collect();
+            t.multirest = true;
+        }
+        s
+    }
+
+    #[test]
+    fn empty_bars_join_until_something_needs_showing() {
+        let mut s = empty_song(8);
+        s.tracks[0].multirest = false;
+        assert_eq!(s.multirest_len(0, 0), 1, "off until asked for");
+        s.tracks[0].multirest = true;
+        assert_eq!(s.multirest_len(0, 0), 8);
+        assert_eq!(s.multirest_len(0, 3), 5);
+        // A section name starts a new bar of its own; a tempo change too.
+        s.master[4].marker = Some("Solo".into());
+        assert_eq!(s.multirest_len(0, 0), 4);
+        s.master[4].marker = None;
+        s.master[6].tempo = Some(90);
+        assert_eq!(s.multirest_len(0, 0), 6);
+        s.master[6].tempo = None;
+        // A repeat close ends the run after its own bar.
+        s.master[3].repeat_close = 2;
+        assert_eq!(s.multirest_len(0, 0), 4);
+        s.master[3].repeat_close = 0;
+        // A note stops it.
+        s.tracks[0].bars[5].beats[0].notes = vec![Note::new(0, 3)];
+        assert_eq!(s.multirest_len(0, 0), 5);
+        // A track is judged on its own bars: another track's notes don't matter.
+        let mut two = empty_song(4);
+        let mut other = two.tracks[0].clone();
+        other.bars[2].beats[0].notes = vec![Note::new(0, 3)];
+        two.tracks.push(other);
+        assert_eq!(two.multirest_len(0, 0), 4);
+        // A single empty bar isn't a multirest.
+        let mut one = empty_song(3);
+        one.tracks[0].bars[1].beats[0].notes = vec![Note::new(0, 3)];
+        assert_eq!(one.multirest_len(0, 0), 1);
+    }
+
+    #[test]
+    fn a_guitar_pro_file_with_multirest_on_shows_one_rest_and_the_last_bar() {
+        // Saved by Guitar Pro 8: four bars, a note in the last, Bar > Multirest on.
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests").join("Multi Rest.gp");
+        let song = crate::gpif::import_gp(&std::fs::read(path).expect("tests/Multi Rest.gp")).unwrap();
+        assert!(song.tracks[0].multirest);
+        let lay = layout(&song, &[0], 0, 1.0, Notation::Both);
+        let shown: Vec<(usize, usize)> = lay.systems.iter().flat_map(|sy| sy.bars.iter().map(|b| (b.bar, b.run))).collect();
+        assert_eq!(shown, vec![(0, 3), (3, 1)]);
+        // A file saved with it off says so.
+        let off = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/gp8/Morning Walk Gp8.gp");
+        let off = crate::gpif::import_gp(&std::fs::read(off).unwrap()).unwrap();
+        assert!(off.tracks.iter().all(|t| !t.multirest));
+        // Saved again, the setting stays on.
+        let again = crate::gpif::import_gp(&crate::gpifwrite::export_gp(&song).unwrap()).unwrap();
+        assert!(again.tracks[0].multirest);
+    }
+
+    #[test]
+    fn a_multirest_is_one_bar_in_the_layout() {
+        let mut s = empty_song(6);
+        s.tracks[0].bars[5].beats[0].notes = vec![Note::new(0, 3)];
+        let lay = layout(&s, &[0], 0, 1.0, Notation::Both);
+        let shown: Vec<(usize, usize)> = lay.systems.iter().flat_map(|sy| sy.bars.iter().map(|b| (b.bar, b.run))).collect();
+        // The five empty bars are one, then the bar with the note.
+        assert_eq!(shown, vec![(0, 5), (5, 1)]);
+        // Every hidden bar is found where the multirest is drawn.
+        assert!((0..5).all(|b| lay.bar_pos[b] == lay.bar_pos[0]));
+        // More than one track shown: no multirests (as in Guitar Pro's Multitrack view).
+        s.tracks.push(s.tracks[0].clone());
+        let multi = layout(&s, &[0, 1], 0, 1.0, Notation::Both);
+        assert_eq!(multi.systems.iter().map(|sy| sy.bars.len()).sum::<usize>(), 6);
     }
 }

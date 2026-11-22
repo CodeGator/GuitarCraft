@@ -399,6 +399,10 @@ impl App {
             self.delete_bar(self.bar);
             ui.close();
         }
+        if item(ui, "Multirest", &sc(Act::Multirest)).clicked() {
+            self.toggle_multirest();
+            ui.close();
+        }
         ui.separator();
         if item(ui, "Key Signature...", &sc(Act::KeySig)).clicked() {
             self.open_popup(Popup::KeySig);

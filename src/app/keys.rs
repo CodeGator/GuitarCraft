@@ -385,6 +385,7 @@ impl App {
             // ----- Bars and sections -----
             InsertBar => self.insert_bar(self.bar),
             DeleteBar => self.delete_bar(self.bar),
+            Multirest => self.toggle_multirest(),
             KeySig => self.open_popup(Popup::KeySig),
             TimeSig => self.open_popup(Popup::TimeSig),
             TripletFeel => self.bar_edit(|mb| mb.triplet_feel = !mb.triplet_feel),

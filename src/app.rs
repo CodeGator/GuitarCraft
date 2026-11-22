@@ -1256,6 +1256,19 @@ impl App {
         });
     }
 
+    /// Bar > Multirest (Ctrl+R): the current track shows its runs of empty bars as one bar with
+    /// their number, or goes back to showing them one by one.
+    fn toggle_multirest(&mut self) {
+        let ti = self.track;
+        let on = !self.song.tracks[ti].multirest;
+        self.edit(move |s, _, _, _, _| s.tracks[ti].multirest = on);
+        self.status = if on {
+            "Multirest on: empty bars in a row show as one (Ctrl+R to turn it off). It shows when this track is on its own.".into()
+        } else {
+            "Multirest off.".into()
+        };
+    }
+
     fn insert_bar(&mut self, at: usize) {
         self.edit(|s, _, _, _, _| {
             let mut mb = s.master[at.min(s.master.len() - 1)].clone();

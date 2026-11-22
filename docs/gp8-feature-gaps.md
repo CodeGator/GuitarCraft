@@ -47,7 +47,16 @@ exist under another name. Check before starting work on one, and tick items off 
       Added 2026-11-20: the knob on the Master row (EQ column); follows the selected track;
       double-click to reset. Not saved with the song (how Guitar Pro 8 treats it is unchecked).
 - [ ] **Instrument (sound) change automation** partway through a song.
-- [ ] **Multi-bar rests** (Ctrl+R).
+- [x] **Multi-bar rests** (Ctrl+R, Bar > Multirest): added 2026-11-22. A setting of each track:
+      when that track is shown alone, runs of empty bars show as one bar with a thick rest and
+      their number. The guide says little, so the joining rules are ours: bars join while they are
+      empty (no notes, chords, text or lyrics) and nothing needs showing between them (repeat,
+      ending, section, tempo, key or time signature, double bar, jump, line break). Not shown in
+      the multitrack view, as in the guide. Read from and written to .gp files: Guitar Pro 8 keeps
+      it as the byte in front of each track's own view in `Content/PartConfiguration`, found by
+      comparing `tests/Multi Rest.gp` (on) with files saved with it off; one file with it on is
+      thin evidence, so a second file saved with it off would confirm it. Not written to GPX.
+      Not tried by eye in the app.
 - [ ] **File password protection**: lock a file; lock icon on its tab; unlock prompt.
 - [ ] **Numbered (jianpu) notation**: option exists but is greyed out (`src/app/side.rs`).
 - [ ] **Import TablEdit and Power Tab**: menu items exist but are greyed out (formats not

@@ -1173,6 +1173,9 @@ pub struct Track {
     pub solo: bool,
     /// Shown in the score.
     pub visible: bool,
+    /// Runs of empty bars show as one bar with their number when this track is shown alone
+    /// (Bar > Multirest, Ctrl+R).
+    pub multirest: bool,
     /// Short name shown beside the staves (empty = made from the name).
     pub short_name: String,
     /// Let every note ring on.
@@ -1228,6 +1231,7 @@ impl Default for Track {
             mute: false,
             solo: false,
             visible: true,
+            multirest: false,
             short_name: String::new(),
             auto_let_ring: false,
             palm_mute: 0.0,
@@ -1420,6 +1424,52 @@ impl Song {
 
     pub fn bar_count(&self) -> usize {
         self.master.len()
+    }
+
+    /// Nothing at all in bar `i` of track `ti`: no notes, no repeat sign for a previous bar, and
+    /// no chord name, text or lyric on its rests.
+    pub fn bar_blank(&self, ti: usize, i: usize) -> bool {
+        self.tracks.get(ti).and_then(|t| t.bars.get(i)).is_some_and(|b| {
+            b.simile == 0
+                && b.is_empty()
+                && (0..VOICES).all(|v| b.voice(v).iter().all(|x| x.chord.is_none() && x.text.is_none() && x.lyric.is_none()))
+        })
+    }
+
+    /// Bar `b` can sit in the same multirest as the bar `a` just before it, in track `ti`: both
+    /// are blank and nothing between them (a repeat, ending, section, tempo, key, time signature,
+    /// double bar, jump or line break) needs to be seen.
+    pub fn multirest_joins(&self, ti: usize, a: usize, b: usize) -> bool {
+        let (ma, mb) = (&self.master[a], &self.master[b]);
+        (ma.num, ma.den) == (mb.num, mb.den)
+            && ma.key == mb.key
+            && ma.triplet_feel == mb.triplet_feel
+            && ma.free_time == mb.free_time
+            && ma.endings == mb.endings
+            && ma.repeat_close == 0
+            && !ma.double_bar
+            && !ma.line_break
+            && ma.direction_jump == 0
+            && !mb.repeat_open
+            && mb.marker.is_none()
+            && mb.tempo.is_none()
+            && !mb.tempo_ramp
+            && mb.direction_target == 0
+            && self.bar_blank(ti, a)
+            && self.bar_blank(ti, b)
+    }
+
+    /// How many bars show as one from bar `i` of track `ti` when that track is shown alone: 1
+    /// when the track's multirest is off or bar `i` doesn't start a run of two or more.
+    pub fn multirest_len(&self, ti: usize, i: usize) -> usize {
+        if !self.tracks.get(ti).is_some_and(|t| t.multirest) {
+            return 1;
+        }
+        let mut n = 1;
+        while i + n < self.bar_count() && self.multirest_joins(ti, i + n - 1, i + n) {
+            n += 1;
+        }
+        n
     }
 
     /// Makes sure every track has as many bars as the master list.
