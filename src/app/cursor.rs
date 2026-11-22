@@ -113,25 +113,25 @@ impl App {
             {
                 Some(s) => s,
                 None => {
-                    self.status = format!(
+                    self.refuse(format!(
                         "{} can't be played on this instrument.",
                         note_name_oct(pitch.clamp(0, 127) as u8)
-                    );
+                    ));
                     return;
                 }
             }
         } else {
             let s = d as usize - 1;
             if s >= track.strings() {
-                self.status = format!("This track has {} strings.", track.strings());
+                self.refuse(format!("This track has {} strings.", track.strings()));
                 return;
             }
             if !fits(s) {
-                self.status = format!(
+                self.refuse(format!(
                     "{} can't be played on string {}.",
                     note_name_oct(pitch.clamp(0, 127) as u8),
                     s + 1
-                );
+                ));
                 return;
             }
             s

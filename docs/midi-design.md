@@ -9,6 +9,13 @@ sounds with it; slides and vibrato not sent) built the same day, not yet heard. 
 chosen by `midi::string_and_fret`) built the same day, tested only with unit tests because no
 MIDI keyboard was available. Step 7 (chords: notes within 60 ms form one beat, then the cursor moves on once; lowest notes
 place first on the lowest frets) built the same day, unit tests only. Step 8 (README, in-app help, notes) done the same day.
+Hand-tested afterwards (author, 2026-11-22, Morning Walk.gp): playback to MIDI, bends and chords
+work. Slides and vibrato were not sent (the author heard the difference); now `midi::pitch_curve`
+adds the slide, slide-in and 5.5 Hz vibrato to the bend curve, with the same overlap rule as bends.
+Unit tested. Vibrato heard working. The sample's one slide isn't heard because another note of
+the channel starts with it (the overlap rule drops it); giving such notes their own channel would
+fix it, and the author chose to leave that for later. MIDI input (steps 6 and 7) is still untried with a real keyboard. Not done: real-time
+recording.
 
 This covers the two greyed-out boxes in Preferences > Audio & MIDI (MIDI output, MIDI input)
 and the "MIDI capture" item in `gp8-feature-gaps.md`. The two halves are independent: output

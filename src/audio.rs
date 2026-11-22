@@ -226,10 +226,19 @@ impl PlayerState {
                         && !e.dead
                     {
                         let dur = e.len as f32 / sr;
-                        // The pitch wheel belongs to the whole channel, so a bend is only
-                        // sent when no other note of the channel sounds with it.
-                        let bend = if e.bend != 0.0 && !self.midi_overlap(self.next_ev) {
-                            crate::midi::bend_curve(e.bend, e.bend_shape, dur)
+                        // The pitch wheel belongs to the whole channel, so a bend, slide or
+                        // vibrato is only sent when no other note of the channel sounds with it.
+                        let moves = e.bend != 0.0 || e.slide != 0.0 || e.slide_in != 0.0 || e.vibrato;
+                        let bend = if moves && !self.midi_overlap(self.next_ev) {
+                            let depth = if e.wide_vibrato { 0.9 } else { 0.35 };
+                            crate::midi::pitch_curve(
+                                e.bend,
+                                e.bend_shape,
+                                e.slide,
+                                e.slide_in,
+                                e.vibrato.then_some(depth),
+                                dur,
+                            )
                         } else {
                             vec![]
                         };

@@ -282,7 +282,7 @@ impl App {
         let text = match std::fs::read(&p) {
             Ok(d) => String::from_utf8_lossy(&d).to_string(),
             Err(e) => {
-                self.status = format!("Couldn't read the file: {e}");
+                self.status = super::notice::failed(format!("Couldn't read the file: {e}"));
                 return;
             }
         };
@@ -304,7 +304,7 @@ impl App {
                 self.clamp_cursor();
                 self.status = "Imported the tab. Tools \u{25B8} Check Bar Duration finds bars whose rhythm needs fixing.".into();
             }
-            Err(e) => self.status = e,
+            Err(e) => self.status = super::notice::failed(e),
         }
     }
 

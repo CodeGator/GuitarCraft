@@ -1070,6 +1070,8 @@ fn read_beat(
             n.spell = match text(child(pt, "Accidental")).as_str() {
                 "#" => 1,
                 "b" => 2,
+                "bb" => 3,
+                "##" | "x" => 4,
                 _ => 0,
             };
         }

@@ -140,6 +140,47 @@ pub fn bend_curve(semis: f32, shape: u8, len_secs: f32) -> Vec<(f32, f32)> {
     }
 }
 
+/// A note's whole pitch movement as the built-in sound plays it: the bend, a slide into the
+/// note, a slide out of it (over its last 40%) and vibrato (5.5 Hz, fading in), as
+/// (seconds, semitones) points. A bend alone keeps its few points; anything else is sampled every
+/// 10 ms, which is how often the MIDI thread moves the pitch wheel.
+pub fn pitch_curve(
+    bend: f32,
+    shape: u8,
+    slide: f32,
+    slide_in: f32,
+    vibrato: Option<f32>,
+    len_secs: f32,
+) -> Vec<(f32, f32)> {
+    let bends = bend_curve(bend, shape, len_secs);
+    if slide == 0.0 && slide_in == 0.0 && vibrato.is_none() {
+        return bends;
+    }
+    let len = len_secs.max(0.01);
+    let mut out = vec![];
+    let mut t = 0.0f32;
+    loop {
+        let mut s = curve_at(&bends, t);
+        if slide_in != 0.0 {
+            s += (slide_in * (1.0 - (t / 0.08).min(1.0))).round();
+        }
+        if slide != 0.0 && t > len * 0.6 {
+            s += (slide * ((t - len * 0.6) / (len * 0.4).max(0.01)).min(1.0)).round();
+        }
+        if let Some(depth) = vibrato
+            && t > 0.08
+        {
+            s += depth * ((t - 0.08) / 0.25).min(1.0) * (t * 5.5 * std::f32::consts::TAU).sin();
+        }
+        out.push((t, s));
+        if t >= len {
+            break;
+        }
+        t = (t + 0.01).min(len);
+    }
+    out
+}
+
 /// The pitch of a curve `t` seconds in.
 fn curve_at(points: &[(f32, f32)], t: f32) -> f32 {
     let Some(&(t0, v0)) = points.first() else {
@@ -470,6 +511,31 @@ mod tests {
         assert_eq!(string_and_fret(&drums, 38, 0, &[]), Some((0, 38)));
         // A second note of the beat goes on the next free string.
         assert_eq!(string_and_fret(&drums, 42, 0, &[0]), Some((1, 42)));
+    }
+
+    #[test]
+    fn slides_and_vibrato_follow_the_built_in_sound() {
+        // Nothing moving, nothing sent; a bend alone keeps its few points.
+        assert!(pitch_curve(0.0, 0, 0.0, 0.0, None, 1.0).is_empty());
+        assert_eq!(pitch_curve(2.0, 0, 0.0, 0.0, None, 1.0), bend_curve(2.0, 0, 1.0));
+        // A slide up 5 stays put for 60% of the note, then ends 5 up.
+        let s = pitch_curve(0.0, 0, 5.0, 0.0, None, 1.0);
+        assert_eq!(curve_at(&s, 0.5), 0.0);
+        assert_eq!(curve_at(&s, 1.0), 5.0);
+        assert!(s.windows(2).all(|w| w[1].1 >= w[0].1));
+        // A slide into the note starts 4 low and is home within 80 ms.
+        let s = pitch_curve(0.0, 0, 0.0, -4.0, None, 1.0);
+        assert_eq!(curve_at(&s, 0.0), -4.0);
+        assert_eq!(curve_at(&s, 0.1), 0.0);
+        // Vibrato: still at the start, then swings about 0.35 either way once faded in.
+        let v = pitch_curve(0.0, 0, 0.0, 0.0, Some(0.35), 2.0);
+        assert_eq!(curve_at(&v, 0.05), 0.0);
+        let peak = v.iter().filter(|p| p.0 > 0.5).map(|p| p.1.abs()).fold(0.0, f32::max);
+        assert!(peak > 0.3 && peak <= 0.35 + 1e-4, "{peak}");
+        // A bend and vibrato add together.
+        let b = pitch_curve(2.0, 2, 0.0, 0.0, Some(0.35), 1.0);
+        assert!((curve_at(&b, 0.0) - 2.0).abs() < 1e-5);
+        assert!(b.iter().any(|p| p.1 > 2.2));
     }
 
     #[test]

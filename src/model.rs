@@ -157,7 +157,7 @@ pub struct Note {
     pub wide_vibrato: bool,
     /// Trill with this fret (0 = no trill).
     pub trill: u8,
-    /// Spelling in notation: 0 automatic, 1 sharp, 2 flat.
+    /// Spelling in notation: 0 automatic, 1 sharp, 2 flat, 3 double flat, 4 double sharp.
     pub spell: u8,
     /// A grace note played just before, on this fret.
     pub grace: Option<u8>,

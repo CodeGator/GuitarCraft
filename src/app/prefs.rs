@@ -816,7 +816,7 @@ impl App {
             self.move_right(false);
         }
         if skipped > 0 {
-            self.status = format!("{skipped} note(s) out of range for this track were left out.");
+            self.refuse(format!("{skipped} note(s) out of range for this track were left out."));
         }
     }
 
@@ -841,7 +841,7 @@ impl App {
         if self.audio.take().is_some() {
             self.ensure_audio();
             self.status = match self.audio.as_ref().and_then(|a| a.error.clone()) {
-                Some(e) => format!("Sound unavailable: {e}"),
+                Some(e) => super::notice::failed(format!("Sound unavailable: {e}")),
                 None => "Sound output changed.".into(),
             };
         }
@@ -855,7 +855,7 @@ impl App {
         self.ensure_audio();
         let Some(a) = &self.audio else { return };
         if let Some(e) = &a.error {
-            self.status = format!("Sound unavailable: {e}");
+            self.status = super::notice::failed(format!("Sound unavailable: {e}"));
             return;
         }
         let track = crate::model::Track { tuning: vec![57], ..crate::model::Track::default() };

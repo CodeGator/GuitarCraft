@@ -284,7 +284,7 @@ impl App {
                                     if let Some(p) = d.save_file() {
                                         dlg.note = match write_style(&p, &dlg.draft) {
                                             Ok(()) => format!("Saved {}.", p.file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default()),
-                                            Err(e) => format!("Couldn't save the style: {e}"),
+                                            Err(e) => super::notice::failed(format!("Couldn't save the style: {e}")),
                                         };
                                     }
                                 }
@@ -295,7 +295,7 @@ impl App {
                                 if !shot && let Some(f) = default_file() {
                                     dlg.note = match write_style(&f, &dlg.draft) {
                                         Ok(()) => "New charts will use this style.".into(),
-                                        Err(e) => format!("Couldn't keep the style: {e}"),
+                                        Err(e) => super::notice::failed(format!("Couldn't keep the style: {e}")),
                                     };
                                 }
                             }

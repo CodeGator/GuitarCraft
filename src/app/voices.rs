@@ -25,7 +25,7 @@ impl App {
     /// beats, into another voice at the same place in the bar.
     pub(super) fn move_to_voice(&mut self, target: usize) {
         if target == self.voice {
-            self.status = format!("The notes are already in voice {}.", target + 1);
+            self.refuse(format!("The notes are already in voice {}.", target + 1));
             return;
         }
         // (bar, beat, strings to move) in the current voice.
@@ -61,7 +61,7 @@ impl App {
                 None => beat.notes.iter().map(|x| x.string).collect(),
             };
             if strings.is_empty() {
-                self.status = "There is no note here to move.".into();
+                self.refuse("There is no note here to move.");
                 return;
             }
             items.push((self.bar, self.beat, strings));
@@ -78,19 +78,19 @@ impl App {
     }
 
     fn report(&mut self, moved: usize, blocked: usize, target: usize, verb: &str) {
-        self.status = match (moved, blocked) {
-            (0, 0) => "Nothing to do.".into(),
-            (m, 0) => format!("{verb} {m} note(s) to voice {}.", target + 1),
-            (0, b) => format!(
+        match (moved, blocked) {
+            (0, 0) => self.refuse("Nothing to do."),
+            (m, 0) => self.status = format!("{verb} {m} note(s) to voice {}.", target + 1),
+            (0, b) => self.refuse(format!(
                 "Voice {} already has notes there ({b} note(s) not moved).",
                 target + 1
-            ),
-            (m, b) => format!(
+            )),
+            (m, b) => self.refuse(format!(
                 "{verb} {m} note(s) to voice {}; {b} didn't fit because voice {} already plays there.",
                 target + 1,
                 target + 1
-            ),
-        };
+            )),
+        }
     }
 
     /// Index of the beat of the current voice that starts at or covers a tick.

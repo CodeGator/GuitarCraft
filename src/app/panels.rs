@@ -366,39 +366,22 @@ impl App {
     }
 
     fn dialogs(&mut self, ctx: &egui::Context) {
-        if let Some(p) = self.pending {
-            let mut choice = None;
-            egui::Window::new("Unsaved changes")
-                .collapsible(false)
-                .resizable(false)
-                .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
-                .show(ctx, |ui| {
-                    ui.set_min_width(super::widgets::DIALOG_W);
-                    ui.label(format!(
-                        "\u{201C}{}\u{201D} has changes that haven't been saved.",
-                        self.doc_label()
-                    ));
-                    // Quitting asks about each file with changes, one after another.
-                    let n = self.dirty_count();
-                    if matches!(p, Pending::Quit | Pending::CloseAll) && n > 1 {
-                        ui.label(
-                            egui::RichText::new(format!("{n} files have unsaved changes: you will be asked about each one."))
-                                .color(Color32::from_gray(190)),
-                        );
-                    }
-                    ui.add_space(8.0);
-                    ui.horizontal(|ui| {
-                        if ui.button("Save first").clicked() {
-                            choice = Some(0);
-                        }
-                        if ui.button("Don't save").clicked() {
-                            choice = Some(1);
-                        }
-                        if ui.button("Cancel").clicked() {
-                            choice = Some(2);
-                        }
-                    });
-                });
+        // A message is answered before anything else is asked.
+        let busy = super::notice::show(ctx);
+        if !busy && let Some(p) = self.pending {
+            // Quitting asks about each file with changes, one after another.
+            let n = self.dirty_count();
+            let more = if matches!(p, Pending::Quit | Pending::CloseAll) && n > 1 {
+                format!("{n} files have unsaved changes: you will be asked about each one.")
+            } else {
+                String::new()
+            };
+            let choice = match super::notice::unsaved(ctx, &self.doc_label(), &more) {
+                Some(super::notice::Unsaved::Save) => Some(0),
+                Some(super::notice::Unsaved::DontSave) => Some(1),
+                Some(super::notice::Unsaved::Cancel) => Some(2),
+                None => None,
+            };
             match choice {
                 Some(0) => {
                     self.pending = None;

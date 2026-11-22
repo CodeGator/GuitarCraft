@@ -695,6 +695,23 @@ fn spell(p: i32, flats: bool) -> (i32, i8) {
     (oct * 7 + l, a)
 }
 
+/// Diatonic step and alteration (-2 to 2) of a note's pitch under its spelling choice
+/// (0 automatic, 1 sharp, 2 flat, 3 double flat, 4 double sharp). A double sign needs a
+/// natural note two semitones away; otherwise the note is written with a plain sign.
+fn note_spelling(pitch: i32, spell_choice: u8, key: i8) -> (i32, i8) {
+    let double = |from: i32, alter: i8, plain_flats: bool| {
+        let (d, a) = spell(from, false);
+        if a == 0 { (d, alter) } else { spell(pitch, plain_flats) }
+    };
+    match spell_choice {
+        1 => spell(pitch, false),
+        2 => spell(pitch, true),
+        3 => double(pitch + 2, -2, true),
+        4 => double(pitch - 2, 2, false),
+        _ => spell(pitch, key < 0),
+    }
+}
+
 const SHARP_ORDER: [i32; 7] = [3, 0, 4, 1, 5, 2, 6];
 const FLAT_ORDER: [i32; 7] = [6, 2, 5, 1, 4, 0, 3];
 
@@ -720,7 +737,8 @@ pub fn key_positions(key: i8) -> Vec<i32> {
     }
 }
 
-/// Staff position, accidental to show (0 none, 1 sharp, -1 flat, 2 natural) and note.
+/// Staff position, accidental to show (0 none, 1 sharp, -1 flat, 2 double sharp,
+/// -2 double flat, 3 natural) and note.
 /// `capo_std`: a capo changes the written notes (a stylesheet choice).
 fn std_positions<'a>(
     track: &Track,
@@ -742,17 +760,12 @@ fn std_positions<'a>(
                 track.capo_at(n.string as usize) as i32
             };
             let pitch = track.pitch(n) as i32 - capo + cl.shift() - 12 * beat.ottava as i32;
-            let flats = match n.spell {
-                1 => false,
-                2 => true,
-                _ => key < 0,
-            };
-            let (d, alter) = spell(pitch, flats);
+            let (d, alter) = note_spelling(pitch, n.spell, key);
             let ka = key_alter(key, d.rem_euclid(7));
             let shown = if alter == ka {
                 0
             } else if alter == 0 {
-                2
+                3
             } else {
                 alter
             };
@@ -777,12 +790,7 @@ fn bar_accidentals(track: &Track, bar: &Bar, key: i8, capo_std: bool, bj: usize)
                 track.capo_at(n.string as usize) as i32
             };
             let pitch = track.pitch(n) as i32 - capo + cl.shift() - 12 * beat.ottava as i32;
-            let flats = match n.spell {
-                1 => false,
-                2 => true,
-                _ => key < 0,
-            };
-            let (d, alter) = spell(pitch, flats);
+            let (d, alter) = note_spelling(pitch, n.spell, key);
             let cur = held
                 .get(&d)
                 .copied()
@@ -790,7 +798,7 @@ fn bar_accidentals(track: &Track, bar: &Bar, key: i8, capo_std: bool, bj: usize)
             out.push(if alter == cur {
                 0
             } else if alter == 0 {
-                2
+                3
             } else {
                 alter
             });
@@ -804,6 +812,8 @@ pub fn accidental_glyph(a: i8) -> &'static str {
     match a {
         1 => "\u{266F}",
         -1 => "\u{266D}",
+        2 => "\u{1D12A}",
+        -2 => "\u{1D12B}",
         _ => "\u{266E}",
     }
 }
@@ -1943,6 +1953,8 @@ fn acc_text(a: i8) -> &'static str {
     match a {
         1 => "\u{266F}",
         -1 => "\u{266D}",
+        2 => "\u{1D12A}",
+        -2 => "\u{1D12B}",
         _ => "",
     }
 }
@@ -1953,12 +1965,7 @@ pub fn written_name(track: &Track, beat: &Beat, key: i8, n: &Note) -> String {
         return drum_name(track.pitch(n)).to_string();
     }
     let pitch = track.pitch(n) as i32 + track.clef().shift() - 12 * beat.ottava as i32;
-    let flats = match n.spell {
-        1 => false,
-        2 => true,
-        _ => key < 0,
-    };
-    let (d, alter) = spell(pitch, flats);
+    let (d, alter) = note_spelling(pitch, n.spell, key);
     format!(
         "{}{} {}",
         LETTERS[d.rem_euclid(7) as usize],
@@ -1968,18 +1975,13 @@ pub fn written_name(track: &Track, beat: &Beat, key: i8, n: &Note) -> String {
 }
 
 /// The sign a note is written with, whatever the key signature says: -1 flat, 0 natural,
-/// 1 sharp. None for drums.
+/// 1 sharp, 2 double sharp, -2 double flat. None for drums.
 pub fn written_alter(track: &Track, beat: &Beat, key: i8, n: &Note) -> Option<i8> {
     if track.clef() == Clef::Percussion {
         return None;
     }
     let pitch = track.pitch(n) as i32 + track.clef().shift() - 12 * beat.ottava as i32;
-    let flats = match n.spell {
-        1 => false,
-        2 => true,
-        _ => key < 0,
-    };
-    Some(spell(pitch, flats).1)
+    Some(note_spelling(pitch, n.spell, key).1)
 }
 
 /// Written name of a line or space of the notation staff, with the key signature applied.

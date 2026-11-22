@@ -250,7 +250,7 @@ impl App {
                 self.add_recent(&p);
                 self.status = format!("Opened {}.", p.file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default());
             }
-            Err(e) => self.status = format!("Couldn't open the chord chart: {e}"),
+            Err(e) => self.status = super::notice::failed(format!("Couldn't open the chord chart: {e}")),
         }
     }
 
@@ -278,7 +278,7 @@ impl App {
                 self.path = Some(p.clone());
                 self.status = format!("Saved {}.", p.display());
             }
-            Err(e) => self.status = format!("Couldn't save: {e}"),
+            Err(e) => self.status = super::notice::failed(format!("Couldn't save: {e}")),
         }
     }
 
@@ -554,7 +554,7 @@ impl App {
     fn chart_delete(&mut self) {
         let Some(st) = &mut self.chart else { return };
         if st.doc.sections.len() <= 1 {
-            self.status = "A chart needs at least one section.".into();
+            self.refuse("A chart needs at least one section.");
             return;
         }
         let id = st.doc.sections[st.sel].id;

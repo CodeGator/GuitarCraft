@@ -21,6 +21,7 @@ mod home;
 mod icons;
 mod keys;
 mod menus;
+mod notice;
 mod palette;
 mod panels;
 mod popups;
@@ -952,7 +953,7 @@ impl App {
                 Audio::silent()
             });
             if let Some(e) = self.audio.as_ref().and_then(|a| a.error.clone()) {
-                self.status = format!("Sound unavailable: {e}");
+                self.status = notice::failed(format!("Sound unavailable: {e}"));
             }
             // A new player starts with a plain mix: send the equalizers and Focus again.
             self.mix_sent = (vec![], vec![]);
@@ -1175,7 +1176,7 @@ impl App {
                 }
             }
             if !any {
-                self.status = "The selection has no notes.".into();
+                self.refuse("The selection has no notes.");
                 return;
             }
             let on = !all_on;
@@ -1202,7 +1203,7 @@ impl App {
             return;
         }
         if self.cur_beat().is_rest() {
-            self.status = "Put a note on this beat first.".into();
+            self.refuse("Put a note on this beat first.");
             return;
         }
         let on_string = self.cur_beat().note_on(self.string as u8).is_some()
@@ -1235,7 +1236,7 @@ impl App {
 
     fn cycle_bend(&mut self) {
         if self.cur_beat().is_rest() {
-            self.status = "Put a note on this beat first.".into();
+            self.refuse("Put a note on this beat first.");
             return;
         }
         self.edit(|s, t, b, j, st| {
@@ -1364,7 +1365,7 @@ impl App {
 
     fn remove_track(&mut self) {
         if self.song.tracks.len() <= 1 {
-            self.status = "A song needs at least one track.".into();
+            self.refuse("A song needs at least one track.");
             return;
         }
         let ti = self.track;
@@ -1476,7 +1477,7 @@ impl App {
         let p = full_path(&p);
         if let Some(i) = self.find_open(&p) {
             self.switch_to(i);
-            self.status = "That file is already open.".into();
+            self.refuse("That file is already open.");
             return;
         }
         if crate::chart::is_chart_path(&p) {
@@ -1510,7 +1511,7 @@ impl App {
                     .unwrap_or_default();
                 self.status = format!("Opened {name}.");
             }
-            Err(e) => self.status = format!("Couldn't open the file: {e}"),
+            Err(e) => self.status = notice::failed(format!("Couldn't open the file: {e}")),
         }
     }
 
@@ -1563,21 +1564,16 @@ impl App {
                     } else {
                         vec![]
                     };
-                    self.status = if lost.is_empty() {
-                        format!("Saved {}.", p.display())
-                    } else {
-                        format!(
-                            "Saved {} (Guitar Pro 5 can't keep: {}).",
-                            p.display(),
-                            lost.join(", ")
-                        )
-                    };
+                    self.status = format!("Saved {}.", p.display());
+                    if !lost.is_empty() {
+                        self.refuse(format!("Saved {}, but Guitar Pro 5 can't keep: {}.", p.display(), lost.join(", ")));
+                    }
                     self.save_hint = None;
                     let p = full_path(&p);
                     self.add_recent(&p);
                     self.path = Some(p);
                 }
-                Err(e) => self.status = format!("Couldn't save: {e}"),
+                Err(e) => self.status = notice::failed(format!("Couldn't save: {e}")),
             }
         }
     }
@@ -1598,7 +1594,7 @@ impl App {
     fn write_export(&mut self, p: &std::path::Path, data: impl AsRef<[u8]>) {
         self.status = match std::fs::write(p, data) {
             Ok(()) => format!("Exported {}.", p.display()),
-            Err(e) => format!("Couldn't export: {e}"),
+            Err(e) => notice::failed(format!("Couldn't export: {e}")),
         };
     }
 
@@ -1627,7 +1623,7 @@ impl App {
             self.write_export(&p, crate::gp5write::export_gp5(&self.song));
             let lost = fileio::gp5_losses(&self.song);
             if !lost.is_empty() && self.status.starts_with("Exported") {
-                self.status = format!("{} (Guitar Pro 5 can't keep: {}.)", self.status, lost.join(", "));
+                self.refuse(format!("{} Guitar Pro 5 can't keep: {}.", self.status, lost.join(", ")));
             }
         }
     }
@@ -1717,7 +1713,7 @@ impl App {
         self.ensure_audio();
         let Some(a) = &self.audio else { return };
         if let Some(e) = &a.error {
-            self.status = format!("Sound unavailable: {e}");
+            self.status = notice::failed(format!("Sound unavailable: {e}"));
             return;
         }
         let sr = a.sample_rate();

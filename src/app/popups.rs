@@ -93,7 +93,7 @@ impl App {
         }
         .or_else(|| beat.notes.first().cloned());
         if kind.needs_note() && note.is_none() {
-            self.status = "Put a note on this beat first.".into();
+            self.refuse("Put a note on this beat first.");
             return;
         }
         let mut note = note.unwrap_or_default();

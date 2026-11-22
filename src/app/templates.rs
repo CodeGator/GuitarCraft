@@ -82,7 +82,7 @@ impl App {
     /// File > Save As Template: the standard Save dialog, starting in My Templates.
     pub(super) fn save_as_template(&mut self) {
         if self.chart.is_some() {
-            self.status = "Templates are for songs; a chord chart can be saved as a copy instead.".into();
+            self.refuse("Templates are for songs; a chord chart can be saved as a copy instead.");
             return;
         }
         if self.screenshot.is_some() {
@@ -103,7 +103,7 @@ impl App {
                 let name = saved.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
                 format!("Saved the template \u{201C}{name}\u{201D}. Find it in File \u{25B8} New from Template.")
             }
-            Err(e) => format!("Couldn't save the template: {e}"),
+            Err(e) => super::notice::failed(format!("Couldn't save the template: {e}")),
         };
     }
 
@@ -118,7 +118,7 @@ impl App {
         #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
         let r = std::process::Command::new("xdg-open").arg(&d).spawn();
         if let Err(e) = r {
-            self.status = format!("Couldn't open the folder: {e}");
+            self.status = super::notice::failed(format!("Couldn't open the folder: {e}"));
         }
     }
 
@@ -132,7 +132,7 @@ impl App {
                 self.reset_after_load();
                 self.show_home = false;
             }
-            Err(e) => self.status = format!("Couldn't open the template: {e}"),
+            Err(e) => self.status = super::notice::failed(format!("Couldn't open the template: {e}")),
         }
     }
 }

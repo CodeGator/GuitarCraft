@@ -35,9 +35,12 @@ exist under another name. Check before starting work on one, and tick items off 
 - [ ] **Drum view** instrument view (fretboard and keyboard views already exist).
 - [~] **MIDI capture**: note entry from a MIDI keyboard, beat by beat; choice of MIDI input and
       output devices. Started 2026-11-22, plan in `midi-design.md`: output devices, MIDI
-      playback and bends work (heard on the Windows GS Wavetable Synth); note and chord entry
-      from an input is written but never tried with a real keyboard; real-time recording against
-      the metronome not done.
+      playback, bends and chords on playback work (tried by hand with Morning Walk.gp); slides
+      and vibrato are sent as pitch wheel moves like bends (added 2026-11-22, same curves as
+      the built-in sound). Vibrato heard working; the sample's one slide is silent because it
+      shares a channel with another note starting with it, and effects are only sent when a
+      note sounds alone. Fix if wanted: give such notes their own channel (MPE style); note and chord entry from an input is written but never tried with a real keyboard.
+      Not done: real-time recording against the metronome.
 - [x] **Per-track equalizer** in the mixer. Added 2026-11-20, laid out like Guitar Pro 8's:
       On switch, presets, and Low, Low Medium (dB, Hz), Medium (Q, dB, Hz), High Medium
       (dB, Hz) and High knobs. Saved in .gc, .gp and .gpx files (matched with Guitar Pro 8
@@ -54,8 +57,12 @@ exist under another name. Check before starting work on one, and tick items off 
       ending, section, tempo, key or time signature, double bar, jump, line break). Not shown in
       the multitrack view, as in the guide. Read from and written to .gp files: Guitar Pro 8 keeps
       it as the byte in front of each track's own view in `Content/PartConfiguration`, found by
-      comparing `tests/Multi Rest.gp` (on) with files saved with it off; one file with it on is
-      thin evidence, so a second file saved with it off would confirm it. Not written to GPX.
+      comparing `tests/Multi Rest.gp` (on) with files saved with it off. Confirmed 2026-11-22 with
+      three-track files saved by Guitar Pro 8 (`tests/Multi Rest.gp` all on, `Multi Rest
+      Off.gp` all off, `Multi Rest On For Track 1.gp`): the byte is per track, 1 on, 0 off.
+      The record's last four bytes don't follow multi-rest (3 with all on and with all off, 1
+      with track 1 only); probably which view was open when saved, a guess. We always write 0,
+      which Guitar Pro 8 accepts. Not written to GPX.
       Not tried by eye in the app.
 - [ ] **File password protection**: lock a file; lock icon on its tab; unlock prompt.
 - [ ] **Numbered (jianpu) notation**: option exists but is greyed out (`src/app/side.rs`).

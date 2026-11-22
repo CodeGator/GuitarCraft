@@ -367,9 +367,9 @@ impl App {
         // Accidentals and semitone steps.
         ui.add_enabled_ui(has, |ui| {
             row(ui, |ui| {
-                ui.add_enabled_ui(false, |ui| {
-                    glyph_button(ui, false, "\u{1D12B}", sym(16.0), "Double flat (not in GuitarCraft yet)");
-                });
+                if glyph_button(ui, has && n.spell == 3 && alter == -2, "\u{1D12B}", sym(16.0), "Double flat: lower the note two semitones and write it with a double flat").clicked() {
+                    self.set_accidental(-2);
+                }
                 if glyph_button(ui, has && n.spell == 2 && alter == -1, "\u{266D}", sym(16.0), "Flat: lower the note a semitone and write it with a flat").clicked() {
                     self.set_accidental(-1);
                 }
@@ -379,11 +379,11 @@ impl App {
                 if glyph_button(ui, has && n.spell == 1 && alter == 1, "\u{266F}", sym(16.0), "Sharp: raise the note a semitone and write it with a sharp").clicked() {
                     self.set_accidental(1);
                 }
-                ui.add_enabled_ui(false, |ui| {
-                    glyph_button(ui, false, "\u{1D12A}", sym(15.0), "Double sharp (not in GuitarCraft yet)");
-                });
+                if glyph_button(ui, has && n.spell == 4 && alter == 2, "\u{1D12A}", sym(15.0), "Double sharp: raise the note two semitones and write it with a double sharp").clicked() {
+                    self.set_accidental(2);
+                }
                 if glyph_button(ui, false, "\u{266D}\u{266F}", sym(13.0), "Change accidental: write the same note the other way (F\u{266F} \u{2194} G\u{266D})").clicked() {
-                    self.note_edit(|x| x.spell = if x.spell == 2 { 1 } else { 2 });
+                    self.swap_accidental();
                 }
                 if paint_button(ui, false, &super::shortcuts::tip("Lower by a semitone", super::shortcuts::Act::SemitoneDown), |p, r, c| {
                     tiny_note(p, Pos2::new(r.center().x + 1.0, r.top() + 11.0), c, 0, false);

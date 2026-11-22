@@ -984,7 +984,7 @@ impl App {
     fn put_chord(&mut self, name: String, frets: [i8; 6]) {
         let tr = self.tr();
         if !tr.has_strings() || tr.strings() != 6 {
-            self.status = "Chords are put on beats of a six-string track.".into();
+            self.refuse("Chords are put on beats of a six-string track.");
             return;
         }
         let mut notes: Vec<Note> = (0..6).filter(|&s| frets[s] >= 0).map(|s| Note::new((5 - s) as u8, frets[s] as u8)).collect();
