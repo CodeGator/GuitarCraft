@@ -457,7 +457,7 @@ impl Bar {
             .collect()
     }
     /// Mistakes other than length, as a bit set of `ERR_*`: a fret beyond the neck, a tuplet
-    /// group that isn't complete, a hammer-on / pull-off with nothing before it to start from.
+    /// group that isn't complete, a hammer-on / pull-off with no note on the same string after it to slur to.
     pub fn note_errors(&self, frets: u8) -> u8 {
         let mut e = 0;
         for v in 0..VOICES {
@@ -475,9 +475,10 @@ impl Bar {
                         e |= ERR_TUPLET;
                     }
                 }
-                if i > 0 {
-                    let prev = &beats[i - 1];
-                    if b.notes.iter().any(|n| n.hammer && !prev.notes.iter().any(|p| p.string == n.string)) {
+                // The flag sits on the note the slur starts from, so the next beat (when it is in
+                // this bar) must have a note on the same string to slur to.
+                if let Some(next) = beats.get(i + 1) {
+                    if b.notes.iter().any(|n| n.hammer && !next.notes.iter().any(|p| p.string == n.string)) {
                         e |= ERR_HOPO;
                     }
                 }
@@ -2394,10 +2395,13 @@ mod note_error_tests {
         assert_eq!(Bar::new(vec![t.clone(), t.clone(), t]).note_errors(24), 0);
 
         let mut first = Beat::rest(Dur::Eighth);
-        first.notes = vec![note(1, 5, false)];
+        first.notes = vec![note(1, 5, true)];
         let mut second = first.clone();
-        second.notes = vec![note(2, 7, true)];
-        assert_eq!(Bar::new(vec![first, second]).note_errors(24), ERR_HOPO);
+        second.notes = vec![note(2, 7, false)];
+        assert_eq!(Bar::new(vec![first.clone(), second]).note_errors(24), ERR_HOPO);
+        let mut same = first.clone();
+        same.notes = vec![note(1, 7, false)];
+        assert_eq!(Bar::new(vec![first, same]).note_errors(24), 0);
     }
 }
 
