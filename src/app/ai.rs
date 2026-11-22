@@ -4,9 +4,9 @@
 //! provider which models it offers. Like the update check, the web request goes through
 //! `curl` on a separate thread so the window never freezes.
 //!
-//! The Claude API key is kept in `preferences.json` as plain text, like the other settings.
-//! It is handed to `curl` on its standard input, never on the command line, where other
-//! programs could read it.
+//! The Claude API key is not kept in `preferences.json`: it goes to the Windows Credential
+//! Manager (the macOS Keychain on a Mac), see [`key`]. It is handed to `curl` on its
+//! standard input, never on the command line, where other programs could read it.
 
 use serde_json::Value;
 use std::io::Write;
@@ -18,6 +18,54 @@ pub const OLLAMA_URL: &str = "http://localhost:11434";
 /// The model Claude is asked for unless another is chosen.
 pub const CLAUDE_MODEL: &str = "claude-sonnet-5-5";
 const CLAUDE_MODELS_URL: &str = "https://api.anthropic.com/v1/models?limit=100";
+
+/// The Claude API key, in the system's credential store.
+pub mod key {
+    #[cfg(any(windows, target_os = "macos"))]
+    mod store {
+        fn entry() -> Result<keyring::Entry, String> {
+            keyring::Entry::new("GuitarCraft", "claude-api-key").map_err(|e| e.to_string())
+        }
+        pub fn get() -> Option<String> {
+            entry().ok()?.get_password().ok().filter(|k| !k.is_empty())
+        }
+        pub fn set(key: &str) -> Result<(), String> {
+            entry()?.set_password(key).map_err(|e| e.to_string())
+        }
+        pub fn remove() -> Result<(), String> {
+            match entry()?.delete_credential() {
+                Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+                Err(e) => Err(e.to_string()),
+            }
+        }
+    }
+    /// Nowhere safe to keep a key here yet, so none is kept.
+    #[cfg(not(any(windows, target_os = "macos")))]
+    mod store {
+        pub fn get() -> Option<String> {
+            None
+        }
+        pub fn set(_: &str) -> Result<(), String> {
+            Err("This system has no credential store GuitarCraft can use yet.".into())
+        }
+        pub fn remove() -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    pub fn get() -> Option<String> {
+        store::get()
+    }
+    pub fn exists() -> bool {
+        get().is_some()
+    }
+    pub fn set(key: &str) -> Result<(), String> {
+        store::set(key.trim())
+    }
+    pub fn remove() -> Result<(), String> {
+        store::remove()
+    }
+}
 
 /// What one "Test connection" found.
 #[derive(Clone, Debug, PartialEq)]

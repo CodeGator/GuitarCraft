@@ -144,8 +144,6 @@ pub struct Prefs {
     pub ollama_model: String,
     /// Claude is switched on as an AI provider.
     pub claude_on: bool,
-    /// The person's Anthropic API key.
-    pub claude_key: String,
     /// The Claude model to use.
     pub claude_model: String,
     // ----- Shortcuts -----
@@ -190,7 +188,6 @@ impl Default for Prefs {
             ollama_url: super::ai::OLLAMA_URL.into(),
             ollama_model: String::new(),
             claude_on: false,
-            claude_key: String::new(),
             claude_model: super::ai::CLAUDE_MODEL.into(),
             shortcuts: Default::default(),
         }
@@ -303,6 +300,11 @@ pub struct PrefsDlg {
     /// AI: the last "Test connection" of each provider.
     ollama_test: super::ai::Probe,
     claude_test: super::ai::Probe,
+    /// AI: the Claude key being typed (never kept once saved), whether one is saved, and what
+    /// happened to it last.
+    key_input: String,
+    key_saved: bool,
+    ai_key_note: Option<(bool, String)>,
 }
 
 /// A key the person chose that another action already uses.
@@ -402,7 +404,7 @@ impl App {
     /// File > Preferences... (Ctrl+,).
     pub(super) fn open_prefs(&mut self) {
         if self.prefs_dlg.is_none() {
-            self.prefs_dlg = Some(PrefsDlg { tab: 0, devices: Audio::output_device_names(), midi_ports: (crate::midi::output_port_names(), crate::midi::input_port_names()), ..PrefsDlg::default() });
+            self.prefs_dlg = Some(PrefsDlg { tab: 0, key_saved: super::ai::key::exists(), devices: Audio::output_device_names(), midi_ports: (crate::midi::output_port_names(), crate::midi::input_port_names()), ..PrefsDlg::default() });
         }
     }
 
@@ -627,7 +629,6 @@ impl App {
                 p.ollama_url = d.ollama_url;
                 p.ollama_model = d.ollama_model;
                 p.claude_on = d.claude_on;
-                p.claude_key = d.claude_key;
                 p.claude_model = d.claude_model;
             }
             _ => {
@@ -793,15 +794,49 @@ impl App {
         row_w(ui, LABEL_W, "Use Claude:", |ui| {
             switch(ui, &mut p.claude_on);
         });
+        let (mut save, mut remove) = (false, false);
         row_w(ui, LABEL_W, "API key:", |ui| {
-            ui.add(egui::TextEdit::singleline(&mut p.claude_key).password(true).desired_width(320.0));
+            let hint = if dlg.key_saved { "saved - paste a new key to replace it" } else { "paste your key here" };
+            ui.add(egui::TextEdit::singleline(&mut dlg.key_input).password(true).hint_text(hint).desired_width(240.0));
+            save = ui.add_enabled(!dlg.key_input.trim().is_empty(), egui::Button::new("Save")).clicked();
+            remove = ui.add_enabled(dlg.key_saved, egui::Button::new("Remove")).clicked();
         });
+        if save {
+            dlg.ai_key_note = Some(match super::ai::key::set(&dlg.key_input) {
+                Ok(()) => {
+                    dlg.key_input.clear();
+                    dlg.key_saved = true;
+                    dlg.claude_test.result = None;
+                    (true, "Key saved.".to_string())
+                }
+                Err(e) => (false, format!("Couldn't save the key: {e}")),
+            });
+        }
+        if remove {
+            dlg.ai_key_note = Some(match super::ai::key::remove() {
+                Ok(()) => {
+                    dlg.key_saved = false;
+                    dlg.claude_test.result = None;
+                    (true, "Key removed.".to_string())
+                }
+                Err(e) => (false, format!("Couldn't remove the key: {e}")),
+            });
+        }
+        if let Some((ok, text)) = &dlg.ai_key_note {
+            row_w(ui, LABEL_W, "", |ui| {
+                if *ok {
+                    note(ui, text);
+                } else {
+                    ui.label(RichText::new(text.as_str()).size(12.0).color(Color32::from_rgb(210, 90, 80)));
+                }
+            });
+        }
         model_row(ui, "claude-model", &mut p.claude_model, &dlg.claude_test);
         if test_row(ui, &dlg.claude_test) {
-            dlg.claude_test.test_claude(&ctx, &p.claude_key);
+            dlg.claude_test.test_claude(&ctx, &super::ai::key::get().unwrap_or_default());
         }
         ui.add_space(8.0);
-        note(ui, "The key is saved in GuitarCraft's preferences file on this computer, as plain text. Don't share that file.");
+        note(ui, "The key is kept in the Windows Credential Manager, never in GuitarCraft's preferences file.");
     }
 
     fn user_tab(&mut self, ui: &mut Ui) {
