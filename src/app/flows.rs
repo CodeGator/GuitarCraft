@@ -709,3 +709,45 @@ fn a_refusal_is_a_warning_box_and_a_failure_is_an_error_box() {
     assert_eq!(shown[0].0, "error");
     assert!(shown[0].1.starts_with("Couldn't open the file"), "{}", shown[0].1);
 }
+
+#[test]
+fn a_popped_out_panel_stays_out_until_docked() {
+    use super::dock::Pane;
+    let mut r = Rig::new();
+    r.app.show_home = false;
+    r.frames(2);
+    assert!(r.app.panel_shown(Pane::Palette));
+    r.app.pop_out(Pane::Palette);
+    r.frames(3);
+    assert!(r.app.popped.contains(&Pane::Palette), "it is in a window of its own");
+    assert!(!super::dock::is_open(&r.app.dock, Pane::Palette), "and no longer docked");
+    r.app.dock_panel(Pane::Palette);
+    r.frames(2);
+    assert!(super::dock::is_open(&r.app.dock, Pane::Palette) && r.app.popped.is_empty());
+}
+
+#[test]
+fn pop_out_from_the_tab_menu() {
+    use super::dock::Pane;
+    use egui::PointerButton;
+    let mut r = Rig::new();
+    r.app.show_home = false;
+    r.frames(3);
+    let at = Pos2::new(50.0, 110.0);
+    r.frame(vec![Event::PointerMoved(at)]);
+    r.frame(vec![Event::PointerButton { pos: at, button: PointerButton::Secondary, pressed: true, modifiers: Modifiers::NONE }]);
+    r.frame(vec![Event::PointerButton { pos: at, button: PointerButton::Secondary, pressed: false, modifiers: Modifiers::NONE }]);
+    r.frames(2);
+    // The first item of the menu is under and a little below the pointer.
+    for dy in [8.0, 14.0, 20.0] {
+        let item = Pos2::new(at.x + 25.0, at.y + dy);
+        r.frame(vec![Event::PointerMoved(item)]);
+        r.frame(vec![Event::PointerButton { pos: item, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE }]);
+        r.frame(vec![Event::PointerButton { pos: item, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE }]);
+        r.frames(2);
+        if r.app.popped.contains(&Pane::Palette) {
+            break;
+        }
+    }
+    assert!(r.app.popped.contains(&Pane::Palette), "popped: {:?}", r.app.popped);
+}

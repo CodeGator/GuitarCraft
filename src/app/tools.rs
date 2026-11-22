@@ -168,10 +168,10 @@ pub fn commands() -> Vec<(&'static str, Cmd)> {
             a.single_track = !a.single_track
         }),
         ("fretboard: Show or hide the fretboard", |a| {
-            a.show_fretboard = !a.show_fretboard
+            a.toggle_panel(super::dock::Pane::Fretboard)
         }),
         ("keyboard: Show or hide the keyboard", |a| {
-            a.show_keyboard = !a.show_keyboard
+            a.toggle_panel(super::dock::Pane::Keyboard)
         }),
         ("loop: Loop playback", |a| a.looping = !a.looping),
         ("metronome: Metronome", |a| a.metronome = !a.metronome),

@@ -1,5 +1,6 @@
 //! Window layout: menus, toolbar, title strip, dialogs and panel arrangement.
 
+use super::dock::Pane;
 use super::widgets::*;
 use super::{App, Pending};
 use crate::model::{Dur, fmt_time};
@@ -21,21 +22,21 @@ impl App {
                 self.show_home = !self.show_home;
             }
             ui.add_space(6.0);
-            if icon_toggle(ui, self.show_palette, "Edition palette", icon_panel_left).clicked() {
-                self.show_palette = !self.show_palette;
+            if icon_toggle(ui, self.panel_shown(Pane::Palette), "Edition palette", icon_panel_left).clicked() {
+                self.toggle_panel(Pane::Palette);
             }
-            if icon_toggle(ui, self.show_tracks, "Tracks and mixer", icon_panel_bottom).clicked() {
-                self.show_tracks = !self.show_tracks;
+            if icon_toggle(ui, self.panel_shown(Pane::Tracks), "Tracks and mixer", icon_panel_bottom).clicked() {
+                self.toggle_panel(Pane::Tracks);
             }
             if icon_toggle(
                 ui,
-                self.show_inspector,
+                self.panel_shown(Pane::Inspector),
                 "Song and track settings",
                 icon_panel_right,
             )
             .clicked()
             {
-                self.show_inspector = !self.show_inspector;
+                self.toggle_panel(Pane::Inspector);
             }
             ui.add_space(6.0);
             let (r, _) = ui.allocate_exact_size(Vec2::new(18.0, 30.0), Sense::hover());
@@ -158,17 +159,17 @@ impl App {
                 ui.add_space(4.0);
                 if icon_toggle(
                     ui,
-                    self.show_keyboard,
+                    self.panel_shown(Pane::Keyboard),
                     &super::shortcuts::tip("Keyboard view", super::shortcuts::Act::KeyboardView),
                     icon_keyboard,
                 )
                 .clicked()
                 {
-                    self.show_keyboard = !self.show_keyboard;
+                    self.toggle_panel(Pane::Keyboard);
                 }
-                if icon_toggle(ui, self.show_fretboard, "Fretboard view", icon_fretboard).clicked()
+                if icon_toggle(ui, self.panel_shown(Pane::Fretboard), "Fretboard view", icon_fretboard).clicked()
                 {
-                    self.show_fretboard = !self.show_fretboard;
+                    self.toggle_panel(Pane::Fretboard);
                 }
                 egui::ComboBox::from_id_salt("notation")
                     .width(96.0)
@@ -554,8 +555,8 @@ impl App {
             self.handle_global_keys(&ctx);
         }
         self.handle_midi_input(&ctx);
-        let sounding = self.poll_playback();
-        if self.playing || !sounding.is_empty() {
+        self.sounding = self.poll_playback();
+        if self.playing || !self.sounding.is_empty() {
             ctx.request_repaint();
         }
         self.update_title(&ctx);
@@ -611,58 +612,9 @@ impl App {
             )
             .show(ui, |ui| self.toolbar(ui));
         self.tab_panel(ui);
-        if self.show_keyboard {
-            egui::Panel::bottom("keyboard")
-                .exact_size(112.0)
-                .frame(egui::Frame::new().fill(Color32::from_rgb(28, 30, 34)))
-                .show(ui, |ui| self.keyboard_panel(ui, &sounding));
-        }
-        if self.show_fretboard {
-            egui::Panel::bottom("fretboard")
-                .exact_size(150.0)
-                .frame(
-                    egui::Frame::new()
-                        .fill(Color32::from_rgb(28, 30, 34))
-                        .inner_margin(egui::Margin::same(6)),
-                )
-                .show(ui, |ui| self.fretboard_panel(ui, &sounding));
-        }
-        if self.show_tracks {
-            let h = (self.song.tracks.len() as f32 * 25.0 + 25.0 + 25.0 + 22.0 + 8.0)
-                .clamp(110.0, 280.0);
-            egui::Panel::bottom("tracks")
-                .exact_size(h)
-                .frame(egui::Frame::new().fill(Color32::from_rgb(34, 36, 42)))
-                .show(ui, |ui| self.tracks_panel(ui));
-        }
-        if self.show_palette {
-            egui::Panel::left("palette")
-                .exact_size(232.0)
-                .frame(
-                    egui::Frame::new()
-                        .fill(PANEL_BG)
-                        .inner_margin(egui::Margin::same(8)),
-                )
-                .show(ui, |ui| {
-                    egui::ScrollArea::vertical()
-                        .id_salt("pal")
-                        .show(ui, |ui| self.palette(ui));
-                });
-        }
-        if self.show_inspector {
-            egui::Panel::right("inspector")
-                .exact_size(262.0)
-                .frame(
-                    egui::Frame::new()
-                        .fill(PANEL_BG)
-                        .inner_margin(egui::Margin::symmetric(0, 0)),
-                )
-                .show(ui, |ui| self.inspector_ui(ui));
-        }
-        let central = egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(Color32::from_rgb(232, 233, 237)))
-            .show(ui, |ui| self.score(ui));
-        self.toast_ui(&ctx, central.response.rect);
+        let score_rect = self.dock_ui(ui);
+        self.popped_panels(&ctx);
+        self.toast_ui(&ctx, score_rect);
         self.dialogs(&ctx);
         self.small_dialogs(&ctx);
         self.tool_windows(&ctx);
