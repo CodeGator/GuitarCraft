@@ -15,6 +15,11 @@ use std::sync::mpsc::{Receiver, channel};
 
 /// Where Ollama listens unless it was set up otherwise.
 pub const OLLAMA_URL: &str = "http://localhost:11434";
+/// How much text an Ollama model reads at once, in tokens, unless another size is chosen.
+/// Ollama's own default is far too small for most of what GuitarCraft could send it.
+pub const OLLAMA_CONTEXT: u32 = 16_384;
+/// The smallest and largest sizes the Preferences window allows.
+pub const OLLAMA_CONTEXT_RANGE: std::ops::RangeInclusive<u32> = 2048..=131_072;
 /// The model Claude is asked for unless another is chosen.
 pub const CLAUDE_MODEL: &str = "claude-sonnet-5-5";
 const CLAUDE_MODELS_URL: &str = "https://api.anthropic.com/v1/models?limit=100";

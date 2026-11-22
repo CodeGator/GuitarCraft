@@ -1,6 +1,6 @@
 //! File > Preferences (Ctrl+,): the person's settings, kept between runs, laid out in
 //! the five tabs of Guitar Pro 8's Preferences window (General, Interface, Notation
-//! Errors, User Information, Audio & MIDI), plus AI and Shortcuts. As in the original, a change takes effect
+//! Errors, Misc (was User Information), Audio & MIDI), plus AI and Shortcuts. As in the original, a change takes effect
 //! straight away: there is no OK or Cancel. The settings are saved in
 //! `preferences.json` in GuitarCraft's settings folder.
 //!
@@ -18,7 +18,7 @@ use egui::{Align2, Color32, FontId, RichText, Ui, Vec2};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-pub const TABS: [&str; 7] = ["General", "Interface", "Notation Errors", "User Information", "Audio & MIDI", "AI", "Shortcuts"];
+pub const TABS: [&str; 7] = ["General", "Interface", "Notation Errors", "Misc", "Audio & MIDI", "AI", "Shortcuts"];
 
 /// How often to look for a newer version without being asked.
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug, Serialize, Deserialize)]
@@ -142,6 +142,9 @@ pub struct Prefs {
     pub ollama_url: String,
     /// The Ollama model to use (empty: none chosen yet).
     pub ollama_model: String,
+    /// The context size asked of Ollama (`num_ctx`), in tokens: how much text the model reads
+    /// at once. Larger sizes need more memory and run slower.
+    pub ollama_context: u32,
     /// Claude is switched on as an AI provider.
     pub claude_on: bool,
     /// The Claude model to use.
@@ -187,6 +190,7 @@ impl Default for Prefs {
             ollama_on: false,
             ollama_url: super::ai::OLLAMA_URL.into(),
             ollama_model: String::new(),
+            ollama_context: super::ai::OLLAMA_CONTEXT,
             claude_on: false,
             claude_model: super::ai::CLAUDE_MODEL.into(),
             shortcuts: Default::default(),
@@ -202,7 +206,7 @@ fn session_file() -> Option<PathBuf> {
     Some(app_dir()?.join("session.json"))
 }
 
-fn write_json<T: Serialize + ?Sized>(f: Option<PathBuf>, v: &T) {
+pub(super) fn write_json<T: Serialize + ?Sized>(f: Option<PathBuf>, v: &T) {
     let Some(f) = f else { return };
     if let Some(dir) = f.parent() {
         let _ = std::fs::create_dir_all(dir);
@@ -231,6 +235,7 @@ impl Prefs {
             self.default_template = 0;
         }
         self.zoom_pct = self.zoom_pct.clamp(25, 400);
+        self.ollama_context = self.ollama_context.clamp(*super::ai::OLLAMA_CONTEXT_RANGE.start(), *super::ai::OLLAMA_CONTEXT_RANGE.end());
         self.layout = self.layout.min(LAYOUTS.len() as u8 - 1);
         // The old plus/minus swap becomes the same two shortcuts (unless they were set).
         if std::mem::take(&mut self.legacy_swap) && !self.shortcuts.contains_key("Shorter") && !self.shortcuts.contains_key("Longer") {
@@ -535,18 +540,18 @@ impl App {
                     .resizable(false)
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
+                            if ui.button("Restore defaults").on_hover_text("Every setting on this tab back to how GuitarCraft starts").clicked() {
+                                self.restore_tab(dlg.tab);
+                                dlg.recording = None;
+                                dlg.clash = None;
+                                if dlg.tab == 4 {
+                                    restart_audio = true;
+                                }
+                            }
                             note(ui, "Changes take effect straight away.");
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 if ui.button("Close").clicked() {
                                     close = true;
-                                }
-                                if ui.button("Restore defaults").on_hover_text("Every setting on this tab back to how GuitarCraft starts").clicked() {
-                                    self.restore_tab(dlg.tab);
-                                    dlg.recording = None;
-                                    dlg.clash = None;
-                                    if dlg.tab == 4 {
-                                        restart_audio = true;
-                                    }
                                 }
                             });
                         });
@@ -628,6 +633,7 @@ impl App {
                 p.ollama_on = d.ollama_on;
                 p.ollama_url = d.ollama_url;
                 p.ollama_model = d.ollama_model;
+                p.ollama_context = d.ollama_context;
                 p.claude_on = d.claude_on;
                 p.claude_model = d.claude_model;
             }
@@ -784,6 +790,16 @@ impl App {
         });
         text_row(ui, "Server address:", &mut p.ollama_url);
         model_row(ui, "ollama-model", &mut p.ollama_model, &dlg.ollama_test);
+        row_w(ui, LABEL_W, "Context size:", |ui| {
+            ui.add(egui::DragValue::new(&mut p.ollama_context).range(super::ai::OLLAMA_CONTEXT_RANGE).speed(256));
+            note(ui, "tokens");
+            for size in [8192, 16_384, 32_768] {
+                if ui.small_button(format!("{}k", size / 1024)).clicked() {
+                    p.ollama_context = size;
+                }
+            }
+        });
+        note(ui, "How much text the model reads at once. Larger sizes use more memory and run slower.");
         if test_row(ui, &dlg.ollama_test) {
             dlg.ollama_test.test_ollama(&ctx, &p.ollama_url);
         }
@@ -1258,11 +1274,12 @@ mod tests {
 
     #[test]
     fn odd_saved_values_are_brought_into_range() {
-        let p: Prefs = serde_json::from_str(r#"{"default_template": 999, "zoom_pct": 5, "layout": 9}"#).unwrap();
+        let p: Prefs = serde_json::from_str(r#"{"default_template": 999, "zoom_pct": 5, "layout": 9, "ollama_context": 10}"#).unwrap();
         let p = p.fixed();
         assert_eq!(p.default_template, 0);
         assert_eq!(p.zoom_pct, 25);
         assert_eq!(p.layout, 4);
+        assert_eq!(p.ollama_context, 2048);
         assert!(p.highlight_played_bar, "missing fields keep their defaults");
     }
 }
