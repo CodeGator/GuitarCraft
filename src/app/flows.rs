@@ -518,7 +518,7 @@ fn preferences_record_a_new_shortcut() {
     press(&mut r, Key::Comma, Modifiers::COMMAND);
     assert!(r.app.prefs_dlg.is_some(), "Ctrl+, opens Preferences");
     // Change, then Ctrl+Alt+B: Bend gets it, and the score doesn't see the key.
-    r.app.prefs_dlg.as_mut().unwrap().tab = 5;
+    r.app.prefs_dlg.as_mut().unwrap().tab = 6;
     r.app.prefs_dlg.as_mut().unwrap().recording = Some((Act::Bend, false));
     let before = r.app.song.clone();
     press(&mut r, Key::B, CA);

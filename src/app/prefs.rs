@@ -1,6 +1,6 @@
 //! File > Preferences (Ctrl+,): the person's settings, kept between runs, laid out in
 //! the five tabs of Guitar Pro 8's Preferences window (General, Interface, Notation
-//! Errors, User Information, Audio & MIDI). As in the original, a change takes effect
+//! Errors, User Information, Audio & MIDI), plus AI and Shortcuts. As in the original, a change takes effect
 //! straight away: there is no OK or Cancel. The settings are saved in
 //! `preferences.json` in GuitarCraft's settings folder.
 //!
@@ -18,7 +18,7 @@ use egui::{Align2, Color32, FontId, RichText, Ui, Vec2};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-pub const TABS: [&str; 6] = ["General", "Interface", "Notation Errors", "User Information", "Audio & MIDI", "Shortcuts"];
+pub const TABS: [&str; 7] = ["General", "Interface", "Notation Errors", "User Information", "Audio & MIDI", "AI", "Shortcuts"];
 
 /// How often to look for a newer version without being asked.
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug, Serialize, Deserialize)]
@@ -135,6 +135,19 @@ pub struct Prefs {
     pub midi_input: Option<String>,
     /// The built-in sound keeps playing while a MIDI output is open.
     pub midi_builtin_too: bool,
+    // ----- AI -----
+    /// Ollama is switched on as an AI provider.
+    pub ollama_on: bool,
+    /// Where Ollama listens (empty: `ai::OLLAMA_URL`).
+    pub ollama_url: String,
+    /// The Ollama model to use (empty: none chosen yet).
+    pub ollama_model: String,
+    /// Claude is switched on as an AI provider.
+    pub claude_on: bool,
+    /// The person's Anthropic API key.
+    pub claude_key: String,
+    /// The Claude model to use.
+    pub claude_model: String,
     // ----- Shortcuts -----
     /// The keys the person changed, by action name (see `shortcuts::Keymap::to_saved`).
     pub shortcuts: std::collections::BTreeMap<String, Vec<String>>,
@@ -173,6 +186,12 @@ impl Default for Prefs {
             midi_output: None,
             midi_input: None,
             midi_builtin_too: false,
+            ollama_on: false,
+            ollama_url: super::ai::OLLAMA_URL.into(),
+            ollama_model: String::new(),
+            claude_on: false,
+            claude_key: String::new(),
+            claude_model: super::ai::CLAUDE_MODEL.into(),
             shortcuts: Default::default(),
         }
     }
@@ -281,6 +300,9 @@ pub struct PrefsDlg {
     pub(super) clash: Option<Clash>,
     /// Shortcuts: what happened last.
     key_note: String,
+    /// AI: the last "Test connection" of each provider.
+    ollama_test: super::ai::Probe,
+    claude_test: super::ai::Probe,
 }
 
 /// A key the person chose that another action already uses.
@@ -339,6 +361,41 @@ fn text_row(ui: &mut Ui, label: &str, v: &mut String) -> bool {
         changed = ui.add(egui::TextEdit::singleline(v).desired_width(320.0)).changed();
     });
     changed
+}
+
+/// A model name to type, with the models the last test found to pick from.
+fn model_row(ui: &mut Ui, id: &str, v: &mut String, probe: &super::ai::Probe) {
+    row_w(ui, LABEL_W, "Model:", |ui| {
+        ui.add(egui::TextEdit::singleline(v).desired_width(240.0));
+        if let Some(super::ai::Test::Ok(found)) = &probe.result
+            && !found.is_empty()
+        {
+            egui::ComboBox::from_id_salt(id).width(70.0).selected_text("Pick").show_ui(ui, |ui| {
+                for m in found {
+                    if ui.selectable_label(v == m, m.as_str()).clicked() {
+                        *v = m.clone();
+                    }
+                }
+            });
+        }
+    });
+}
+
+/// The "Test connection" button and what the last test found. True when it was pressed.
+fn test_row(ui: &mut Ui, probe: &super::ai::Probe) -> bool {
+    let mut pressed = false;
+    row_w(ui, LABEL_W, "", |ui| {
+        pressed = ui.add_enabled(!probe.busy(), egui::Button::new("Test connection")).clicked();
+        match &probe.result {
+            _ if probe.busy() => note(ui, "Connecting..."),
+            Some(super::ai::Test::Ok(m)) => note(ui, &format!("Connected. {} model{} available.", m.len(), if m.len() == 1 { "" } else { "s" })),
+            Some(super::ai::Test::Failed(e)) => {
+                ui.label(RichText::new(e.as_str()).size(12.0).color(Color32::from_rgb(210, 90, 80)));
+            }
+            None => {}
+        }
+    });
+    pressed
 }
 
 impl App {
@@ -467,7 +524,7 @@ impl App {
                 ui.spacing_mut().item_spacing.y = 6.0;
                 egui::Panel::top("pref-tabs").frame(egui::Frame::NONE).resizable(false).show(ui, |ui| {
                     tab_row(ui, &TABS, "pref-tab", &mut dlg.tab, |p, i, c, col| {
-                        let glyph = ["\u{2699}", "\u{25A3}", "\u{26A0}", "\u{263A}", "\u{266B}", "\u{2328}"][i];
+                        let glyph = ["\u{2699}", "\u{25A3}", "\u{26A0}", "\u{263A}", "\u{266B}", "\u{2728}", "\u{2328}"][i];
                         p.text(c, Align2::CENTER_CENTER, glyph, FontId::proportional(20.0), col);
                     });
                 });
@@ -499,6 +556,7 @@ impl App {
                         2 => self.errors_tab(ui),
                         3 => self.user_tab(ui),
                         4 => self.audio_tab(ui, &mut dlg.devices, &mut dlg.midi_ports, &mut restart_audio, &mut test_sound, &mut midi_changed),
+                        5 => self.ai_tab(ui, &mut dlg),
                         _ => self.shortcuts_tab(ui, &mut dlg),
                     });
                 });
@@ -563,6 +621,14 @@ impl App {
                 p.midi_output = d.midi_output;
                 p.midi_input = d.midi_input;
                 p.midi_builtin_too = d.midi_builtin_too;
+            }
+            5 => {
+                p.ollama_on = d.ollama_on;
+                p.ollama_url = d.ollama_url;
+                p.ollama_model = d.ollama_model;
+                p.claude_on = d.claude_on;
+                p.claude_key = d.claude_key;
+                p.claude_model = d.claude_model;
             }
             _ => {
                 p.shortcuts.clear();
@@ -693,12 +759,49 @@ impl App {
         });
         row_w(ui, LABEL_W, "Invalid hammer-on / pull-off:", |ui| {
             switch(ui, &mut p.err_hopo);
-            note(ui, "Nothing on that string before it to start from");
+            note(ui, "Nothing on that string after it to slur to");
         });
         row_w(ui, LABEL_W, "Bar never reached in playback:", |ui| {
             switch(ui, &mut p.err_unreachable);
             note(ui, "A repeat or jump means playback skips it");
         });
+    }
+
+    fn ai_tab(&mut self, ui: &mut Ui, dlg: &mut PrefsDlg) {
+        let ctx = ui.ctx().clone();
+        dlg.ollama_test.poll();
+        dlg.claude_test.poll();
+        if dlg.ollama_test.busy() || dlg.claude_test.busy() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(200));
+        }
+        let p = &mut self.prefs;
+        heading(ui, "Ollama");
+        note(ui, "A model running on your computer, or on one you run yourself. Nothing leaves your network.");
+        ui.add_space(6.0);
+        row_w(ui, LABEL_W, "Use Ollama:", |ui| {
+            switch(ui, &mut p.ollama_on);
+        });
+        text_row(ui, "Server address:", &mut p.ollama_url);
+        model_row(ui, "ollama-model", &mut p.ollama_model, &dlg.ollama_test);
+        if test_row(ui, &dlg.ollama_test) {
+            dlg.ollama_test.test_ollama(&ctx, &p.ollama_url);
+        }
+        ui.add_space(14.0);
+        heading(ui, "Claude");
+        note(ui, "Anthropic's AI service. Needs an API key from console.anthropic.com. What you ask is sent over the internet to Anthropic.");
+        ui.add_space(6.0);
+        row_w(ui, LABEL_W, "Use Claude:", |ui| {
+            switch(ui, &mut p.claude_on);
+        });
+        row_w(ui, LABEL_W, "API key:", |ui| {
+            ui.add(egui::TextEdit::singleline(&mut p.claude_key).password(true).desired_width(320.0));
+        });
+        model_row(ui, "claude-model", &mut p.claude_model, &dlg.claude_test);
+        if test_row(ui, &dlg.claude_test) {
+            dlg.claude_test.test_claude(&ctx, &p.claude_key);
+        }
+        ui.add_space(8.0);
+        note(ui, "The key is saved in GuitarCraft's preferences file on this computer, as plain text. Don't share that file.");
     }
 
     fn user_tab(&mut self, ui: &mut Ui) {

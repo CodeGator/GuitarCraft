@@ -4,6 +4,7 @@
 mod about;
 mod actions;
 mod addtrack;
+mod ai;
 mod batch;
 #[cfg(test)]
 mod flows;
