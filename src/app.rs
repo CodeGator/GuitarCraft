@@ -21,6 +21,7 @@ mod home;
 mod icons;
 mod keys;
 mod menus;
+mod notice;
 mod palette;
 mod panels;
 mod popups;
@@ -249,8 +250,14 @@ pub struct App {
     /// Whether Insert and Delete were held at the last frame (Windows hides some of their shortcuts).
     ins_down: bool,
     del_down: bool,
-    /// Edit > Preferences: the person's settings, kept between runs.
+    /// File > Preferences: the person's settings, kept between runs.
     prefs: prefs::Prefs,
+    /// The MIDI output and input ports Preferences chose.
+    midi: crate::midi::Midi,
+    /// Why a chosen MIDI port could not be opened.
+    midi_error: Option<String>,
+    /// Notes played on the MIDI input that are waiting for the rest of their chord.
+    midi_pending: Vec<(u8, std::time::Instant)>,
     /// The Preferences window, while open.
     prefs_dlg: Option<prefs::PrefsDlg>,
     /// Something was copied this frame: mark the system clipboard so pasting is offered.
@@ -417,10 +424,16 @@ impl App {
             del_down: false,
             prefs: if own_settings { prefs::Prefs::load() } else { prefs::Prefs::default() },
             prefs_dlg: None,
+            midi: Default::default(),
+            midi_error: None,
+            midi_pending: vec![],
             clip_mark: false,
         };
         // The keys the person chose (the defaults for pictures and tests).
         shortcuts::set_keymap(shortcuts::Keymap::from_saved(&app.prefs.shortcuts));
+        if own_settings {
+            app.connect_midi();
+        }
         if app.screenshot.is_none() {
             app.recent = home::load_recent();
         }
@@ -591,6 +604,16 @@ impl App {
                         },
                         _ => update::Outcome::NoReleases,
                     });
+                }
+                "accidentals" => {
+                    // The bass line with a sharp on its first note and a flat on its second.
+                    app.track = 1;
+                    app.bar = 0;
+                    app.beat = 0;
+                    app.set_accidental(1);
+                    app.beat = 1;
+                    app.set_accidental(-1);
+                    app.beat = 0;
                 }
                 "batch" => app.open_batch(),
                 "tabs" | "tabshome" | "tabschart" | "quitprompt" => {
@@ -895,7 +918,22 @@ impl App {
         if self.playing || !self.sound_allowed || !self.play_while_editing {
             return;
         }
+        // A MIDI output, when one is chosen, hears the note as well.
+        if self.midi.output_open() {
+            let t = &self.song.tracks[self.track];
+            let drums = t.kind() == crate::model::InstrumentType::Drums;
+            self.midi.preview_note(
+                crate::midi::channel_for(self.track, drums),
+                t.instrument.midi_program(),
+                t.pitch(n),
+                (0.8 * t.volume.max(0.3) * 127.0) as u8,
+                600,
+            );
+        }
         self.ensure_audio();
+        if self.mute_builtin() {
+            return;
+        }
         if let Some(a) = &self.audio
             && a.error.is_none()
         {
@@ -915,7 +953,7 @@ impl App {
                 Audio::silent()
             });
             if let Some(e) = self.audio.as_ref().and_then(|a| a.error.clone()) {
-                self.status = format!("Sound unavailable: {e}");
+                self.status = notice::failed(format!("Sound unavailable: {e}"));
             }
             // A new player starts with a plain mix: send the equalizers and Focus again.
             self.mix_sent = (vec![], vec![]);
@@ -1138,7 +1176,7 @@ impl App {
                 }
             }
             if !any {
-                self.status = "The selection has no notes.".into();
+                self.refuse("The selection has no notes.");
                 return;
             }
             let on = !all_on;
@@ -1165,7 +1203,7 @@ impl App {
             return;
         }
         if self.cur_beat().is_rest() {
-            self.status = "Put a note on this beat first.".into();
+            self.refuse("Put a note on this beat first.");
             return;
         }
         let on_string = self.cur_beat().note_on(self.string as u8).is_some()
@@ -1198,7 +1236,7 @@ impl App {
 
     fn cycle_bend(&mut self) {
         if self.cur_beat().is_rest() {
-            self.status = "Put a note on this beat first.".into();
+            self.refuse("Put a note on this beat first.");
             return;
         }
         self.edit(|s, t, b, j, st| {
@@ -1217,6 +1255,19 @@ impl App {
                 _ => 0,
             };
         });
+    }
+
+    /// Bar > Multirest (Ctrl+R): the current track shows its runs of empty bars as one bar with
+    /// their number, or goes back to showing them one by one.
+    fn toggle_multirest(&mut self) {
+        let ti = self.track;
+        let on = !self.song.tracks[ti].multirest;
+        self.edit(move |s, _, _, _, _| s.tracks[ti].multirest = on);
+        self.status = if on {
+            "Multirest on: empty bars in a row show as one (Ctrl+R to turn it off). It shows when this track is on its own.".into()
+        } else {
+            "Multirest off.".into()
+        };
     }
 
     fn insert_bar(&mut self, at: usize) {
@@ -1262,6 +1313,7 @@ impl App {
             out.push(self.cur_beat().clone());
         }
         let n = out.len();
+        self.strip_copied_diagrams(&mut out);
         self.clipboard = out;
         self.status = format!("Copied {n} beat(s).");
     }
@@ -1311,27 +1363,9 @@ impl App {
         );
     }
 
-    fn add_track(&mut self, bass: bool) {
-        self.edit(|s, _, _, _, _| {
-            let mut t = Track::default();
-            if bass {
-                t.name = "Electric Bass".into();
-                t.instrument = Instrument::Bass;
-                t.tuning = STANDARD_BASS.to_vec();
-            } else {
-                t.name = format!("Guitar {}", s.tracks.len() + 1);
-            }
-            t.color = TRACK_COLORS[s.tracks.len() % TRACK_COLORS.len()];
-            s.tracks.push(t);
-        });
-        self.track = self.song.tracks.len() - 1;
-        self.clamp_cursor();
-        self.inspector = InspectorTab::Track;
-    }
-
     fn remove_track(&mut self) {
         if self.song.tracks.len() <= 1 {
-            self.status = "A song needs at least one track.".into();
+            self.refuse("A song needs at least one track.");
             return;
         }
         let ti = self.track;
@@ -1443,7 +1477,7 @@ impl App {
         let p = full_path(&p);
         if let Some(i) = self.find_open(&p) {
             self.switch_to(i);
-            self.status = "That file is already open.".into();
+            self.refuse("That file is already open.");
             return;
         }
         if crate::chart::is_chart_path(&p) {
@@ -1477,7 +1511,7 @@ impl App {
                     .unwrap_or_default();
                 self.status = format!("Opened {name}.");
             }
-            Err(e) => self.status = format!("Couldn't open the file: {e}"),
+            Err(e) => self.status = notice::failed(format!("Couldn't open the file: {e}")),
         }
     }
 
@@ -1530,21 +1564,16 @@ impl App {
                     } else {
                         vec![]
                     };
-                    self.status = if lost.is_empty() {
-                        format!("Saved {}.", p.display())
-                    } else {
-                        format!(
-                            "Saved {} (Guitar Pro 5 can't keep: {}).",
-                            p.display(),
-                            lost.join(", ")
-                        )
-                    };
+                    self.status = format!("Saved {}.", p.display());
+                    if !lost.is_empty() {
+                        self.refuse(format!("Saved {}, but Guitar Pro 5 can't keep: {}.", p.display(), lost.join(", ")));
+                    }
                     self.save_hint = None;
                     let p = full_path(&p);
                     self.add_recent(&p);
                     self.path = Some(p);
                 }
-                Err(e) => self.status = format!("Couldn't save: {e}"),
+                Err(e) => self.status = notice::failed(format!("Couldn't save: {e}")),
             }
         }
     }
@@ -1565,7 +1594,7 @@ impl App {
     fn write_export(&mut self, p: &std::path::Path, data: impl AsRef<[u8]>) {
         self.status = match std::fs::write(p, data) {
             Ok(()) => format!("Exported {}.", p.display()),
-            Err(e) => format!("Couldn't export: {e}"),
+            Err(e) => notice::failed(format!("Couldn't export: {e}")),
         };
     }
 
@@ -1594,7 +1623,7 @@ impl App {
             self.write_export(&p, crate::gp5write::export_gp5(&self.song));
             let lost = fileio::gp5_losses(&self.song);
             if !lost.is_empty() && self.status.starts_with("Exported") {
-                self.status = format!("{} (Guitar Pro 5 can't keep: {}.)", self.status, lost.join(", "));
+                self.refuse(format!("{} Guitar Pro 5 can't keep: {}.", self.status, lost.join(", ")));
             }
         }
     }
@@ -1684,7 +1713,7 @@ impl App {
         self.ensure_audio();
         let Some(a) = &self.audio else { return };
         if let Some(e) = &a.error {
-            self.status = format!("Sound unavailable: {e}");
+            self.status = notice::failed(format!("Sound unavailable: {e}"));
             return;
         }
         let sr = a.sample_rate();
@@ -1750,7 +1779,11 @@ impl App {
             }
             _ => None,
         };
+        // A chosen MIDI output plays along (and, unless Preferences says otherwise, instead).
+        self.midi.setup_tracks(&self.song.tracks);
+        let link = audio::MidiLink { tx: self.midi.sender(), mute_builtin: self.mute_builtin() };
         if let Ok(mut st) = a.state.lock() {
+            st.midi = link;
             st.stop_all();
             st.next_ev = sch.events.partition_point(|e| e.start < start_pos);
             st.events = sch.events;

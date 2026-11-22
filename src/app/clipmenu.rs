@@ -70,7 +70,7 @@ impl App {
 
     pub(super) fn open_special_paste(&mut self) {
         if !self.has_clipboard() {
-            self.status = "Copy something first.".into();
+            self.refuse("Copy something first.");
             return;
         }
         self.special_paste = Some(SpecialPaste { times: 1, chords: true, texts: true, timers: true, sections: true, tempo: true });

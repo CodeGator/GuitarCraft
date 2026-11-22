@@ -172,7 +172,7 @@ impl App {
             .resizable(false)
             .pivot(Align2::CENTER_CENTER)
             .default_pos(ctx.content_rect().center())
-            .fixed_size(Vec2::new(420.0, 0.0))
+            .fixed_size(Vec2::new(super::widgets::DIALOG_W, 0.0))
             .constrain(true)
             .show(ctx, |ui| {
                 let current = env!("CARGO_PKG_VERSION");

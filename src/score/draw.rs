@@ -695,6 +695,23 @@ fn spell(p: i32, flats: bool) -> (i32, i8) {
     (oct * 7 + l, a)
 }
 
+/// Diatonic step and alteration (-2 to 2) of a note's pitch under its spelling choice
+/// (0 automatic, 1 sharp, 2 flat, 3 double flat, 4 double sharp). A double sign needs a
+/// natural note two semitones away; otherwise the note is written with a plain sign.
+fn note_spelling(pitch: i32, spell_choice: u8, key: i8) -> (i32, i8) {
+    let double = |from: i32, alter: i8, plain_flats: bool| {
+        let (d, a) = spell(from, false);
+        if a == 0 { (d, alter) } else { spell(pitch, plain_flats) }
+    };
+    match spell_choice {
+        1 => spell(pitch, false),
+        2 => spell(pitch, true),
+        3 => double(pitch + 2, -2, true),
+        4 => double(pitch - 2, 2, false),
+        _ => spell(pitch, key < 0),
+    }
+}
+
 const SHARP_ORDER: [i32; 7] = [3, 0, 4, 1, 5, 2, 6];
 const FLAT_ORDER: [i32; 7] = [6, 2, 5, 1, 4, 0, 3];
 
@@ -720,7 +737,8 @@ pub fn key_positions(key: i8) -> Vec<i32> {
     }
 }
 
-/// Staff position, accidental to show (0 none, 1 sharp, -1 flat, 2 natural) and note.
+/// Staff position, accidental to show (0 none, 1 sharp, -1 flat, 2 double sharp,
+/// -2 double flat, 3 natural) and note.
 /// `capo_std`: a capo changes the written notes (a stylesheet choice).
 fn std_positions<'a>(
     track: &Track,
@@ -742,17 +760,12 @@ fn std_positions<'a>(
                 track.capo_at(n.string as usize) as i32
             };
             let pitch = track.pitch(n) as i32 - capo + cl.shift() - 12 * beat.ottava as i32;
-            let flats = match n.spell {
-                1 => false,
-                2 => true,
-                _ => key < 0,
-            };
-            let (d, alter) = spell(pitch, flats);
+            let (d, alter) = note_spelling(pitch, n.spell, key);
             let ka = key_alter(key, d.rem_euclid(7));
             let shown = if alter == ka {
                 0
             } else if alter == 0 {
-                2
+                3
             } else {
                 alter
             };
@@ -761,10 +774,46 @@ fn std_positions<'a>(
         .collect()
 }
 
+/// The accidentals to print on the notes of beat `bj`, in note order, following the
+/// usual rule: an accidental holds for the rest of the bar on its line or space, so a
+/// repeat is not marked again and a return to the key's pitch gets a natural sign.
+fn bar_accidentals(track: &Track, bar: &Bar, key: i8, capo_std: bool, bj: usize) -> Vec<i8> {
+    let cl = track.clef();
+    let mut held: std::collections::HashMap<i32, i8> = std::collections::HashMap::new();
+    let mut out = Vec::new();
+    for beat in bar.beats.iter().take(bj + 1) {
+        out.clear();
+        for n in &beat.notes {
+            let capo = if capo_std {
+                0
+            } else {
+                track.capo_at(n.string as usize) as i32
+            };
+            let pitch = track.pitch(n) as i32 - capo + cl.shift() - 12 * beat.ottava as i32;
+            let (d, alter) = note_spelling(pitch, n.spell, key);
+            let cur = held
+                .get(&d)
+                .copied()
+                .unwrap_or_else(|| key_alter(key, d.rem_euclid(7)));
+            out.push(if alter == cur {
+                0
+            } else if alter == 0 {
+                3
+            } else {
+                alter
+            });
+            held.insert(d, alter);
+        }
+    }
+    out
+}
+
 pub fn accidental_glyph(a: i8) -> &'static str {
     match a {
         1 => "\u{266F}",
         -1 => "\u{266D}",
+        2 => "\u{1D12A}",
+        -2 => "\u{1D12B}",
         _ => "\u{266E}",
     }
 }
@@ -792,8 +841,14 @@ fn draw_std_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32, groups
             .map(|(a, b, n)| (a + lift, b, n.clone()))
             .collect()
     };
-    let pos = std_positions(track, beat, key);
+    let mut pos = std_positions(track, beat, key);
     let perc = track.clef() == Clef::Percussion;
+    if !perc {
+        let acc = bar_accidentals(track, bar, key, c.song.style.capo_affects_std, bj);
+        for (p, a) in pos.iter_mut().zip(acc) {
+            p.1 = a;
+        }
+    }
     let group = groups.iter().find(|gg| gg.contains(&bj));
     // A beamed group shares one stem direction.
     let up = if c.multi {
@@ -907,10 +962,10 @@ fn draw_std_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32, groups
         }
         if *sharp != 0 {
             p.text(
-                Pos2::new(x - 11.0 * z, cpos.y),
+                Pos2::new(x - 12.0 * z, cpos.y),
                 Align2::CENTER_CENTER,
                 accidental_glyph(*sharp),
-                music(13.0 * z),
+                music(18.0 * z),
                 c.ink,
             );
         }
@@ -1898,6 +1953,8 @@ fn acc_text(a: i8) -> &'static str {
     match a {
         1 => "\u{266F}",
         -1 => "\u{266D}",
+        2 => "\u{1D12A}",
+        -2 => "\u{1D12B}",
         _ => "",
     }
 }
@@ -1908,18 +1965,23 @@ pub fn written_name(track: &Track, beat: &Beat, key: i8, n: &Note) -> String {
         return drum_name(track.pitch(n)).to_string();
     }
     let pitch = track.pitch(n) as i32 + track.clef().shift() - 12 * beat.ottava as i32;
-    let flats = match n.spell {
-        1 => false,
-        2 => true,
-        _ => key < 0,
-    };
-    let (d, alter) = spell(pitch, flats);
+    let (d, alter) = note_spelling(pitch, n.spell, key);
     format!(
         "{}{} {}",
         LETTERS[d.rem_euclid(7) as usize],
         acc_text(alter),
         d.div_euclid(7)
     )
+}
+
+/// The sign a note is written with, whatever the key signature says: -1 flat, 0 natural,
+/// 1 sharp, 2 double sharp, -2 double flat. None for drums.
+pub fn written_alter(track: &Track, beat: &Beat, key: i8, n: &Note) -> Option<i8> {
+    if track.clef() == Clef::Percussion {
+        return None;
+    }
+    let pitch = track.pitch(n) as i32 + track.clef().shift() - 12 * beat.ottava as i32;
+    Some(note_spelling(pitch, n.spell, key).1)
 }
 
 /// Written name of a line or space of the notation staff, with the key signature applied.

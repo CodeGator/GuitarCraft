@@ -304,7 +304,7 @@ impl App {
         };
         self.status = match r {
             Ok(()) => format!("Exported {} page(s) to {}.", pages.len(), path.display()),
-            Err(e) => format!("Couldn't export: {e}"),
+            Err(e) => super::notice::failed(format!("Couldn't export: {e}")),
         };
         if open_folder {
             show_in_folder(path);
@@ -474,7 +474,8 @@ impl App {
                         transparent: false,
                         play_cursor: crate::score::PlayCursor::Smooth,
                         play_bar: true,
-                        bar_errors: true,
+                        bar_errors: 0,
+ unreached: &[],
                     };
                     crate::score::draw_page(p, &lay, &dc, pv.page, origin);
                 });
@@ -505,7 +506,7 @@ impl App {
             self.status = match print_windows(self, pages) {
                 Ok(Some(n)) => format!("Sent {n} page(s) to the printer."),
                 Ok(None) => "Printing cancelled.".into(),
-                Err(e) => format!("Couldn't print: {e}"),
+                Err(e) => super::notice::failed(format!("Couldn't print: {e}")),
             };
         }
         #[cfg(not(target_os = "windows"))]
@@ -518,7 +519,7 @@ impl App {
             let _ = std::process::Command::new("open").arg(&path).spawn();
             #[cfg(not(target_os = "macos"))]
             let _ = std::process::Command::new("xdg-open").arg(&path).spawn();
-            self.status = "The score opened as a PDF: print it from there.".into();
+            self.refuse("The score opened as a PDF: print it from there.");
         }
     }
 }

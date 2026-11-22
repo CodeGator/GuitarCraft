@@ -58,7 +58,7 @@ impl App {
             .resizable(false)
             .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
             .show(ctx, |ui| {
-                ui.set_width(380.0);
+                ui.set_width(super::widgets::DIALOG_W);
                 ui.label(RichText::new("TRANSPOSE").strong().size(15.0));
                 ui.add_space(4.0);
                 ui.label("Chords in:");

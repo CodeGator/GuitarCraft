@@ -385,6 +385,7 @@ impl App {
             // ----- Bars and sections -----
             InsertBar => self.insert_bar(self.bar),
             DeleteBar => self.delete_bar(self.bar),
+            Multirest => self.toggle_multirest(),
             KeySig => self.open_popup(Popup::KeySig),
             TimeSig => self.open_popup(Popup::TimeSig),
             TripletFeel => self.bar_edit(|mb| mb.triplet_feel = !mb.triplet_feel),
@@ -423,7 +424,7 @@ impl App {
                 self.voices_open = true;
             }
             // ----- Tracks -----
-            AddTrack => self.add_track(false),
+            AddTrack => self.open_add_track(false),
             DeleteTrack => self.remove_track(),
             NextTrack => self.track = (self.track + 1).min(self.song.tracks.len() - 1),
             PrevTrack => self.track = self.track.saturating_sub(1),

@@ -148,7 +148,7 @@ acts! {
     ArpeggioDown, ArpeggioUp, Barre, Rasgueado, FadeIn, FadeOut, Swell, WahOpen,
     WahClosed, Timer, ScaleDiagram,
     // Bars and sections
-    InsertBar, DeleteBar, KeySig, TimeSig, TripletFeel, FreeTime, RepeatOpen, RepeatClose,
+    InsertBar, DeleteBar, Multirest, KeySig, TimeSig, TripletFeel, FreeTime, RepeatOpen, RepeatClose,
     RepeatBar, RepeatTwoBars, ForceBreak, Directions, Section, Automations,
     // Voices
     Voice1, Voice2, Voice3, Voice4, MoveToVoice1, MoveToVoice2, MoveToVoice3,
@@ -336,6 +336,7 @@ pub const ACTIONS: &[Action] = &[
     // ----- Bars and sections -----
     a(InsertBar, "Insert a bar", G::Bars, Score, &[ctrl(Key::Insert)]),
     a(DeleteBar, "Delete the bar", G::Bars, Score, &[ctrl(Key::Delete)]),
+    a(Multirest, "Multirest (empty bars as one)", G::Bars, Score, &[ctrl(Key::R)]),
     a(KeySig, "Key signature", G::Bars, Score, &[ctrl(Key::K)]).also(&[key(Key::K)]),
     a(TimeSig, "Time signature", G::Bars, Score, &[ctrl(Key::T)]),
     a(TripletFeel, "Triplet feel", G::Bars, Score, &[ctrl(Key::Slash)]),

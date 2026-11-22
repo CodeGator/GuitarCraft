@@ -1499,6 +1499,7 @@ mod tests {
             slide_in: 0.0,
             wide_vibrato: false,
             fade_in: false,
+            midi: None,
         }
     }
 

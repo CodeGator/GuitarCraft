@@ -93,7 +93,7 @@ impl App {
         }
         .or_else(|| beat.notes.first().cloned());
         if kind.needs_note() && note.is_none() {
-            self.status = "Put a note on this beat first.".into();
+            self.refuse("Put a note on this beat first.");
             return;
         }
         let mut note = note.unwrap_or_default();
@@ -152,7 +152,7 @@ impl App {
             .resizable(false)
             .anchor(Align2::CENTER_TOP, Vec2::new(0.0, 140.0))
             .show(ctx, |ui| {
-                ui.set_min_width(300.0);
+                ui.set_min_width(super::widgets::DIALOG_W);
                 match kind {
                     Popup::TimeSig => {
                         ui.label(RichText::new(format!("Bar {bar_no}")).weak());

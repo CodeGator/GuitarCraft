@@ -46,7 +46,7 @@ impl App {
             return;
         }
         if self.cur_beat().is_rest() {
-            self.status = "Put a note on this beat first.".into();
+            self.refuse("Put a note on this beat first.");
             return;
         }
         let on_string = self.cur_beat().note_on(self.string as u8).is_some()

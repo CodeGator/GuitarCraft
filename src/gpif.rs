@@ -65,6 +65,13 @@ pub fn import_gp(data: &[u8]) -> Result<Song, String> {
                 t.show_tab = f & 2 != 0;
             }
         }
+        // Then each track's own view: a byte, a count of 1, and the staves it shows. The byte is 1
+        // when Bar > Multirest is on for the track (seen in a file Guitar Pro 8 saved with it on).
+        for (k, t) in song.tracks.iter_mut().enumerate().take(n) {
+            if let Some(&f) = part.get(9 + n + 6 * k) {
+                t.multirest = f == 1;
+            }
+        }
     }
     Ok(song)
 }
@@ -1054,6 +1061,20 @@ fn read_beat(
             Note::new((nstr - 1 - s) as u8, f.clamp(0, 36) as u8)
         };
         n.dead = p.contains_key("Muted");
+        // The spelling the file chose: a flat or a sharp on the staff.
+        if let Some(pt) = p
+            .get("TransposedPitch")
+            .or_else(|| p.get("ConcertPitch"))
+            .and_then(|x| child(*x, "Pitch"))
+        {
+            n.spell = match text(child(pt, "Accidental")).as_str() {
+                "#" => 1,
+                "b" => 2,
+                "bb" => 3,
+                "##" | "x" => 4,
+                _ => 0,
+            };
+        }
         n.fx.lh_finger = crate::gpifwrite::finger_from_letter(&text(child(*nn, "LeftFingering")));
         n.fx.rh_finger = crate::gpifwrite::finger_from_letter(&text(child(*nn, "RightFingering")));
         n.palm_mute = p.contains_key("PalmMuted");

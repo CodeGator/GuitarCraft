@@ -74,6 +74,8 @@ The **Batch Converter** (File > Batch Converter) turns many song files into anot
 - **Score context menu:** right-click the score for cut, copy and paste (also on all tracks at once), Special Paste, and the Bar, Note and Effects menus.
 - **Special Paste** (Ctrl+Shift+V) pastes a selection several times over and lets you pick which extras come with it.
 - **Playback follow:** during playback the view scrolls with the line of music being played.
+- **Preferences** (File > Preferences, Ctrl+,): default template, forced zoom, page layout, stylesheet and notation, reopening last session's files, the playing cursor, notation error checks, your details for new songs, the audio device and buffer, and keyboard shortcuts.
+- **MIDI** (Preferences > Audio & MIDI): choose a MIDI output and playback goes to that device, with each track's instrument, volume, pan and bends, and clicked notes sound there too. The built-in sound is silent while an output is chosen unless you ask for both. Choose a MIDI input and the notes you play on a MIDI keyboard are entered at the cursor, notes played together as a chord. MIDI playback has been heard through the Windows GS Wavetable Synth; entering notes from a keyboard is written but hasn't been tried with a real keyboard yet. Real-time recording isn't there yet.
 - **Mixer and tracks:** the mute and solo header buttons light up and clear every track at once, and hovering a bar number highlights that bar in every track.
 
 ## Install

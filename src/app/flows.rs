@@ -419,20 +419,17 @@ fn close_all_asks_about_each_file_with_changes() {
     r.app.dirty = true;
     r.frames(1);
     assert_eq!(r.app.tabs.len(), 2);
-    // Ctrl+Shift+W: the first question is about the showing file.
-    press(&mut r, Key::W, CS);
-    assert_eq!(r.app.pending, Some(Pending::CloseAll));
     assert_eq!(r.app.dirty_count(), 2);
-    assert_eq!(r.app.tabs.len(), 2, "nothing is closed before the questions are answered");
-    // Don't save: on to the other file.
-    r.app.pending = None;
-    r.app.dirty = false;
-    let next = r.app.other_dirty_tab();
-    assert!(next.is_some(), "the other file still has changes");
-    r.app.switch_to(next.unwrap());
-    r.app.dirty = false;
-    r.app.run_pending(Pending::CloseAll);
+    // Ctrl+Shift+W, then Cancel at the first question: nothing is closed.
+    super::notice::answer_next(&[super::notice::Unsaved::Cancel]);
+    press(&mut r, Key::W, CS);
     r.frames(2);
+    assert!(r.app.pending.is_none());
+    assert_eq!(r.app.tabs.len(), 2, "nothing is closed when the question is cancelled");
+    // Again, answering Don't save for each of the two files.
+    super::notice::answer_next(&[super::notice::Unsaved::DontSave, super::notice::Unsaved::DontSave]);
+    press(&mut r, Key::W, CS);
+    r.frames(4);
     assert!(r.app.tabs.is_empty() && r.app.show_home, "every file is closed and the start screen shows");
 }
 
@@ -584,4 +581,131 @@ fn the_chord_window_names_a_chord_and_shows_its_diagram_on_an_empty_beat() {
     r.frames(1);
     let b = r.app.cur_beat();
     assert!(b.chord.is_none() && b.chord_frets.is_none() && !b.chord_diagram);
+}
+
+#[test]
+fn sharps_and_flats_change_the_note_and_leave_the_key_signature_alone() {
+    let mut r = song_with_a_note();
+    let key = r.app.song.master[r.app.bar].key;
+    let pitch = |r: &Rig| {
+        let b = r.app.cur_beat();
+        r.app.tr().pitch(&b.notes[0]) as i32
+    };
+    let alter = |r: &Rig| {
+        let b = r.app.cur_beat().clone();
+        crate::score::written_alter(r.app.tr(), &b, key, &b.notes[0]).unwrap()
+    };
+    let (p0, a0) = (pitch(&r), alter(&r) as i32);
+    let natural = p0 - a0;
+    r.app.set_accidental(1);
+    r.frames(1);
+    assert_eq!(pitch(&r), natural + 1, "a sharp raises the note to sharp");
+    assert_eq!(alter(&r), 1);
+    assert_eq!(r.app.cur_beat().notes[0].spell, 1);
+    // Asking again changes nothing.
+    r.app.set_accidental(1);
+    assert_eq!(pitch(&r), natural + 1);
+    r.app.set_accidental(-1);
+    r.frames(1);
+    assert_eq!(pitch(&r), natural - 1, "a flat lowers it to flat");
+    assert_eq!(alter(&r), -1);
+    r.app.set_accidental(0);
+    r.frames(1);
+    assert_eq!(pitch(&r), natural);
+    assert_eq!(alter(&r), 0);
+    assert_eq!(r.app.song.master[r.app.bar].key, key, "the key signature is never touched");
+    assert!(r.app.song.master.iter().all(|m| m.key == key));
+    // The whole thing can be undone.
+    r.app.set_accidental(1);
+    r.app.do_undo();
+    assert_eq!(pitch(&r), natural);
+}
+
+#[test]
+fn swapping_the_accidental_keeps_the_pitch_and_flips_the_sign() {
+    let mut r = song_with_a_note();
+    let key = r.app.song.master[r.app.bar].key;
+    let read = |r: &Rig| {
+        let b = r.app.cur_beat().clone();
+        let n = &b.notes[0];
+        (r.app.tr().pitch(n) as i32, n.fret, crate::score::written_alter(r.app.tr(), &b, key, n).unwrap())
+    };
+    r.app.set_accidental(1);
+    r.frames(1);
+    let (pitch, fret, alter) = read(&r);
+    assert_eq!(alter, 1);
+    r.app.swap_accidental();
+    r.frames(1);
+    assert_eq!(read(&r), (pitch, fret, -1), "same pitch and fret, written as a flat");
+    r.app.swap_accidental();
+    r.frames(1);
+    assert_eq!(read(&r), (pitch, fret, 1), "and back to a sharp");
+    // A natural note has no other spelling and is left alone.
+    r.app.set_accidental(0);
+    r.frames(1);
+    let natural = read(&r);
+    r.app.swap_accidental();
+    r.frames(1);
+    assert_eq!(read(&r), natural);
+    // One undo puts the previous spelling back.
+    r.app.set_accidental(1);
+    r.app.swap_accidental();
+    r.app.do_undo();
+    assert_eq!(read(&r).2, 1);
+}
+
+#[test]
+fn double_sharps_and_flats_move_the_note_two_semitones_on_the_same_line() {
+    let mut r = song_with_a_note();
+    let key = r.app.song.master[r.app.bar].key;
+    let read = |r: &Rig| {
+        let b = r.app.cur_beat().clone();
+        let n = &b.notes[0];
+        (r.app.tr().pitch(n) as i32, crate::score::written_alter(r.app.tr(), &b, key, n).unwrap(), crate::score::written_name(r.app.tr(), &b, key, n))
+    };
+    r.app.set_accidental(0);
+    r.frames(1);
+    let (natural, a, name) = read(&r);
+    assert_eq!(a, 0);
+    r.app.set_accidental(2);
+    r.frames(1);
+    let (p, a, dname) = read(&r);
+    assert_eq!((p, a), (natural + 2, 2), "double sharp: two semitones up");
+    assert_eq!(dname, format!("{}\u{1D12A}{}", &name[..1], &name[1..]), "same letter, written with a double sharp");
+    assert_eq!(r.app.cur_beat().notes[0].spell, 4);
+    r.app.set_accidental(-2);
+    r.frames(1);
+    let (p, a, _) = read(&r);
+    assert_eq!((p, a), (natural - 2, -2), "double flat: two semitones down");
+    assert_eq!(r.app.cur_beat().notes[0].spell, 3);
+    // Back to a single sign and to natural.
+    r.app.set_accidental(1);
+    assert_eq!(read(&r).0, natural + 1);
+    r.app.set_accidental(0);
+    assert_eq!(read(&r).0, natural);
+    // Undo puts the double sign back.
+    r.app.set_accidental(2);
+    r.app.set_accidental(0);
+    r.app.do_undo();
+    assert_eq!(read(&r).1, 2);
+}
+
+#[test]
+fn a_refusal_is_a_warning_box_and_a_failure_is_an_error_box() {
+    let mut r = song_with_a_note();
+    super::notice::take_shown();
+    // Refusal: the only track can't be removed.
+    r.app.song.tracks.truncate(1);
+    r.app.remove_track();
+    assert_eq!(
+        super::notice::take_shown(),
+        vec![("warning", "A song needs at least one track.".to_string())]
+    );
+    assert_eq!(r.app.status, "A song needs at least one track.");
+    // Failure: a file that can't be opened.
+    r.app.open_path(std::path::PathBuf::from("Z:/no/such/file.gp"));
+    let shown = super::notice::take_shown();
+    assert_eq!(shown.len(), 1);
+    assert_eq!(shown[0].0, "error");
+    assert!(shown[0].1.starts_with("Couldn't open the file"), "{}", shown[0].1);
 }

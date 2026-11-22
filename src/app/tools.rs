@@ -199,7 +199,7 @@ pub fn commands() -> Vec<(&'static str, Cmd)> {
 /// the shortcut list: the guide shows the person's key for it, and leaves the
 /// brackets out when it has none (see `shortcuts::fill_keys`). Keys that can't be
 /// changed (arrows, digits, Tab) are written as they are.
-const GUIDE: [(&str, &str); 13] = [
+const GUIDE: [(&str, &str); 14] = [
     (
         "The main screen",
         "The toolbar is at the top: start screen, the three panel buttons (palette, tracks, settings), zoom, undo/redo, the transport buttons and the display that shows the track, bar, time signature, time and tempo. The editing palette is on the left, the score in the middle, the Song/Track/Bar/Beat settings on the right and the tracks list with the mixer and bar overview at the bottom.",
@@ -235,6 +235,10 @@ const GUIDE: [(&str, &str); 13] = [
     (
         "Playing back",
         "Play ({PlayPause}) plays from the cursor and pauses, Play from the Beginning ({PlayFromStart}) starts at the top, and Stop ({Stop}) stops. Click the score while playing to jump there. Loop ({Loop}) repeats the selection; the speed button sets a slower or faster speed, and the speed trainer raises it on each loop. The metronome and count-in are in the toolbar and the Sound menu.",
+    ),
+    (
+        "MIDI",
+        "Preferences (File \u{25B8} Preferences) > Audio & MIDI chooses a MIDI output and input. With an output, playback and clicked notes also go to that device, using each track's instrument, volume, pan and bends; the built-in sound is silent unless you turn on both. With an input, notes you play on a MIDI keyboard are entered at the cursor and the cursor moves on; notes played together become one chord. Playback on a MIDI output doesn't follow volume or pan changes made while it plays.",
     ),
     (
         "Voices",
@@ -278,7 +282,7 @@ impl App {
         let text = match std::fs::read(&p) {
             Ok(d) => String::from_utf8_lossy(&d).to_string(),
             Err(e) => {
-                self.status = format!("Couldn't read the file: {e}");
+                self.status = super::notice::failed(format!("Couldn't read the file: {e}"));
                 return;
             }
         };
@@ -300,7 +304,7 @@ impl App {
                 self.clamp_cursor();
                 self.status = "Imported the tab. Tools \u{25B8} Check Bar Duration finds bars whose rhythm needs fixing.".into();
             }
-            Err(e) => self.status = e,
+            Err(e) => self.status = super::notice::failed(e),
         }
     }
 
@@ -355,6 +359,7 @@ impl App {
         let b = self.bar;
         let mut mb = self.song.master[b].clone();
         egui::Window::new(format!("Directions \u{2013} bar {}", b + 1)).open(&mut open).resizable(false).collapsible(false).show(ctx, |ui| {
+            ui.set_min_width(super::widgets::DIALOG_W);
             ui.label(RichText::new("Target at the start of the bar").strong());
             ui.horizontal_wrapped(|ui| {
                 for (k, name) in TARGET_NAMES.iter().enumerate() {
@@ -490,6 +495,7 @@ impl App {
         }
         let mut open = true;
         egui::Window::new("Speed trainer").open(&mut open).resizable(false).collapsible(false).show(ctx, |ui| {
+            ui.set_min_width(super::widgets::DIALOG_W);
             ui.checkbox(&mut self.trainer_on, "Raise the speed each time the loop repeats");
             egui::Grid::new("trainer").num_columns(2).show(ui, |ui| {
                 ui.label("Start at");

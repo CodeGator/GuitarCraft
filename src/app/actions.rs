@@ -34,7 +34,7 @@ impl App {
         match found {
             Some(b) => {
                 self.goto_bar(b);
-                self.status = format!("Bar {} doesn't add up to its time signature.", b + 1);
+                self.refuse(format!("Bar {} doesn't add up to its time signature.", b + 1));
             }
             None => self.status = "Every bar in this track has the right length.".into(),
         }
@@ -131,7 +131,7 @@ impl App {
             .iter()
             .all(|n| (0..=maxf).contains(&(n.fret as i32 + 12 * dir)));
         if !ok {
-            self.status = "That would go past the end of the fretboard.".into();
+            self.refuse("That would go past the end of the fretboard.");
             return;
         }
         self.transpose(12 * dir);
@@ -174,6 +174,15 @@ impl App {
                 )
             })
             .collect();
+        if !self.prefs.copy_diagrams {
+            for (_, bars) in &mut self.bar_clipboard {
+                for bar in bars.iter_mut() {
+                    for b in bar.all_beats_mut() {
+                        b.chord_diagram = false;
+                    }
+                }
+            }
+        }
         self.status = format!("Copied {} bar(s) of every track.", b - a + 1);
     }
 
@@ -181,7 +190,7 @@ impl App {
         self.all_track_copy();
         let (a, b) = self.bar_range();
         if b - a + 1 >= self.song.bar_count() {
-            self.status = "A song needs at least one bar.".into();
+            self.refuse("A song needs at least one bar.");
             return;
         }
         self.edit(|s, _, _, _, _| {
@@ -242,7 +251,7 @@ impl App {
 
     pub(super) fn open_containing_folder(&mut self) {
         let Some(p) = self.path.clone() else {
-            self.status = "Save the song first.".into();
+            self.refuse("Save the song first.");
             return;
         };
         #[cfg(target_os = "windows")]
@@ -256,7 +265,7 @@ impl App {
             .arg(p.parent().unwrap_or(&p))
             .spawn();
         if let Err(e) = r {
-            self.status = format!("Couldn't open the folder: {e}");
+            self.status = super::notice::failed(format!("Couldn't open the folder: {e}"));
         }
     }
 
@@ -355,11 +364,11 @@ impl App {
                 }
             });
         }
-        self.status = if clipped {
-            "Transposed. Some notes didn't fit on the fretboard and were removed.".into()
+        if clipped {
+            self.refuse("Transposed. Some notes didn't fit on the fretboard and were removed.");
         } else {
-            format!("Transposed by {semis:+} semitone(s).")
-        };
+            self.status = format!("Transposed by {semis:+} semitone(s).");
+        }
     }
 
     pub(super) fn small_dialogs(&mut self, ctx: &egui::Context) {
@@ -372,6 +381,7 @@ impl App {
                 .open(&mut open)
                 .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
                 .show(ctx, |ui| {
+                    ui.set_min_width(super::widgets::DIALOG_W);
                     ui.horizontal(|ui| {
                         ui.label(format!("Bar (1\u{2013}{}):", self.song.bar_count()));
                         let r = ui.add(
@@ -419,6 +429,7 @@ impl App {
             let mut open = true;
             let mut apply = false;
             egui::Window::new("Transpose").collapsible(false).resizable(false).open(&mut open).anchor(Align2::CENTER_CENTER, Vec2::ZERO).show(ctx, |ui| {
+                ui.set_min_width(super::widgets::DIALOG_W);
                 ui.horizontal(|ui| {
                     ui.label("Semitones:");
                     ui.add(egui::DragValue::new(&mut self.transpose_amt).range(-24..=24));
@@ -601,10 +612,10 @@ impl App {
                 self.set_fret(s, fret_on(s) as u8);
             }
             None => {
-                self.status = format!(
+                self.refuse(format!(
                     "{} can't be played on this instrument.",
                     note_name_oct(pitch.clamp(0, 127) as u8)
-                )
+                ))
             }
         }
     }
@@ -655,13 +666,13 @@ impl App {
             return;
         };
         if self.cur_beat().note_on(to as u8).is_some() {
-            self.status = "That string already has a note.".into();
+            self.refuse("That string already has a note.");
             return;
         }
         let pitch = tr.tuning[s as usize] as i32 + n.fret as i32;
         let f = pitch - tr.tuning[to as usize] as i32;
         if !(0..=tr.frets as i32).contains(&f) {
-            self.status = "The note doesn't fit on that string.".into();
+            self.refuse("The note doesn't fit on that string.");
             return;
         }
         self.edit(|so, t, b, j, _| {
@@ -778,6 +789,97 @@ pub fn diatonic_shift(pitch: i32, key: i8, steps: i32) -> i32 {
     root + noct * 12 + MAJOR[nd.rem_euclid(7) as usize] + extra
 }
 
+impl App {
+    /// The palette's flat, natural and sharp: the note is written with that sign on the same
+    /// line or space of the staff, so its pitch (and fret) moves to match: a sharp on a G makes
+    /// it G sharp, one fret higher. Only this note changes; the key signature is left alone.
+    pub(super) fn set_accidental(&mut self, want: i8) {
+        let stuck = self.edit_written_notes(|n, now| {
+            let fret = n.fret as i32 + want as i32 - now as i32;
+            if !(0..=30).contains(&fret) {
+                return false;
+            }
+            n.fret = fret as u8;
+            n.spell = match want {
+                1 => 1,
+                -1 => 2,
+                2 => 4,
+                -2 => 3,
+                _ => 0,
+            };
+            true
+        });
+        if stuck > 0 {
+            self.refuse("That note can't go any lower or higher on its string.");
+        }
+    }
+
+    /// The palette's sharp/flat swap: the same pitch, written the other way (F sharp becomes
+    /// G flat and back). Natural notes have no other spelling here and are left as they are.
+    pub(super) fn swap_accidental(&mut self) {
+        // A natural note has nothing to swap; `f` reports that as "could not change".
+        let stuck = self.edit_written_notes(|n, now| {
+            if now == 0 {
+                return false;
+            }
+            n.spell = if now > 0 { 2 } else { 1 };
+            true
+        });
+        if stuck > 0 {
+            self.refuse("Only a sharp or flat note can be written the other way.");
+        }
+    }
+
+    /// Runs `f` on each note under the cursor (or in the selection) with the sign it is now
+    /// written with. `f` returns false when it could not change that note; returns how many.
+    fn edit_written_notes(&mut self, f: impl Fn(&mut Note, i8) -> bool) -> u32 {
+        if self.cur_beat().is_rest() && self.selection().is_none() {
+            self.refuse("Put a note on this beat first.");
+            return 0;
+        }
+        if !self.tr().has_strings() || self.tr().clef() == Clef::Percussion {
+            self.refuse("Accidentals are for notes on a string.");
+            return 0;
+        }
+        let sel = self.selection();
+        let cursor_string = self.string as u8;
+        let on_string = self.cur_beat().note_on(cursor_string).is_some();
+        let stuck = std::cell::Cell::new(0u32);
+        let stuck_ref = &stuck;
+        self.edit(move |s, t, b, j, st| {
+            let change = |song: &mut Song, bi: usize, bj: usize, only: Option<u8>| {
+                let key = song.master[bi].key;
+                let track = song.tracks[t].clone();
+                let beat = &mut song.tracks[t].bars[bi].beats[bj];
+                let snapshot = beat.clone();
+                for n in beat.notes.iter_mut() {
+                    if only.is_some_and(|o| o != n.string) {
+                        continue;
+                    }
+                    let Some(now) = crate::score::written_alter(&track, &snapshot, key, n) else { continue };
+                    if !f(n, now) {
+                        stuck_ref.set(stuck_ref.get() + 1);
+                    }
+                }
+            };
+            match sel {
+                Some((sa, sb)) => {
+                    for bi in sa.0..=sb.0 {
+                        let count = s.tracks[t].bars[bi].beats.len();
+                        let from = if bi == sa.0 { sa.1 } else { 0 };
+                        let to = if bi == sb.0 { sb.1 } else { count.saturating_sub(1) };
+                        for bj in from..=to.min(count.saturating_sub(1)) {
+                            change(s, bi, bj, None);
+                        }
+                    }
+                }
+                None => change(s, b, j, if on_string { Some(st as u8) } else { None }),
+            }
+        });
+        stuck.get()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -792,3 +894,4 @@ mod tests {
         assert_eq!(diatonic_shift(60, 0, -1), 59);
     }
 }
+

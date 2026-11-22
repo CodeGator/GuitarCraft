@@ -157,7 +157,7 @@ pub struct Note {
     pub wide_vibrato: bool,
     /// Trill with this fret (0 = no trill).
     pub trill: u8,
-    /// Spelling in notation: 0 automatic, 1 sharp, 2 flat.
+    /// Spelling in notation: 0 automatic, 1 sharp, 2 flat, 3 double flat, 4 double sharp.
     pub spell: u8,
     /// A grace note played just before, on this fret.
     pub grace: Option<u8>,
@@ -380,6 +380,12 @@ fn voices_unused(v: &[Vec<Beat>]) -> bool {
     v.iter().all(|x| x.iter().all(|b| b.is_rest()))
 }
 
+pub const ERR_LENGTH: u8 = 1;
+pub const ERR_RANGE: u8 = 2;
+pub const ERR_TUPLET: u8 = 4;
+pub const ERR_HOPO: u8 = 8;
+pub const ERR_UNREACHABLE: u8 = 16;
+
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct Bar {
     /// Voice 1.
@@ -449,6 +455,36 @@ impl Bar {
             })
             .map(|v| (v, self.voice_ticks(v) as i64 - need as i64))
             .collect()
+    }
+    /// Mistakes other than length, as a bit set of `ERR_*`: a fret beyond the neck, a tuplet
+    /// group that isn't complete, a hammer-on / pull-off with no note on the same string after it to slur to.
+    pub fn note_errors(&self, frets: u8) -> u8 {
+        let mut e = 0;
+        for v in 0..VOICES {
+            let beats = self.voice(v);
+            let mut run = 0usize;
+            for (i, b) in beats.iter().enumerate() {
+                if b.notes.iter().any(|n| n.fret > frets) {
+                    e |= ERR_RANGE;
+                }
+                let same = b.tuplet > 1 && i > 0 && beats[i - 1].tuplet == b.tuplet;
+                if b.tuplet > 1 {
+                    run = if same { run + 1 } else { 1 };
+                    let ends = beats.get(i + 1).is_none_or(|n| n.tuplet != b.tuplet);
+                    if ends && run % b.tuplet as usize != 0 {
+                        e |= ERR_TUPLET;
+                    }
+                }
+                // The flag sits on the note the slur starts from, so the next beat (when it is in
+                // this bar) must have a note on the same string to slur to.
+                if let Some(next) = beats.get(i + 1) {
+                    if b.notes.iter().any(|n| n.hammer && !next.notes.iter().any(|p| p.string == n.string)) {
+                        e |= ERR_HOPO;
+                    }
+                }
+            }
+        }
+        e
     }
     pub fn pad_voices(&mut self) {
         while self.voices.len() < VOICES - 1 {
@@ -1138,6 +1174,9 @@ pub struct Track {
     pub solo: bool,
     /// Shown in the score.
     pub visible: bool,
+    /// Runs of empty bars show as one bar with their number when this track is shown alone
+    /// (Bar > Multirest, Ctrl+R).
+    pub multirest: bool,
     /// Short name shown beside the staves (empty = made from the name).
     pub short_name: String,
     /// Let every note ring on.
@@ -1193,6 +1232,7 @@ impl Default for Track {
             mute: false,
             solo: false,
             visible: true,
+            multirest: false,
             short_name: String::new(),
             auto_let_ring: false,
             palm_mute: 0.0,
@@ -1387,6 +1427,52 @@ impl Song {
         self.master.len()
     }
 
+    /// Nothing at all in bar `i` of track `ti`: no notes, no repeat sign for a previous bar, and
+    /// no chord name, text or lyric on its rests.
+    pub fn bar_blank(&self, ti: usize, i: usize) -> bool {
+        self.tracks.get(ti).and_then(|t| t.bars.get(i)).is_some_and(|b| {
+            b.simile == 0
+                && b.is_empty()
+                && (0..VOICES).all(|v| b.voice(v).iter().all(|x| x.chord.is_none() && x.text.is_none() && x.lyric.is_none()))
+        })
+    }
+
+    /// Bar `b` can sit in the same multirest as the bar `a` just before it, in track `ti`: both
+    /// are blank and nothing between them (a repeat, ending, section, tempo, key, time signature,
+    /// double bar, jump or line break) needs to be seen.
+    pub fn multirest_joins(&self, ti: usize, a: usize, b: usize) -> bool {
+        let (ma, mb) = (&self.master[a], &self.master[b]);
+        (ma.num, ma.den) == (mb.num, mb.den)
+            && ma.key == mb.key
+            && ma.triplet_feel == mb.triplet_feel
+            && ma.free_time == mb.free_time
+            && ma.endings == mb.endings
+            && ma.repeat_close == 0
+            && !ma.double_bar
+            && !ma.line_break
+            && ma.direction_jump == 0
+            && !mb.repeat_open
+            && mb.marker.is_none()
+            && mb.tempo.is_none()
+            && !mb.tempo_ramp
+            && mb.direction_target == 0
+            && self.bar_blank(ti, a)
+            && self.bar_blank(ti, b)
+    }
+
+    /// How many bars show as one from bar `i` of track `ti` when that track is shown alone: 1
+    /// when the track's multirest is off or bar `i` doesn't start a run of two or more.
+    pub fn multirest_len(&self, ti: usize, i: usize) -> usize {
+        if !self.tracks.get(ti).is_some_and(|t| t.multirest) {
+            return 1;
+        }
+        let mut n = 1;
+        while i + n < self.bar_count() && self.multirest_joins(ti, i + n - 1, i + n) {
+            n += 1;
+        }
+        n
+    }
+
     /// Makes sure every track has as many bars as the master list.
     pub fn normalize(&mut self) {
         if self.master.is_empty() {
@@ -1473,6 +1559,17 @@ impl Song {
             _ => t0,
         };
         t.max(10)
+    }
+
+    /// For each bar, whether playback never gets there (a repeat or jump skips it).
+    pub fn unreached_bars(&self) -> Vec<bool> {
+        let mut seen = vec![false; self.master.len()];
+        for b in self.play_order() {
+            if let Some(s) = seen.get_mut(b) {
+                *s = true;
+            }
+        }
+        seen.iter().map(|s| !s).collect()
     }
 
     /// The bar order when playing, following repeat signs.
@@ -2275,5 +2372,52 @@ mod tempo_tests {
         assert_eq!(s.tempo_at(4), 140);
         s.master[0].tempo_ramp = false;
         assert_eq!(s.tempo_at(3), 100);
+    }
+}
+
+#[cfg(test)]
+mod note_error_tests {
+    use super::*;
+
+    fn note(string: u8, fret: u8, hammer: bool) -> Note {
+        Note { string, fret, hammer, ..Default::default() }
+    }
+
+    #[test]
+    fn finds_range_tuplet_and_hopo_mistakes() {
+        let mut a = Beat::rest(Dur::Eighth);
+        a.notes = vec![note(0, 30, false)];
+        assert_eq!(Bar::new(vec![a]).note_errors(24), ERR_RANGE);
+
+        let mut t = Beat::rest(Dur::Eighth);
+        t.tuplet = 3;
+        assert_eq!(Bar::new(vec![t.clone(), t.clone()]).note_errors(24), ERR_TUPLET);
+        assert_eq!(Bar::new(vec![t.clone(), t.clone(), t]).note_errors(24), 0);
+
+        let mut first = Beat::rest(Dur::Eighth);
+        first.notes = vec![note(1, 5, true)];
+        let mut second = first.clone();
+        second.notes = vec![note(2, 7, false)];
+        assert_eq!(Bar::new(vec![first.clone(), second]).note_errors(24), ERR_HOPO);
+        let mut same = first.clone();
+        same.notes = vec![note(1, 7, false)];
+        assert_eq!(Bar::new(vec![first, same]).note_errors(24), 0);
+    }
+}
+
+#[cfg(test)]
+mod unreached_tests {
+    use super::*;
+
+    #[test]
+    fn plain_and_repeated_songs_reach_every_bar() {
+        let mut s = Song::new_blank();
+        while s.master.len() < 4 {
+            s.master.push(MasterBar::default());
+        }
+        assert!(s.unreached_bars().iter().all(|u| !u));
+        s.master[1].repeat_open = true;
+        s.master[2].repeat_close = 2;
+        assert!(s.unreached_bars().iter().all(|u| !u));
     }
 }

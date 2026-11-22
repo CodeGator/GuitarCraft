@@ -28,7 +28,7 @@ impl App {
         let plus = Rect::from_min_size(head.min + Vec2::new(4.0, 2.0), Vec2::new(20.0, 20.0));
         let pr = ui
             .interact(plus, ui.id().with("addtrack"), Sense::click())
-            .on_hover_text("Add a guitar track");
+            .on_hover_text("Add a track");
         p.text(
             plus.center(),
             Align2::CENTER_CENTER,
@@ -37,7 +37,7 @@ impl App {
             Color32::WHITE,
         );
         if pr.clicked() {
-            self.add_track(false);
+            self.open_add_track(false);
         }
         p.text(
             head.min + Vec2::new(30.0, 12.0),
@@ -629,6 +629,8 @@ Right brings the selected track ({name}) forward by                          tur
                 self.goto_bar(b);
             }
             self.clamp_cursor();
+            // Choosing a track brings the bar being worked on into view.
+            self.scroll_to_cursor = true;
             if self.inspector == InspectorTab::Song {
                 self.inspector = InspectorTab::Track;
             }
@@ -746,6 +748,7 @@ Right brings the selected track ({name}) forward by                          tur
                     rect.left() + ((rect.width() - lay.total_w()) * 0.5).max(0.0) + score::PAGE_GAP;
                 let painter = ui.painter().clone();
                 let clip = ui.clip_rect();
+                let unreached = if self.prefs.err_unreachable { self.song.unreached_bars() } else { vec![] };
                 let dc = score::DrawCtx {
                     song: &self.song,
                     ti: self.track,
@@ -760,7 +763,8 @@ Right brings the selected track ({name}) forward by                          tur
                     transparent: false,
                     play_cursor: self.prefs.play_cursor,
                     play_bar: self.prefs.highlight_played_bar,
-                    bar_errors: self.prefs.err_bar_duration,
+                    bar_errors: self.prefs.error_bits(),
+                    unreached: &unreached,
                 };
                 for page in 0..lay.pages {
                     let o = lay.page_origin(page, left, rect.top());
@@ -834,6 +838,19 @@ Right brings the selected track ({name}) forward by                          tur
                         }
                         self.clamp_cursor();
                         self.last_digit = None;
+                        // Clicking a note plays it: the note on the clicked string of the
+                        // tablature, or the beat's notes when the staff is clicked.
+                        if !was_playing {
+                            let notes = self.cur_beat().notes.clone();
+                            let heard: Vec<crate::model::Note> = match s {
+                                Some(score::Hit::Tab(st)) => notes.into_iter().filter(|n| n.string as usize == st).collect(),
+                                Some(score::Hit::Std(_)) => notes,
+                                _ => vec![],
+                            };
+                            for n in heard.iter().filter(|n| !n.tie) {
+                                self.preview(n);
+                            }
+                        }
                         if was_playing {
                             self.play();
                         }

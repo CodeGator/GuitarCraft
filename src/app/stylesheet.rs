@@ -382,7 +382,7 @@ impl App {
                                         let r = serde_json::to_string_pretty(&dlg.draft).map_err(|e| e.to_string()).and_then(|s| std::fs::write(&p, s).map_err(|e| e.to_string()));
                                         dlg.note = match r {
                                             Ok(()) => format!("Saved {}.", p.file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default()),
-                                            Err(e) => format!("Couldn't save the style: {e}"),
+                                            Err(e) => super::notice::failed(format!("Couldn't save the style: {e}")),
                                         };
                                     }
                                 }
@@ -397,7 +397,7 @@ impl App {
                                     let r = serde_json::to_string_pretty(&dlg.draft).map_err(|e| e.to_string()).and_then(|s| std::fs::write(&f, s).map_err(|e| e.to_string()));
                                     dlg.note = match r {
                                         Ok(()) => "New songs will use this style.".into(),
-                                        Err(e) => format!("Couldn't keep the style: {e}"),
+                                        Err(e) => super::notice::failed(format!("Couldn't keep the style: {e}")),
                                     };
                                 }
                             }

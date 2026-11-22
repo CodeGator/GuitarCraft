@@ -94,6 +94,28 @@ pub struct NoteEvent {
     pub slide_in: f32,
     pub wide_vibrato: bool,
     pub fade_in: bool,
+    /// The note as MIDI: pitch (as sounding), channel and General MIDI program. None for the
+    /// metronome click, which is never sent to a MIDI device.
+    pub midi: Option<MidiNote>,
+}
+
+/// What a MIDI device needs to play a `NoteEvent`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MidiNote {
+    pub pitch: u8,
+    pub channel: u8,
+    pub program: u8,
+}
+
+impl MidiNote {
+    /// The MIDI note of a track's pitch (in semitones, as sounding, with harmonics shifted).
+    pub fn of(track: &Track, ti: usize, pitch: f32) -> Option<MidiNote> {
+        Some(MidiNote {
+            pitch: pitch.round().clamp(0.0, 127.0) as u8,
+            channel: crate::midi::channel_for(ti, track.kind() == crate::model::InstrumentType::Drums),
+            program: track.instrument.midi_program(),
+        })
+    }
 }
 
 pub struct PlayerState {
@@ -115,6 +137,25 @@ pub struct PlayerState {
     eq: Vec<TrackEq>,
     gain: Vec<f32>,
     bus: Vec<(f32, f32)>,
+    /// Where notes go when a MIDI output is playing too.
+    pub midi: MidiLink,
+}
+
+/// A player's link to the MIDI output (empty when there is none).
+#[derive(Default)]
+pub struct MidiLink {
+    pub tx: Option<std::sync::mpsc::SyncSender<crate::midi::MidiCmd>>,
+    /// The built-in sound is silent: the MIDI device does the playing.
+    pub mute_builtin: bool,
+}
+
+impl MidiLink {
+    fn send(&self, c: crate::midi::MidiCmd) {
+        if let Some(tx) = &self.tx {
+            // Never wait: a full channel drops the message.
+            let _ = tx.try_send(c);
+        }
+    }
 }
 
 impl PlayerState {
@@ -134,6 +175,27 @@ impl PlayerState {
             self.eq.clear();
         }
         self.gain = if any_gain { gains.to_vec() } else { vec![] };
+    }
+
+    /// Another note of the same MIDI channel sounds at the same time as event `idx`.
+    fn midi_overlap(&self, idx: usize) -> bool {
+        let Some(e) = self.events.get(idx) else {
+            return false;
+        };
+        let ch = e.midi.map(|m| m.channel);
+        let end = e.start + e.len;
+        // Events are in order of start; earlier notes can still be sounding, so look back a
+        // little way, and forward to the end of this note.
+        let from = idx.saturating_sub(64);
+        for (j, o) in self.events.iter().enumerate().skip(from) {
+            if o.start >= end {
+                break;
+            }
+            if j != idx && !o.dead && o.midi.map(|m| m.channel) == ch && o.start + o.len > e.start {
+                return true;
+            }
+        }
+        false
     }
 
     fn render(&mut self, out: &mut [f32], channels: usize) {
@@ -160,6 +222,36 @@ impl PlayerState {
                         }
                     }
                     self.voices.push(Voice::new(&e, sr));
+                    if let Some(m) = e.midi
+                        && !e.dead
+                    {
+                        let dur = e.len as f32 / sr;
+                        // The pitch wheel belongs to the whole channel, so a bend, slide or
+                        // vibrato is only sent when no other note of the channel sounds with it.
+                        let moves = e.bend != 0.0 || e.slide != 0.0 || e.slide_in != 0.0 || e.vibrato;
+                        let bend = if moves && !self.midi_overlap(self.next_ev) {
+                            let depth = if e.wide_vibrato { 0.9 } else { 0.35 };
+                            crate::midi::pitch_curve(
+                                e.bend,
+                                e.bend_shape,
+                                e.slide,
+                                e.slide_in,
+                                e.vibrato.then_some(depth),
+                                dur,
+                            )
+                        } else {
+                            vec![]
+                        };
+                        self.midi.send(crate::midi::MidiCmd::Note {
+                            bend,
+                            ch: m.channel,
+                            pitch: m.pitch,
+                            vel: (e.vel.clamp(0.05, 1.0) * 127.0) as u8,
+                            // Where in this buffer the note falls, so a run keeps its rhythm.
+                            delay: i as f32 / sr,
+                            dur: e.len as f32 / sr,
+                        });
+                    }
                     self.next_ev += 1;
                 }
                 self.pos += 1;
@@ -167,6 +259,7 @@ impl PlayerState {
                     if self.pos >= b {
                         self.pos = a;
                         self.next_ev = self.events.partition_point(|e| e.start < a);
+                        self.midi.send(crate::midi::MidiCmd::AllOff);
                         for v in &mut self.voices {
                             if v.len > v.t {
                                 v.len = v.t;
@@ -205,8 +298,9 @@ impl PlayerState {
                 r += b * g;
                 *t = (0.0, 0.0);
             }
-            l = (l * self.master).tanh();
-            r = (r * self.master).tanh();
+            let master = if self.midi.mute_builtin { 0.0 } else { self.master };
+            l = (l * master).tanh();
+            r = (r * master).tanh();
             let base = i * channels;
             if channels == 1 {
                 out[base] = (l + r) * 0.5;
@@ -228,6 +322,7 @@ impl PlayerState {
 
     pub fn stop_all(&mut self) {
         self.playing = false;
+        self.midi.send(crate::midi::MidiCmd::AllOff);
         for v in &mut self.voices {
             if v.len > v.t {
                 v.len = v.t;
@@ -261,6 +356,7 @@ impl Audio {
             eq: vec![],
             gain: vec![],
             bus: vec![],
+            midi: Default::default(),
         }));
         let mut a = Audio {
             state,
@@ -300,6 +396,7 @@ impl Audio {
                 eq: vec![],
                 gain: vec![],
                 bus: vec![],
+            midi: Default::default(),
             })),
             _stream: None,
             error: None,
@@ -442,6 +539,7 @@ pub fn note_preview(track: &Track, ti: usize, n: &Note, sr: f32) -> NoteEvent {
         slide_in: 0.0,
         wide_vibrato: false,
         fade_in: false,
+        midi: MidiNote::of(track, ti, if n.harmonic { p + 12.0 } else { p }),
     }
 }
 
@@ -697,6 +795,7 @@ fn build_voice_schedule(song: &Song, sr: f32, opt: &ScheduleOptions) -> Schedule
                         slide_in: if n.slide_in { -4.0 } else { 0.0 },
                         wide_vibrato: n.wide_vibrato,
                         fade_in: beat.fade_in || beat.fx.swell,
+                        midi: MidiNote::of(track, ti, p),
                     };
                     // Grace note just before the beat.
                     if let Some(g) = n.grace {
@@ -717,6 +816,7 @@ fn build_voice_schedule(song: &Song, sr: f32, opt: &ScheduleOptions) -> Schedule
                             bend_shape: 0,
                             fret: g,
                             vel: vel * 0.8,
+                            midi: MidiNote::of(track, ti, gp),
                             ..base.clone()
                         });
                     }
@@ -747,6 +847,7 @@ fn build_voice_schedule(song: &Song, sr: f32, opt: &ScheduleOptions) -> Schedule
                                 len: step.min(total - at).max(1),
                                 freq: if alt { freq_of(trill_p) } else { base.freq },
                                 fret: if alt { n.trill } else { n.fret },
+                                midi: if alt { MidiNote::of(track, ti, trill_p) } else { base.midi },
                                 soft_attack: n.trill > 0 && i > 0,
                                 vel: if n.trill > 0 && i > 0 {
                                     vel * 0.85
@@ -805,6 +906,7 @@ fn click(at: u64, strong: bool, sr: f32) -> NoteEvent {
         slide_in: 0.0,
         wide_vibrato: false,
         fade_in: false,
+        midi: None,
     }
 }
 
@@ -879,6 +981,7 @@ pub fn render_song(song: &Song, sr: f32, speed: f32) -> Vec<f32> {
         eq: vec![],
         gain: vec![],
         bus: vec![],
+            midi: Default::default(),
     };
     st.set_track_mix(&song.tracks.iter().map(|t| t.equalizer).collect::<Vec<_>>(), &[]);
     let frames = end.min((sr * 60.0 * 30.0) as u64) as usize;
@@ -926,6 +1029,7 @@ mod tests {
                 eq: vec![],
                 gain: vec![],
                 bus: vec![],
+            midi: Default::default(),
             };
             st.set_track_mix(eqs, gains);
             let mut buf = vec![0.0f32; 44100 * 2 * 2];
@@ -993,6 +1097,7 @@ mod tests {
             eq: vec![],
             gain: vec![],
             bus: vec![],
+            midi: Default::default(),
         };
         let mut buf = vec![0.0f32; 44100 * 2 * 3];
         for chunk in buf.chunks_mut(1024) {
@@ -1054,6 +1159,7 @@ mod tests {
             eq: vec![],
             gain: vec![],
             bus: vec![],
+            midi: Default::default(),
         };
         let mut buf = vec![0.0f32; ((b - a) as usize * 3) * 2];
         st.render(&mut buf, 2);
@@ -1076,5 +1182,57 @@ mod tests {
         let mut back: Song = serde_json::from_str(&j).unwrap();
         back.normalize();
         assert_eq!(back, song);
+    }
+}
+
+#[cfg(test)]
+mod midi_schedule_tests {
+    use super::*;
+
+    fn opts() -> ScheduleOptions {
+        ScheduleOptions { from_bar: 0, metronome: false, count_in: false, speed: 1.0, only_bars: None }
+    }
+
+    fn song_with(tracks: Vec<Track>, fret: u8) -> Song {
+        let mut s = Song::new_blank();
+        s.tracks = tracks;
+        for t in &mut s.tracks {
+            let mut b = Beat::rest(Dur::Quarter);
+            b.notes = vec![Note::new(0, fret)];
+            t.bars = vec![Bar::new(vec![b; 4])];
+        }
+        s.master = vec![MasterBar::default()];
+        s
+    }
+
+    #[test]
+    fn events_carry_midi_pitch_channel_and_program() {
+        let guitar = Track::of_instrument(Instrument::CleanGuitar, "Guitar");
+        let strings = guitar.tuning.clone();
+        let drums = Track::of_instrument(Instrument::Drums, "Drums");
+        let bass = Track::of_instrument(Instrument::Bass, "Bass");
+        let s = song_with(vec![guitar.clone(), drums, bass], 5);
+        let ev = build_schedule(&s, 44100.0, &opts()).events;
+        let of = |t: usize| ev.iter().find(|e| e.track == t).and_then(|e| e.midi).unwrap();
+        // The guitar's first string at fret 5.
+        assert_eq!(of(0).pitch, strings[0] + 5);
+        assert_eq!(of(0).channel, 0);
+        assert_eq!(of(0).program, Instrument::CleanGuitar.midi_program());
+        // Drums: the fret is the General MIDI drum note, on channel 10.
+        assert_eq!(of(1).pitch, 5);
+        assert_eq!(of(1).channel, 9);
+        // The next track skips the drum channel's number only when it reaches it.
+        assert_eq!(of(2).channel, 2);
+        assert!(ev.iter().all(|e| e.midi.is_some()), "every note has a MIDI form");
+    }
+
+    #[test]
+    fn the_metronome_click_is_not_midi() {
+        let s = song_with(vec![Track::of_instrument(Instrument::CleanGuitar, "G")], 0);
+        let mut o = opts();
+        o.metronome = true;
+        let ev = build_schedule(&s, 44100.0, &o).events;
+        assert!(ev.iter().any(|e| e.midi.is_none()));
+        assert!(ev.iter().any(|e| e.midi.is_some()));
     }
 }

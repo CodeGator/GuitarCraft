@@ -1,4 +1,4 @@
-//! Edit > Preferences (Ctrl+,): the person's settings, kept between runs, laid out in
+//! File > Preferences (Ctrl+,): the person's settings, kept between runs, laid out in
 //! the five tabs of Guitar Pro 8's Preferences window (General, Interface, Notation
 //! Errors, User Information, Audio & MIDI). As in the original, a change takes effect
 //! straight away: there is no OK or Cancel. The settings are saved in
@@ -66,7 +66,20 @@ const CURSORS: [(PlayCursor, &str, &str); 4] = [
 const BUFFERS: [Option<u32>; 6] = [None, Some(128), Some(256), Some(512), Some(1024), Some(2048)];
 
 /// The page layouts, as in View (the order of `App::view_mode`).
+pub const FORCED_STYLES: [&str; 4] = ["Standard", "Rock", "Classic", "Jazz"];
+pub const FORCED_NOTATIONS: [&str; 3] = ["Standard notation and tablature", "Standard notation only", "Tablature only"];
 const LAYOUTS: [&str; 5] = ["Page - Vertical", "Page - Horizontal", "Page - Grid", "Screen - Vertical", "Screen - Horizontal"];
+
+impl Prefs {
+    /// The checks that are on, as `model::ERR_*` bits.
+    pub fn error_bits(&self) -> u8 {
+        use crate::model::*;
+        [(self.err_bar_duration, ERR_LENGTH), (self.err_out_of_range, ERR_RANGE), (self.err_tuplets, ERR_TUPLET), (self.err_hopo, ERR_HOPO), (self.err_unreachable, ERR_UNREACHABLE)]
+            .iter()
+            .filter(|c| c.0)
+            .fold(0, |a, c| a | c.1)
+    }
+}
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 #[serde(default)]
@@ -79,6 +92,12 @@ pub struct Prefs {
     pub zoom_pct: u32,
     /// Open every song in this page layout.
     pub force_layout: bool,
+    /// Every song opened or created gets this stylesheet: 0 off, then `FORCED_STYLES`.
+    pub force_style: u8,
+    /// Every song opened or created shows this notation: 0 off, then `FORCED_NOTATIONS`.
+    pub force_notation: u8,
+    /// Copying beats or bars keeps their chord diagrams.
+    pub copy_diagrams: bool,
     pub layout: u8,
     /// Reopen the files that were open when GuitarCraft was last closed.
     pub reopen_last: bool,
@@ -110,6 +129,12 @@ pub struct Prefs {
     pub output_device: Option<String>,
     /// The audio buffer in samples (None: the device's own).
     pub buffer: Option<u32>,
+    /// The MIDI output port by name (None: no MIDI output).
+    pub midi_output: Option<String>,
+    /// The MIDI input port by name (None: no MIDI input).
+    pub midi_input: Option<String>,
+    /// The built-in sound keeps playing while a MIDI output is open.
+    pub midi_builtin_too: bool,
     // ----- Shortcuts -----
     /// The keys the person changed, by action name (see `shortcuts::Keymap::to_saved`).
     pub shortcuts: std::collections::BTreeMap<String, Vec<String>>,
@@ -122,6 +147,9 @@ impl Default for Prefs {
             force_zoom: false,
             zoom_pct: 110,
             force_layout: false,
+            force_style: 0,
+            force_notation: 0,
+            copy_diagrams: true,
             layout: 0,
             reopen_last: false,
             update_check: UpdateCheck::Never,
@@ -142,6 +170,9 @@ impl Default for Prefs {
             instructions: String::new(),
             output_device: None,
             buffer: None,
+            midi_output: None,
+            midi_input: None,
+            midi_builtin_too: false,
             shortcuts: Default::default(),
         }
     }
@@ -240,6 +271,8 @@ pub struct PrefsDlg {
     pub tab: usize,
     /// The sound devices found when the window opened (or Refresh was pressed).
     devices: Vec<String>,
+    /// The MIDI output and input ports found when the window opened (or Refresh was pressed).
+    midi_ports: (Vec<String>, Vec<String>),
     /// Shortcuts: the filter typed in the search box.
     search: String,
     /// Shortcuts: waiting for a key for this action (true: added to its keys).
@@ -264,15 +297,40 @@ fn note(ui: &mut Ui, t: &str) {
     ui.label(RichText::new(t).size(12.0).color(Color32::from_gray(150)));
 }
 
-/// A greyed-out switch for an option GuitarCraft can't act on yet.
-fn not_yet(ui: &mut Ui, label: &str, why: &str) {
+/// A choice of MIDI port: "None" and the ports found, with a button to look again.
+fn midi_row(
+    ui: &mut Ui,
+    label: &str,
+    id: &str,
+    chosen: &mut Option<String>,
+    ports: &mut Vec<String>,
+    scan: fn() -> Vec<String>,
+    changed: &mut bool,
+) {
     row_w(ui, LABEL_W, label, |ui| {
-        ui.add_enabled_ui(false, |ui| {
-            let mut off = false;
-            switch(ui, &mut off);
+        let shown = chosen.clone().unwrap_or_else(|| "None".into());
+        egui::ComboBox::from_id_salt(id).width(300.0).selected_text(shown).show_ui(ui, |ui| {
+            if ui.selectable_label(chosen.is_none(), "None").clicked() && chosen.is_some() {
+                *chosen = None;
+                *changed = true;
+            }
+            for p in ports.iter() {
+                let on = chosen.as_deref() == Some(p.as_str());
+                if ui.selectable_label(on, p.as_str()).clicked() && !on {
+                    *chosen = Some(p.clone());
+                    *changed = true;
+                }
+            }
         });
-        note(ui, why);
+        if ui.button("\u{27F3}").on_hover_text("Look for devices again").clicked() {
+            *ports = scan();
+        }
     });
+    if let Some(d) = chosen
+        && !ports.contains(d)
+    {
+        note(ui, "This device isn't connected now.");
+    }
 }
 
 fn text_row(ui: &mut Ui, label: &str, v: &mut String) -> bool {
@@ -284,10 +342,10 @@ fn text_row(ui: &mut Ui, label: &str, v: &mut String) -> bool {
 }
 
 impl App {
-    /// Edit > Preferences... (Ctrl+,).
+    /// File > Preferences... (Ctrl+,).
     pub(super) fn open_prefs(&mut self) {
         if self.prefs_dlg.is_none() {
-            self.prefs_dlg = Some(PrefsDlg { tab: 0, devices: Audio::output_device_names(), ..PrefsDlg::default() });
+            self.prefs_dlg = Some(PrefsDlg { tab: 0, devices: Audio::output_device_names(), midi_ports: (crate::midi::output_port_names(), crate::midi::input_port_names()), ..PrefsDlg::default() });
         }
     }
 
@@ -298,6 +356,37 @@ impl App {
         }
         if self.prefs.force_layout {
             self.view_mode = self.prefs.layout;
+        }
+        // The forced stylesheet and notation change the song itself, so they count as a change
+        // only when something differs.
+        let style = match self.prefs.force_style {
+            1 => Some(crate::style::Stylesheet::standard()),
+            2 => Some(crate::style::Stylesheet::rock()),
+            3 => Some(crate::style::Stylesheet::classic()),
+            4 => Some(crate::style::Stylesheet::jazz()),
+            _ => None,
+        };
+        if let Some(s) = style {
+            self.song.style = s;
+        }
+        let (std, tab) = match self.prefs.force_notation {
+            1 => (true, true),
+            2 => (true, false),
+            3 => (false, true),
+            _ => return,
+        };
+        for t in self.song.tracks.iter_mut().filter(|t| t.has_strings()) {
+            t.show_std = std;
+            t.show_tab = tab;
+        }
+    }
+
+    /// Takes the chord diagrams out of a copy when Preferences says not to copy them.
+    pub(super) fn strip_copied_diagrams(&self, beats: &mut [crate::model::Beat]) {
+        if !self.prefs.copy_diagrams {
+            for b in beats {
+                b.chord_diagram = false;
+            }
         }
     }
 
@@ -350,6 +439,7 @@ impl App {
         let mut close = false;
         let mut restart_audio = false;
         let mut test_sound = false;
+        let mut midi_changed = false;
         // A key being recorded for a shortcut is taken before anything else sees it.
         let recorded = if dlg.recording.is_some() { take_recorded_key(ctx) } else { None };
         match recorded {
@@ -408,7 +498,7 @@ impl App {
                         1 => self.interface_tab(ui),
                         2 => self.errors_tab(ui),
                         3 => self.user_tab(ui),
-                        4 => self.audio_tab(ui, &mut dlg.devices, &mut restart_audio, &mut test_sound),
+                        4 => self.audio_tab(ui, &mut dlg.devices, &mut dlg.midi_ports, &mut restart_audio, &mut test_sound, &mut midi_changed),
                         _ => self.shortcuts_tab(ui, &mut dlg),
                     });
                 });
@@ -421,6 +511,9 @@ impl App {
         }
         if test_sound {
             self.test_sound();
+        }
+        if midi_changed {
+            self.connect_midi();
         }
         // Esc closes the window, except the Esc that cancels recording a key.
         let esc = recorded.is_none() && dlg.recording.is_none() && ctx.input(|i| i.key_pressed(egui::Key::Escape));
@@ -439,12 +532,15 @@ impl App {
                 p.zoom_pct = d.zoom_pct;
                 p.force_layout = d.force_layout;
                 p.layout = d.layout;
+                p.force_style = d.force_style;
+                p.force_notation = d.force_notation;
                 p.reopen_last = d.reopen_last;
                 p.update_check = d.update_check;
             }
             1 => {
                 p.play_cursor = d.play_cursor;
                 p.highlight_played_bar = d.highlight_played_bar;
+                p.copy_diagrams = d.copy_diagrams;
             }
             2 => {
                 p.err_bar_duration = d.err_bar_duration;
@@ -464,6 +560,9 @@ impl App {
             4 => {
                 p.output_device = d.output_device;
                 p.buffer = d.buffer;
+                p.midi_output = d.midi_output;
+                p.midi_input = d.midi_input;
+                p.midi_builtin_too = d.midi_builtin_too;
             }
             _ => {
                 p.shortcuts.clear();
@@ -505,8 +604,38 @@ impl App {
             });
         });
         note(ui, "Forced settings are used for every song opened or created, whatever the file says.");
-        not_yet(ui, "Force stylesheet:", "Not available yet");
-        not_yet(ui, "Force notation:", "Not available yet");
+        row_w(ui, LABEL_W, "Force stylesheet:", |ui| {
+            let mut on = p.force_style > 0;
+            if switch(ui, &mut on) {
+                p.force_style = if on { 1 } else { 0 };
+            }
+            ui.add_enabled_ui(on, |ui| {
+                egui::ComboBox::from_id_salt("pref-style")
+                    .width(180.0)
+                    .selected_text(FORCED_STYLES[(p.force_style.max(1) - 1) as usize])
+                    .show_ui(ui, |ui| {
+                        for (i, l) in FORCED_STYLES.iter().enumerate() {
+                            ui.selectable_value(&mut p.force_style, i as u8 + 1, *l);
+                        }
+                    });
+            });
+        });
+        row_w(ui, LABEL_W, "Force notation:", |ui| {
+            let mut on = p.force_notation > 0;
+            if switch(ui, &mut on) {
+                p.force_notation = if on { 1 } else { 0 };
+            }
+            ui.add_enabled_ui(on, |ui| {
+                egui::ComboBox::from_id_salt("pref-notation")
+                    .width(260.0)
+                    .selected_text(FORCED_NOTATIONS[(p.force_notation.max(1) - 1) as usize])
+                    .show_ui(ui, |ui| {
+                        for (i, l) in FORCED_NOTATIONS.iter().enumerate() {
+                            ui.selectable_value(&mut p.force_notation, i as u8 + 1, *l);
+                        }
+                    });
+            });
+        });
         ui.add_space(6.0);
         row_w(ui, LABEL_W, "Open last session's documents:", |ui| {
             switch(ui, &mut p.reopen_last);
@@ -539,13 +668,9 @@ impl App {
         row_w(ui, LABEL_W, "Highlight the bar being played:", |ui| {
             switch(ui, &mut p.highlight_played_bar);
         });
-        not_yet(ui, "Copy chord and scale diagrams:", "Not available yet (Special Paste chooses them)");
-        heading(ui, "Interface");
-        row_w(ui, LABEL_W, "Language:", |ui| {
-            ui.add_enabled_ui(false, |ui| {
-                egui::ComboBox::from_id_salt("pref-lang").width(160.0).selected_text("English").show_ui(ui, |_| {});
-            });
-            note(ui, "Only English for now");
+        row_w(ui, LABEL_W, "Copy chord and scale diagrams:", |ui| {
+            switch(ui, &mut p.copy_diagrams);
+            note(ui, "Off: copying leaves the diagrams behind (Special Paste can still choose)");
         });
     }
 
@@ -558,10 +683,22 @@ impl App {
             switch(ui, &mut p.err_bar_duration);
             note(ui, "Bars with too many or too few beats for their time signature");
         });
-        not_yet(ui, "Note out of range:", "Not checked yet");
-        not_yet(ui, "Invalid tuplets:", "Not checked yet");
-        not_yet(ui, "Invalid hammer-on / pull-off:", "Not checked yet");
-        not_yet(ui, "Bar never reached in playback:", "Not checked yet");
+        row_w(ui, LABEL_W, "Note out of range:", |ui| {
+            switch(ui, &mut p.err_out_of_range);
+            note(ui, "A fret beyond the end of the neck");
+        });
+        row_w(ui, LABEL_W, "Invalid tuplets:", |ui| {
+            switch(ui, &mut p.err_tuplets);
+            note(ui, "A tuplet group that isn't complete");
+        });
+        row_w(ui, LABEL_W, "Invalid hammer-on / pull-off:", |ui| {
+            switch(ui, &mut p.err_hopo);
+            note(ui, "Nothing on that string before it to start from");
+        });
+        row_w(ui, LABEL_W, "Bar never reached in playback:", |ui| {
+            switch(ui, &mut p.err_unreachable);
+            note(ui, "A repeat or jump means playback skips it");
+        });
     }
 
     fn user_tab(&mut self, ui: &mut Ui) {
@@ -577,7 +714,7 @@ impl App {
         text_row(ui, "Instructions:", &mut p.instructions);
     }
 
-    fn audio_tab(&mut self, ui: &mut Ui, devices: &mut Vec<String>, restart: &mut bool, test: &mut bool) {
+    fn audio_tab(&mut self, ui: &mut Ui, devices: &mut Vec<String>, midi: &mut (Vec<String>, Vec<String>), restart: &mut bool, test: &mut bool, midi_changed: &mut bool) {
         let p = &mut self.prefs;
         heading(ui, "Audio");
         row_w(ui, LABEL_W, "Output device:", |ui| {
@@ -620,18 +757,80 @@ impl App {
         });
         note(ui, "Smaller buffers answer faster but may crackle; larger ones are steadier but lag a little.");
         heading(ui, "MIDI");
-        row_w(ui, LABEL_W, "MIDI output:", |ui| {
-            ui.add_enabled_ui(false, |ui| {
-                egui::ComboBox::from_id_salt("pref-midi-out").width(200.0).selected_text("None").show_ui(ui, |_| {});
-            });
-            note(ui, "Not available yet");
+        midi_row(ui, "MIDI output:", "pref-midi-out", &mut p.midi_output, &mut midi.0, crate::midi::output_port_names, midi_changed);
+        midi_row(ui, "MIDI input:", "pref-midi-in", &mut p.midi_input, &mut midi.1, crate::midi::input_port_names, midi_changed);
+        if let Some(e) = &self.midi_error {
+            note(ui, e);
+        }
+        row_w(ui, LABEL_W, "Built-in sound with MIDI output:", |ui| {
+            switch(ui, &mut p.midi_builtin_too);
+            note(ui, "Off: only the MIDI device plays while an output is chosen");
         });
-        row_w(ui, LABEL_W, "MIDI input:", |ui| {
-            ui.add_enabled_ui(false, |ui| {
-                egui::ComboBox::from_id_salt("pref-midi-in").width(200.0).selected_text("None").show_ui(ui, |_| {});
-            });
-            note(ui, "Not available yet");
-        });
+        if self.midi.input_open() {
+            note(ui, &format!("MIDI input connected: {} message(s) received. Play a key to check.", self.midi.activity()));
+            ui.ctx().request_repaint_after(std::time::Duration::from_millis(200));
+        }
+        if self.midi.output_open() {
+            note(ui, "MIDI output connected: notes and playback go there. The setting applies when playback starts.");
+        }
+    }
+
+    /// Enters the notes played on the MIDI input at the cursor: notes pressed together make one
+    /// chord in one beat, then the cursor moves on like the right arrow. Called every frame.
+    /// Nothing is entered while the song plays or when no score shows.
+    pub(super) fn handle_midi_input(&mut self, ctx: &egui::Context) {
+        if !self.midi.input_open() {
+            self.midi_pending.clear();
+            return;
+        }
+        self.midi_pending.extend(self.midi.take_played());
+        if self.playing || self.show_home || self.chart.is_some() || self.prefs_dlg.is_some() {
+            self.midi_pending.clear();
+        }
+        let now = std::time::Instant::now();
+        while let Some(chord) = crate::midi::take_ready_chord(&mut self.midi_pending, now, crate::midi::CHORD_WINDOW) {
+            self.enter_midi_chord(&chord);
+        }
+        // Nothing wakes the screen when a key is pressed, so look again soon (sooner while a
+        // chord is still being played).
+        let again = if self.midi_pending.is_empty() { 50 } else { 10 };
+        ctx.request_repaint_after(std::time::Duration::from_millis(again));
+    }
+
+    /// Puts a chord (pitches, lowest first) into the beat at the cursor and moves on.
+    fn enter_midi_chord(&mut self, pitches: &[u8]) {
+        let mut used: Vec<u8> = self.cur_beat().notes.iter().map(|n| n.string).collect();
+        let mut skipped = 0;
+        for &pitch in pitches {
+            // A single note starts from the cursor's string; a chord takes the lowest frets.
+            let prefer = if pitches.len() == 1 { self.string } else { usize::MAX };
+            match crate::midi::string_and_fret(self.tr(), pitch, prefer, &used) {
+                Some((string, fret)) => {
+                    used.push(string as u8);
+                    self.set_fret(string, fret);
+                }
+                None => skipped += 1,
+            }
+        }
+        if skipped < pitches.len() {
+            self.move_right(false);
+        }
+        if skipped > 0 {
+            self.refuse(format!("{skipped} note(s) out of range for this track were left out."));
+        }
+    }
+
+    /// The built-in sound stays quiet: a MIDI output is open and Preferences doesn't ask for both.
+    pub(super) fn mute_builtin(&self) -> bool {
+        self.midi.output_open() && !self.prefs.midi_builtin_too
+    }
+
+    /// Opens the MIDI ports Preferences chose; a port that fails says why in Preferences.
+    pub(super) fn connect_midi(&mut self) {
+        let out = self.midi.set_output(self.prefs.midi_output.as_deref());
+        let inp = self.midi.set_input(self.prefs.midi_input.as_deref());
+        let errs: Vec<String> = [out, inp].into_iter().filter_map(|r| r.err()).collect();
+        self.midi_error = if errs.is_empty() { None } else { Some(errs.join("  ")) };
     }
 
     /// Starts the sound again with the chosen device and buffer.
@@ -642,7 +841,7 @@ impl App {
         if self.audio.take().is_some() {
             self.ensure_audio();
             self.status = match self.audio.as_ref().and_then(|a| a.error.clone()) {
-                Some(e) => format!("Sound unavailable: {e}"),
+                Some(e) => super::notice::failed(format!("Sound unavailable: {e}")),
                 None => "Sound output changed.".into(),
             };
         }
@@ -656,7 +855,7 @@ impl App {
         self.ensure_audio();
         let Some(a) = &self.audio else { return };
         if let Some(e) = &a.error {
-            self.status = format!("Sound unavailable: {e}");
+            self.status = super::notice::failed(format!("Sound unavailable: {e}"));
             return;
         }
         let track = crate::model::Track { tuning: vec![57], ..crate::model::Track::default() };
@@ -882,6 +1081,15 @@ mod tests {
         p.fill_song(&mut s);
         assert_eq!(s.artist, "Me");
         assert_eq!(s.copyright, "Theirs");
+    }
+
+    #[test]
+    fn the_midi_choices_survive_saving_and_loading() {
+        let p = Prefs { midi_output: Some("Microsoft GS Wavetable Synth".into()), midi_input: Some("Keys".into()), ..Prefs::default() };
+        let json = serde_json::to_string_pretty(&p).unwrap();
+        let back = serde_json::from_slice::<Prefs>(json.as_bytes()).unwrap().fixed();
+        assert_eq!(back.midi_output.as_deref(), Some("Microsoft GS Wavetable Synth"));
+        assert_eq!(back.midi_input.as_deref(), Some("Keys"));
     }
 
     #[test]

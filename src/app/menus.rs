@@ -192,6 +192,10 @@ impl App {
             self.open_stylesheet();
             ui.close();
         }
+        if item(ui, "Preferences...", &sc(Act::Prefs)).clicked() {
+            self.open_prefs();
+            ui.close();
+        }
         ui.separator();
         if item(ui, "Quit", &sc(Act::Quit)).clicked() {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
@@ -270,11 +274,6 @@ impl App {
         }
         ui.separator();
         self.clipboard_items(ui);
-        ui.separator();
-        if item(ui, "Preferences...", &sc(Act::Prefs)).clicked() {
-            self.open_prefs();
-            ui.close();
-        }
         ui.separator();
         ui.menu_button("Voices", |ui| {
             for v in 0..VOICES {
@@ -398,6 +397,10 @@ impl App {
         }
         if item_if(ui, self.song.bar_count() > 1, "Delete Bar", &sc(Act::DeleteBar)) {
             self.delete_bar(self.bar);
+            ui.close();
+        }
+        if item(ui, "Multirest", &sc(Act::Multirest)).clicked() {
+            self.toggle_multirest();
             ui.close();
         }
         ui.separator();
