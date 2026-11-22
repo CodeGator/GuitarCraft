@@ -7,7 +7,8 @@ same day, tested without hardware. Step 4 (playback to the MIDI output, built-in
 `midi_builtin_too` preference) built the same day, not yet heard by the author. Step 5 (bends as pitch bend: the four bend shapes, sent only when no other note of the channel
 sounds with it; slides and vibrato not sent) built the same day, not yet heard. Step 6 (MIDI input: single notes entered at the cursor, then the cursor moves on; string and fret
 chosen by `midi::string_and_fret`) built the same day, tested only with unit tests because no
-MIDI keyboard was available. Steps 7 and 8 are not started.
+MIDI keyboard was available. Step 7 (chords: notes within 60 ms form one beat, then the cursor moves on once; lowest notes
+place first on the lowest frets) built the same day, unit tests only. Step 8 is not started.
 
 This covers the two greyed-out boxes in Preferences > Audio & MIDI (MIDI output, MIDI input)
 and the "MIDI capture" item in `gp8-feature-gaps.md`. The two halves are independent: output

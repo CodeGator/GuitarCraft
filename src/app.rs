@@ -255,6 +255,8 @@ pub struct App {
     midi: crate::midi::Midi,
     /// Why a chosen MIDI port could not be opened.
     midi_error: Option<String>,
+    /// Notes played on the MIDI input that are waiting for the rest of their chord.
+    midi_pending: Vec<(u8, std::time::Instant)>,
     /// The Preferences window, while open.
     prefs_dlg: Option<prefs::PrefsDlg>,
     /// Something was copied this frame: mark the system clipboard so pasting is offered.
@@ -423,6 +425,7 @@ impl App {
             prefs_dlg: None,
             midi: Default::default(),
             midi_error: None,
+            midi_pending: vec![],
             clip_mark: false,
         };
         // The keys the person chose (the defaults for pictures and tests).

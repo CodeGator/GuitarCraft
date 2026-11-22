@@ -775,27 +775,48 @@ impl App {
         }
     }
 
-    /// Enters the notes played on the MIDI input at the cursor, one beat for each, and moves on.
-    /// Called every frame. Nothing is entered while the song plays or when no score shows.
+    /// Enters the notes played on the MIDI input at the cursor: notes pressed together make one
+    /// chord in one beat, then the cursor moves on like the right arrow. Called every frame.
+    /// Nothing is entered while the song plays or when no score shows.
     pub(super) fn handle_midi_input(&mut self, ctx: &egui::Context) {
         if !self.midi.input_open() {
+            self.midi_pending.clear();
             return;
         }
-        // Nothing wakes the screen when a key is pressed, so look again soon.
-        ctx.request_repaint_after(std::time::Duration::from_millis(50));
-        let played = self.midi.take_played();
-        if played.is_empty() || self.playing || self.show_home || self.chart.is_some() || self.prefs_dlg.is_some() {
-            return;
+        self.midi_pending.extend(self.midi.take_played());
+        if self.playing || self.show_home || self.chart.is_some() || self.prefs_dlg.is_some() {
+            self.midi_pending.clear();
         }
-        for pitch in played {
-            let used: Vec<u8> = self.cur_beat().notes.iter().map(|n| n.string).collect();
-            match crate::midi::string_and_fret(self.tr(), pitch, self.string, &used) {
+        let now = std::time::Instant::now();
+        while let Some(chord) = crate::midi::take_ready_chord(&mut self.midi_pending, now, crate::midi::CHORD_WINDOW) {
+            self.enter_midi_chord(&chord);
+        }
+        // Nothing wakes the screen when a key is pressed, so look again soon (sooner while a
+        // chord is still being played).
+        let again = if self.midi_pending.is_empty() { 50 } else { 10 };
+        ctx.request_repaint_after(std::time::Duration::from_millis(again));
+    }
+
+    /// Puts a chord (pitches, lowest first) into the beat at the cursor and moves on.
+    fn enter_midi_chord(&mut self, pitches: &[u8]) {
+        let mut used: Vec<u8> = self.cur_beat().notes.iter().map(|n| n.string).collect();
+        let mut skipped = 0;
+        for &pitch in pitches {
+            // A single note starts from the cursor's string; a chord takes the lowest frets.
+            let prefer = if pitches.len() == 1 { self.string } else { usize::MAX };
+            match crate::midi::string_and_fret(self.tr(), pitch, prefer, &used) {
                 Some((string, fret)) => {
+                    used.push(string as u8);
                     self.set_fret(string, fret);
-                    self.move_right(false);
                 }
-                None => self.status = "That note is out of range for this track.".into(),
+                None => skipped += 1,
             }
+        }
+        if skipped < pitches.len() {
+            self.move_right(false);
+        }
+        if skipped > 0 {
+            self.status = format!("{skipped} note(s) out of range for this track were left out.");
         }
     }
 

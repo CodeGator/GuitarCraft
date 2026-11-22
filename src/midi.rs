@@ -84,6 +84,24 @@ pub fn string_and_fret(track: &Track, pitch: u8, prefer: usize, used: &[u8]) -> 
     best.map(|(f, s)| (s, f))
 }
 
+/// Notes pressed within this long of the first one belong to the same chord.
+pub const CHORD_WINDOW: Duration = Duration::from_millis(60);
+
+/// The next chord from the notes played, once its window has closed: the first note and every
+/// note within `window` of it, lowest first and without repeats. None while the window is still
+/// open (more notes may come) or when nothing was played.
+pub fn take_ready_chord(pending: &mut Vec<(u8, Instant)>, now: Instant, window: Duration) -> Option<Vec<u8>> {
+    let first = pending.first()?.1;
+    if now.saturating_duration_since(first) < window {
+        return None;
+    }
+    let n = pending.iter().take_while(|p| p.1.saturating_duration_since(first) < window).count();
+    let mut pitches: Vec<u8> = pending.drain(..n).map(|p| p.0).collect();
+    pitches.sort_unstable();
+    pitches.dedup();
+    Some(pitches)
+}
+
 /// What the MIDI thread is asked to do.
 #[derive(Debug)]
 pub enum MidiCmd {
@@ -237,7 +255,7 @@ pub struct Midi {
     /// Counts the messages arriving from the input, so the screen can show activity.
     activity: Arc<AtomicU32>,
     /// The pitches of the notes played on the input, waiting to be entered.
-    played: Option<Receiver<u8>>,
+    played: Option<Receiver<(u8, Instant)>>,
 }
 
 impl Midi {
@@ -281,7 +299,7 @@ impl Midi {
             .find(|p| m.port_name(p).is_ok_and(|n| n == name))
             .ok_or_else(|| format!("MIDI input \"{name}\" isn't connected"))?;
         let count = self.activity.clone();
-        let (tx, rx): (Sender<u8>, Receiver<u8>) = channel();
+        let (tx, rx): (Sender<(u8, Instant)>, Receiver<(u8, Instant)>) = channel();
         self.input = Some(
             m.connect(
                 &port,
@@ -290,7 +308,7 @@ impl Midi {
                     count.fetch_add(1, Ordering::Relaxed);
                     // Only the notes pressed matter; the screen picks them up on its next frame.
                     if let Some(p) = note_on_pitch(bytes) {
-                        let _ = tx.send(p);
+                        let _ = tx.send((p, Instant::now()));
                     }
                 },
                 (),
@@ -314,8 +332,8 @@ impl Midi {
         self.output.clone()
     }
 
-    /// The notes played on the input since last asked, as pitches, in order.
-    pub fn take_played(&self) -> Vec<u8> {
+    /// The notes played on the input since last asked, as pitches with the moment each arrived.
+    pub fn take_played(&self) -> Vec<(u8, Instant)> {
         self.played.as_ref().map(|r| r.try_iter().collect()).unwrap_or_default()
     }
 
@@ -420,6 +438,21 @@ mod tests {
         assert_eq!(string_and_fret(&g, 127, 0, &[]), None);
         // The highest fret works, the next does not.
         assert_eq!(string_and_fret(&g, 64 + g.frets, 0, &[]), Some((0, g.frets)));
+    }
+
+    #[test]
+    fn notes_pressed_together_form_one_chord() {
+        let t0 = Instant::now();
+        let ms = |n: u64| t0 + Duration::from_millis(n);
+        let mut p = vec![(64, ms(0)), (60, ms(20)), (67, ms(45)), (72, ms(300)), (60, ms(310))];
+        // Still inside the first window: wait for more notes.
+        assert_eq!(take_ready_chord(&mut p, ms(30), CHORD_WINDOW), None);
+        // The window has closed: the three notes in it, lowest first.
+        assert_eq!(take_ready_chord(&mut p, ms(70), CHORD_WINDOW), Some(vec![60, 64, 67]));
+        // The later notes wait for their own window, and a repeated pitch counts once.
+        assert_eq!(take_ready_chord(&mut p, ms(320), CHORD_WINDOW), None);
+        assert_eq!(take_ready_chord(&mut p, ms(400), CHORD_WINDOW), Some(vec![60, 72]));
+        assert_eq!(take_ready_chord(&mut p, ms(500), CHORD_WINDOW), None);
     }
 
     #[test]
