@@ -838,6 +838,19 @@ Right brings the selected track ({name}) forward by                          tur
                         }
                         self.clamp_cursor();
                         self.last_digit = None;
+                        // Clicking a note plays it: the note on the clicked string of the
+                        // tablature, or the beat's notes when the staff is clicked.
+                        if !was_playing {
+                            let notes = self.cur_beat().notes.clone();
+                            let heard: Vec<crate::model::Note> = match s {
+                                Some(score::Hit::Tab(st)) => notes.into_iter().filter(|n| n.string as usize == st).collect(),
+                                Some(score::Hit::Std(_)) => notes,
+                                _ => vec![],
+                            };
+                            for n in heard.iter().filter(|n| !n.tie) {
+                                self.preview(n);
+                            }
+                        }
                         if was_playing {
                             self.play();
                         }
