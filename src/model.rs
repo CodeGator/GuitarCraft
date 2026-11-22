@@ -380,6 +380,12 @@ fn voices_unused(v: &[Vec<Beat>]) -> bool {
     v.iter().all(|x| x.iter().all(|b| b.is_rest()))
 }
 
+pub const ERR_LENGTH: u8 = 1;
+pub const ERR_RANGE: u8 = 2;
+pub const ERR_TUPLET: u8 = 4;
+pub const ERR_HOPO: u8 = 8;
+pub const ERR_UNREACHABLE: u8 = 16;
+
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct Bar {
     /// Voice 1.
@@ -449,6 +455,35 @@ impl Bar {
             })
             .map(|v| (v, self.voice_ticks(v) as i64 - need as i64))
             .collect()
+    }
+    /// Mistakes other than length, as a bit set of `ERR_*`: a fret beyond the neck, a tuplet
+    /// group that isn't complete, a hammer-on / pull-off with nothing before it to start from.
+    pub fn note_errors(&self, frets: u8) -> u8 {
+        let mut e = 0;
+        for v in 0..VOICES {
+            let beats = self.voice(v);
+            let mut run = 0usize;
+            for (i, b) in beats.iter().enumerate() {
+                if b.notes.iter().any(|n| n.fret > frets) {
+                    e |= ERR_RANGE;
+                }
+                let same = b.tuplet > 1 && i > 0 && beats[i - 1].tuplet == b.tuplet;
+                if b.tuplet > 1 {
+                    run = if same { run + 1 } else { 1 };
+                    let ends = beats.get(i + 1).is_none_or(|n| n.tuplet != b.tuplet);
+                    if ends && run % b.tuplet as usize != 0 {
+                        e |= ERR_TUPLET;
+                    }
+                }
+                if i > 0 {
+                    let prev = &beats[i - 1];
+                    if b.notes.iter().any(|n| n.hammer && !prev.notes.iter().any(|p| p.string == n.string)) {
+                        e |= ERR_HOPO;
+                    }
+                }
+            }
+        }
+        e
     }
     pub fn pad_voices(&mut self) {
         while self.voices.len() < VOICES - 1 {
@@ -1475,6 +1510,17 @@ impl Song {
         t.max(10)
     }
 
+    /// For each bar, whether playback never gets there (a repeat or jump skips it).
+    pub fn unreached_bars(&self) -> Vec<bool> {
+        let mut seen = vec![false; self.master.len()];
+        for b in self.play_order() {
+            if let Some(s) = seen.get_mut(b) {
+                *s = true;
+            }
+        }
+        seen.iter().map(|s| !s).collect()
+    }
+
     /// The bar order when playing, following repeat signs.
     pub fn play_order(&self) -> Vec<usize> {
         let n = self.master.len();
@@ -2275,5 +2321,49 @@ mod tempo_tests {
         assert_eq!(s.tempo_at(4), 140);
         s.master[0].tempo_ramp = false;
         assert_eq!(s.tempo_at(3), 100);
+    }
+}
+
+#[cfg(test)]
+mod note_error_tests {
+    use super::*;
+
+    fn note(string: u8, fret: u8, hammer: bool) -> Note {
+        Note { string, fret, hammer, ..Default::default() }
+    }
+
+    #[test]
+    fn finds_range_tuplet_and_hopo_mistakes() {
+        let mut a = Beat::rest(Dur::Eighth);
+        a.notes = vec![note(0, 30, false)];
+        assert_eq!(Bar::new(vec![a]).note_errors(24), ERR_RANGE);
+
+        let mut t = Beat::rest(Dur::Eighth);
+        t.tuplet = 3;
+        assert_eq!(Bar::new(vec![t.clone(), t.clone()]).note_errors(24), ERR_TUPLET);
+        assert_eq!(Bar::new(vec![t.clone(), t.clone(), t]).note_errors(24), 0);
+
+        let mut first = Beat::rest(Dur::Eighth);
+        first.notes = vec![note(1, 5, false)];
+        let mut second = first.clone();
+        second.notes = vec![note(2, 7, true)];
+        assert_eq!(Bar::new(vec![first, second]).note_errors(24), ERR_HOPO);
+    }
+}
+
+#[cfg(test)]
+mod unreached_tests {
+    use super::*;
+
+    #[test]
+    fn plain_and_repeated_songs_reach_every_bar() {
+        let mut s = Song::new_blank();
+        while s.master.len() < 4 {
+            s.master.push(MasterBar::default());
+        }
+        assert!(s.unreached_bars().iter().all(|u| !u));
+        s.master[1].repeat_open = true;
+        s.master[2].repeat_close = 2;
+        assert!(s.unreached_bars().iter().all(|u| !u));
     }
 }

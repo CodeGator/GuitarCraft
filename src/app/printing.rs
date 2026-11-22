@@ -474,7 +474,8 @@ impl App {
                         transparent: false,
                         play_cursor: crate::score::PlayCursor::Smooth,
                         play_bar: true,
-                        bar_errors: true,
+                        bar_errors: 0,
+ unreached: &[],
                     };
                     crate::score::draw_page(p, &lay, &dc, pv.page, origin);
                 });

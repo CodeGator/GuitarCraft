@@ -192,6 +192,10 @@ impl App {
             self.open_stylesheet();
             ui.close();
         }
+        if item(ui, "Preferences...", &sc(Act::Prefs)).clicked() {
+            self.open_prefs();
+            ui.close();
+        }
         ui.separator();
         if item(ui, "Quit", &sc(Act::Quit)).clicked() {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
@@ -270,11 +274,6 @@ impl App {
         }
         ui.separator();
         self.clipboard_items(ui);
-        ui.separator();
-        if item(ui, "Preferences...", &sc(Act::Prefs)).clicked() {
-            self.open_prefs();
-            ui.close();
-        }
         ui.separator();
         ui.menu_button("Voices", |ui| {
             for v in 0..VOICES {

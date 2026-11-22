@@ -249,8 +249,12 @@ pub struct App {
     /// Whether Insert and Delete were held at the last frame (Windows hides some of their shortcuts).
     ins_down: bool,
     del_down: bool,
-    /// Edit > Preferences: the person's settings, kept between runs.
+    /// File > Preferences: the person's settings, kept between runs.
     prefs: prefs::Prefs,
+    /// The MIDI output and input ports Preferences chose.
+    midi: crate::midi::Midi,
+    /// Why a chosen MIDI port could not be opened.
+    midi_error: Option<String>,
     /// The Preferences window, while open.
     prefs_dlg: Option<prefs::PrefsDlg>,
     /// Something was copied this frame: mark the system clipboard so pasting is offered.
@@ -417,10 +421,15 @@ impl App {
             del_down: false,
             prefs: if own_settings { prefs::Prefs::load() } else { prefs::Prefs::default() },
             prefs_dlg: None,
+            midi: Default::default(),
+            midi_error: None,
             clip_mark: false,
         };
         // The keys the person chose (the defaults for pictures and tests).
         shortcuts::set_keymap(shortcuts::Keymap::from_saved(&app.prefs.shortcuts));
+        if own_settings {
+            app.connect_midi();
+        }
         if app.screenshot.is_none() {
             app.recent = home::load_recent();
         }
@@ -905,7 +914,22 @@ impl App {
         if self.playing || !self.sound_allowed || !self.play_while_editing {
             return;
         }
+        // A MIDI output, when one is chosen, hears the note as well.
+        if self.midi.output_open() {
+            let t = &self.song.tracks[self.track];
+            let drums = t.kind() == crate::model::InstrumentType::Drums;
+            self.midi.preview_note(
+                crate::midi::channel_for(self.track, drums),
+                t.instrument.midi_program(),
+                t.pitch(n),
+                (0.8 * t.volume.max(0.3) * 127.0) as u8,
+                600,
+            );
+        }
         self.ensure_audio();
+        if self.mute_builtin() {
+            return;
+        }
         if let Some(a) = &self.audio
             && a.error.is_none()
         {
@@ -1272,6 +1296,7 @@ impl App {
             out.push(self.cur_beat().clone());
         }
         let n = out.len();
+        self.strip_copied_diagrams(&mut out);
         self.clipboard = out;
         self.status = format!("Copied {n} beat(s).");
     }
@@ -1319,24 +1344,6 @@ impl App {
             "Moved notes {} a half step.",
             if delta > 0 { "up" } else { "down" }
         );
-    }
-
-    fn add_track(&mut self, bass: bool) {
-        self.edit(|s, _, _, _, _| {
-            let mut t = Track::default();
-            if bass {
-                t.name = "Electric Bass".into();
-                t.instrument = Instrument::Bass;
-                t.tuning = STANDARD_BASS.to_vec();
-            } else {
-                t.name = format!("Guitar {}", s.tracks.len() + 1);
-            }
-            t.color = TRACK_COLORS[s.tracks.len() % TRACK_COLORS.len()];
-            s.tracks.push(t);
-        });
-        self.track = self.song.tracks.len() - 1;
-        self.clamp_cursor();
-        self.inspector = InspectorTab::Track;
     }
 
     fn remove_track(&mut self) {
@@ -1760,7 +1767,11 @@ impl App {
             }
             _ => None,
         };
+        // A chosen MIDI output plays along (and, unless Preferences says otherwise, instead).
+        self.midi.setup_tracks(&self.song.tracks);
+        let link = audio::MidiLink { tx: self.midi.sender(), mute_builtin: self.mute_builtin() };
         if let Ok(mut st) = a.state.lock() {
+            st.midi = link;
             st.stop_all();
             st.next_ev = sch.events.partition_point(|e| e.start < start_pos);
             st.events = sch.events;

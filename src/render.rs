@@ -60,7 +60,8 @@ pub fn render_pages(spec: &PrintSpec, pages: &[usize], dpi: f32, transparent: bo
             transparent,
             play_cursor: crate::score::PlayCursor::Smooth,
             play_bar: true,
-            bar_errors: true,
+            bar_errors: 0,
+ unreached: &[],
         };
         score::draw_page(painter, &lay, &dc, page, Pos2::ZERO);
     })
@@ -374,7 +375,8 @@ pub fn svg_pages(spec: &PrintSpec, pages: &[usize]) -> Vec<String> {
             transparent: false,
             play_cursor: crate::score::PlayCursor::Smooth,
             play_bar: true,
-            bar_errors: true,
+            bar_errors: 0,
+ unreached: &[],
         };
         score::draw_page(painter, &lay, &dc, page, Pos2::ZERO);
     })

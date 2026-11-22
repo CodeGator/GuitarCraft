@@ -625,7 +625,8 @@ impl App {
                     transparent: false,
                     play_cursor: crate::score::PlayCursor::Smooth,
                     play_bar: true,
-                    bar_errors: true,
+                    bar_errors: 0,
+ unreached: &[],
                 };
                 let painter = ui.painter().with_clip_rect(prev_r);
                 score::draw_page(&painter, &lay, &dc, 0, lay.page_origin(0, o.x, o.y));

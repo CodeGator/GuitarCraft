@@ -18,6 +18,7 @@ mod gpimport;
 mod gpstyle;
 mod gpx;
 mod gpsv;
+mod midi;
 mod model;
 mod musicxml;
 mod render;

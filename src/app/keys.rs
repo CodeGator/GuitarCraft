@@ -423,7 +423,7 @@ impl App {
                 self.voices_open = true;
             }
             // ----- Tracks -----
-            AddTrack => self.add_track(false),
+            AddTrack => self.open_add_track(false),
             DeleteTrack => self.remove_track(),
             NextTrack => self.track = (self.track + 1).min(self.song.tracks.len() - 1),
             PrevTrack => self.track = self.track.saturating_sub(1),

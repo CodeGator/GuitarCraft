@@ -602,8 +602,9 @@ impl App {
                 .frame(egui::Frame::NONE)
                 .show(ui, |ui| self.home_ui(ui));
             self.dialogs(&ctx);
-            // Tools > Chords & Scales needs no song, so it works here too.
+            // Tools > Chords & Scales and Preferences need no song, so they work here too.
             self.chord_scales_window(&ctx);
+            self.prefs_window(&ctx);
             return;
         }
         if self.chart.is_some() {
@@ -615,6 +616,7 @@ impl App {
             self.export_window(&ctx);
             self.print_preview_window(&ctx);
             self.chord_scales_window(&ctx);
+            self.prefs_window(&ctx);
             return;
         }
         egui::Panel::top("toolbar")

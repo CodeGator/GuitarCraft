@@ -989,8 +989,10 @@ pub struct DrawCtx<'a> {
     pub play_cursor: PlayCursor,
     /// Shade the bar being played.
     pub play_bar: bool,
-    /// Show bars that are too short or too long in red.
-    pub bar_errors: bool,
+    /// Which mistakes show a bar in red (`model::ERR_*` bits).
+    pub bar_errors: u8,
+    /// Bars playback never reaches (empty when not checked).
+    pub unreached: &'a [bool],
 }
 
 /// Where a click landed: on a tab string or a position of the notation staff.
@@ -1756,7 +1758,10 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
             let bar = &track.bars[bi];
             let (top, bottom) = g.staff_span();
             let (top, bottom) = (y0 + top, y0 + bottom);
-            let wrong = bar.wrong_length(mb.ticks()) && !dc.printing && dc.bar_errors;
+            let wrong = !dc.printing
+                && ((dc.bar_errors & crate::model::ERR_LENGTH != 0 && bar.wrong_length(mb.ticks()))
+                    || bar.note_errors(track.frets) & dc.bar_errors != 0
+                    || (dc.bar_errors & crate::model::ERR_UNREACHABLE != 0 && dc.unreached.get(bi) == Some(&true)));
             // Bars that are too short or too long show in red (except the one being edited).
             if wrong && dc.cursor.0 != bi {
                 p.rect_filled(

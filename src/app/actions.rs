@@ -174,6 +174,15 @@ impl App {
                 )
             })
             .collect();
+        if !self.prefs.copy_diagrams {
+            for (_, bars) in &mut self.bar_clipboard {
+                for bar in bars.iter_mut() {
+                    for b in bar.all_beats_mut() {
+                        b.chord_diagram = false;
+                    }
+                }
+            }
+        }
         self.status = format!("Copied {} bar(s) of every track.", b - a + 1);
     }
 

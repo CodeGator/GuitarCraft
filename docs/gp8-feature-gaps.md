@@ -16,14 +16,18 @@ exist under another name. Check before starting work on one, and tick items off 
       tuning and capo. Listens only while the window is open. Tested on made-up sounds; not
       yet tried with a real guitar. A string that isn't played can light up when another
       string's harmonic falls on its note.
-- [~] **Preferences window** (Ctrl+,, Edit > Preferences): started 2026-11-20 in
+- [~] **Preferences window** (Ctrl+,, File > Preferences): started 2026-11-20 in
       `src/app/prefs.rs`, saved to `%APPDATA%\GuitarCraft\preferences.json`. Working: default
       template, force zoom, force page layout, reopen last session, update check frequency
       (default "only when I ask"), playing cursor style, highlight played bar, keyboard shortcuts (Shortcuts tab: change, add, remove, reset; clash check),
-      wrong-bar-length highlighting, user information for new songs, audio output device, buffer
-      size, test sound. Greyed out for now: force stylesheet, force notation, copy chord/scale
-      diagrams, language, the other four notation-error checks (out of range, tuplets, HoPo,
-      unreachable bars), MIDI output and input.
+      notation-error checks (wrong bar length; added 2026-11-22: note out of range, incomplete
+      tuplets, hammer-on/pull-off with nothing before it on that string; checked within a bar
+      only), user information for new songs, audio output device, buffer
+      size, test sound. Added 2026-11-22: force stylesheet (Standard, Rock, Classic, Jazz), force
+      notation (standard + tab, standard only, tab only; stringed tracks only) and copy chord
+      diagrams (off strips them from beat and all-track copies; scale diagrams don't exist
+      yet). Bars playback never reaches are also shown in red (added 2026-11-22, uses `Song::play_order`).
+      Not tried by hand in the running app. Language option removed 2026-11-22 (no plans for other languages). Greyed out for now: MIDI output and input.
 - [ ] **Audio Note Settings** (Shift+F): playback settings for individual notes.
 - [ ] **Design mode** (Ctrl+Alt+D): palette mode for adjusting how the score is laid out.
 - [ ] **Action list** (Ctrl+Alt+E) and **Expression text** (Ctrl+Shift+E). The command palette
