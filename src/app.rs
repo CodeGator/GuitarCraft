@@ -180,6 +180,10 @@ pub struct App {
     play_while_editing: bool,
     /// 0 page vertical, 1 page horizontal, 2 page grid, 3 screen vertical, 4 screen horizontal.
     view_mode: u8,
+    /// The split view: which of the two score views (0 top, 1 bottom) was last clicked, and how
+    /// much of the height the top one takes.
+    score_active: usize,
+    split_frac: f32,
     dir_open: bool,
     /// The Add Track window.
     at: addtrack::AddTrack,
@@ -376,6 +380,8 @@ impl App {
             kb_octave: 1,
             play_while_editing: true,
             view_mode: 0,
+            score_active: 0,
+            split_frac: 0.5,
             dir_open: false,
             at: Default::default(),
             save_hint: None,

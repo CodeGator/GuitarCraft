@@ -99,6 +99,8 @@ pub struct Prefs {
     /// Copying beats or bars keeps their chord diagrams.
     pub copy_diagrams: bool,
     pub layout: u8,
+    /// Show the score in two views one above the other (only in the vertical layouts).
+    pub split_score: bool,
     /// Reopen the files that were open when GuitarCraft was last closed.
     pub reopen_last: bool,
     pub update_check: UpdateCheck,
@@ -168,6 +170,7 @@ impl Default for Prefs {
             force_notation: 0,
             copy_diagrams: true,
             layout: 0,
+            split_score: false,
             reopen_last: false,
             update_check: UpdateCheck::Never,
             last_update_check: 0,
@@ -1298,5 +1301,15 @@ mod tests {
         assert_eq!(p.layout, 4);
         assert_eq!(p.ollama_context, 2048);
         assert!(p.highlight_played_bar, "missing fields keep their defaults");
+    }
+
+    #[test]
+    fn the_split_view_is_off_unless_chosen_and_is_remembered() {
+        assert!(!Prefs::default().split_score, "off by default");
+        let old: Prefs = serde_json::from_str(r#"{"zoom_pct": 100}"#).unwrap();
+        assert!(!old.split_score, "a preferences file from before has it off");
+        let on = Prefs { split_score: true, ..Prefs::default() };
+        let back: Prefs = serde_json::from_str(&serde_json::to_string(&on).unwrap()).unwrap();
+        assert!(back.split_score);
     }
 }

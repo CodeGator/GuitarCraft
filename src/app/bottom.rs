@@ -738,12 +738,57 @@ Right brings the selected track ({name}) forward by                          tur
                 .min(lay.pages),
             _ => 1,
         };
+        // Split view: two views of the same score, one above the other, with a bar between them
+        // to drag. Only in the layouts that scroll down, where both views have the same width and
+        // so the same layout.
+        if !(self.prefs.split_score && matches!(self.view_mode, 0 | 3)) {
+            self.score_pane(ui, &lay, 0, true);
+            return;
+        }
+        const MIN_PANE: f32 = 80.0;
+        const BAR_H: f32 = 8.0;
+        let full = ui.available_rect_before_wrap();
+        let usable = (full.height() - BAR_H).max(2.0 * MIN_PANE);
+        let top_h = (usable * self.split_frac).clamp(MIN_PANE, usable - MIN_PANE);
+        let top = Rect::from_min_size(full.min, Vec2::new(full.width(), top_h));
+        let bar = Rect::from_min_size(Pos2::new(full.left(), top.bottom()), Vec2::new(full.width(), BAR_H));
+        let bottom = Rect::from_min_max(Pos2::new(full.left(), bar.bottom()), full.max);
+        let grab = ui.interact(bar, egui::Id::new("score-split"), Sense::drag());
+        if grab.dragged() {
+            self.split_frac = ((top_h + grab.drag_delta().y) / usable).clamp(0.1, 0.9);
+        }
+        let hot = grab.hovered() || grab.dragged();
+        if hot {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+        }
+        ui.painter().rect_filled(bar, 0.0, Color32::from_gray(if hot { 120 } else { 70 }));
+        ui.painter().line_segment(
+            [Pos2::new(bar.center().x - 16.0, bar.center().y), Pos2::new(bar.center().x + 16.0, bar.center().y)],
+            egui::Stroke::new(2.0, Color32::from_gray(if hot { 220 } else { 150 })),
+        );
+        let active = self.score_active.min(1);
+        for (i, area) in [top, bottom].into_iter().enumerate() {
+            let mut pane = ui.new_child(egui::UiBuilder::new().max_rect(area));
+            pane.set_clip_rect(area.intersect(ui.clip_rect()));
+            self.score_pane(&mut pane, &lay, i, active == i);
+        }
+        ui.allocate_rect(full, Sense::hover());
+    }
+
+    /// One scrolling view of the score. With the split view on there are two, each with its own
+    /// scroll position; the one last clicked (`active`) is the one that follows the cursor and
+    /// playback.
+    fn score_pane(&mut self, ui: &mut Ui, lay: &score::Layout, pane: usize, active: bool) {
+        let avail = ui.available_size();
         egui::ScrollArea::both()
-            .id_salt("score")
+            .id_salt(("score", pane))
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 let total = Vec2::new(lay.total_w().max(avail.x), lay.total_h());
                 let (rect, resp) = ui.allocate_exact_size(total, Sense::click_and_drag());
+                if resp.clicked() || resp.drag_started() || resp.secondary_clicked() {
+                    self.score_active = pane;
+                }
                 let left =
                     rect.left() + ((rect.width() - lay.total_w()) * 0.5).max(0.0) + score::PAGE_GAP;
                 let painter = ui.painter().clone();
@@ -911,6 +956,7 @@ Right brings the selected track ({name}) forward by                          tur
                 }
                 resp.context_menu(|ui| self.score_context_menu(ui));
                 if self.ctx_menu_demo
+                    && active
                     && let Some((page, r)) = lay.beat_rect(&self.song, self.bar, self.beat, self.voice)
                 {
                     let o = lay.page_origin(page, left, rect.top());
@@ -924,7 +970,8 @@ Right brings the selected track ({name}) forward by                          tur
                         });
                     });
                 }
-                if self.playing && self.follow {
+                let following = self.playing && self.follow;
+                if following && active {
                     // Follow playback: keep the whole line of music being played in
                     // view (every track, with its section name above). When playback
                     // reaches a new line low in the window, that line moves to the
@@ -948,10 +995,10 @@ Right brings the selected track ({name}) forward by                          tur
                         }
                         self.follow_sys = Some(si);
                     }
-                } else {
+                } else if !following {
                     self.follow_sys = None;
                 }
-                if self.scroll_to_cursor {
+                if self.scroll_to_cursor && active {
                     self.scroll_to_cursor = false;
                     let target = (self.bar, self.beat);
                     if let Some((page, r)) =

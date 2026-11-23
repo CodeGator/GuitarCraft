@@ -58,8 +58,18 @@ impl App {
             let mode = usize::from(self.view_mode).min(super::prefs::LAYOUTS.len() - 1);
             let combo = egui::ComboBox::from_id_salt("view-mode").width(48.0).selected_text("").show_ui(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 2.0;
+                // Each layout's icon with its name beside it.
                 for (v, label) in super::prefs::LAYOUTS.iter().enumerate() {
-                    if super::icons::icon_toggle(ui, v == mode, label, super::icons::LAYOUT_ICONS[v]).clicked() {
+                    let (r, resp) = ui.allocate_exact_size(Vec2::new(178.0, 28.0), Sense::click());
+                    let p = ui.painter();
+                    if v == mode {
+                        p.rect_filled(r.shrink(1.0), 4.0, BLUE);
+                    } else if resp.hovered() {
+                        p.rect_filled(r.shrink(1.0), 4.0, Color32::from_gray(80));
+                    }
+                    super::icons::LAYOUT_ICONS[v](p, Rect::from_center_size(Pos2::new(r.left() + 18.0, r.center().y), Vec2::splat(16.0)), Color32::from_gray(235));
+                    p.text(Pos2::new(r.left() + 38.0, r.center().y), Align2::LEFT_CENTER, *label, FontId::proportional(13.5), Color32::from_gray(235));
+                    if resp.clicked() {
                         self.view_mode = v as u8;
                         ui.close();
                     }
