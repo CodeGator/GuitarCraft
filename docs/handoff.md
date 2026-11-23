@@ -64,6 +64,15 @@ going).
    instrument change automation, Drum view, Design mode, and importing TablEdit and Power Tab.
    File password protection was decided against.
 3. Try Claude with a real key and fix whatever shows up.
+4. **Split score view** (an idea, not started): a movable splitter in the score view so two
+   parts of a large score show at once. Off by default, switched on and off from the View menu
+   (and the command palette) and remembered in prefs. `score()` in `src/app/bottom.rs` lays the
+   score out once and draws it in one `ScrollArea` (`id_salt("score")`); a split would be two
+   scroll areas over that same layout, so the cost is mostly painting. The drawing and
+   interaction code inside that closure (drag select, click to place the cursor, hit tests,
+   cursor and play position) would move into a helper that takes a pane index. Open choices:
+   top/bottom, side by side or switchable; which pane follows the cursor and playback (suggest
+   the one last clicked); zoom and view mode shared at first.
 
 ## How we work here
 
