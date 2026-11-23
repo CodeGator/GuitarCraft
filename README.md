@@ -14,7 +14,7 @@ GuitarCraft opens and saves Guitar Pro files (`.gp` and `.gp5`) and also opens `
 
 **An early version for trying out.** It is usable for writing and playing songs, but it is young: please save your work often, and keep a copy of any song you care about before editing it.
 
-Not there yet: numbered (jianpu) notation, and importing TablEdit and Power Tab files. Expect rough edges and differences from the original.
+Not there yet: importing TablEdit and Power Tab files. Expect rough edges and differences from the original.
 
 Not planned for now: the original's recorded sound banks and effects, the pedalboard, audio tracks and line-in. These are about sound production rather than writing music, so they may never be added.
 

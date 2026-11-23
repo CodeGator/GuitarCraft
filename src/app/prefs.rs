@@ -159,7 +159,7 @@ impl Default for Prefs {
         Prefs {
             default_template: 0,
             force_zoom: false,
-            zoom_pct: 110,
+            zoom_pct: 100,
             force_layout: false,
             force_style: 0,
             force_notation: 0,

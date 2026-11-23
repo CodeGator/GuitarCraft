@@ -356,8 +356,21 @@ impl App {
                     }
                     ui.add_enabled(false, egui::Button::new("/").min_size(Vec2::new(18.0, 0.0)))
                         .on_disabled_hover_text("Slash notation isn't available yet");
-                    ui.add_enabled(false, egui::Button::new("2").min_size(Vec2::new(18.0, 0.0)))
-                        .on_disabled_hover_text("Numbered notation isn't available yet");
+                    let num_ok = kind != InstrumentType::Drums;
+                    if ui
+                        .add_enabled(
+                            num_ok,
+                            egui::Button::selectable(t.show_num && num_ok, "2")
+                                .frame_when_inactive(true)
+                                .min_size(Vec2::new(18.0, 0.0)),
+                        )
+                        .on_hover_text("Numbered (jianpu) notation")
+                        .on_disabled_hover_text("Drums have no numbered notation")
+                        .clicked()
+                    {
+                        t.show_num = !t.show_num;
+                        changed = true;
+                    }
                     ui.add_space(4.0);
                     // One staff or a grand staff (keyboards).
                     let keys = kind == InstrumentType::Keyboard;

@@ -52,6 +52,9 @@ pub struct Geom {
     pub lane_top: f32,
     pub tab_top: f32,
     pub rhythm_top: f32,
+    /// Numbered (jianpu) notation: a lane under the other staves.
+    pub num: bool,
+    pub num_top: f32,
     pub bottom: f32,
     /// Keyboards: a second (bass clef) staff joined by a brace.
     pub grand: bool,
@@ -108,6 +111,11 @@ impl Geom {
             let below = (0..VOICES).any(|v| tab_rhythm_pos(st, v, std) == 1);
             y = rhythm_top + if below { 26.0 } else { 10.0 } * z;
         }
+        let num = track.show_num && notation != Notation::TabOnly && track.clef() != Clef::Percussion;
+        let num_top = y + 4.0 * z;
+        if num {
+            y = num_top + 34.0 * z;
+        }
         Geom {
             z,
             ls,
@@ -121,6 +129,8 @@ impl Geom {
             lane_top,
             tab_top,
             rhythm_top,
+            num,
+            num_top,
             bottom: y + if lyrics_below { 20.0 } else { 4.0 } * z,
             grand,
             std2_top,
@@ -311,7 +321,8 @@ fn col_width(eff_ticks: u32, extra: f32, z: f32, spacing: f32) -> f32 {
     let r = eff_ticks as f32 / QUARTER as f32;
     // The stylesheet's rhythm proportion: 0.5 is the usual spacing.
     let k = (0.5 + spacing).clamp(0.3, 2.0);
-    (15.0 + 30.0 * k * r.powf(0.55) + extra) * z
+    // Narrow enough that Morning Walk's first three bars share a line, as in Guitar Pro 8.
+    (11.0 + 20.0 * k * r.powf(0.55) + extra) * z
 }
 
 /// Shared time grid of one bar over all shown tracks: onset ticks and widths.
@@ -2497,5 +2508,24 @@ mod multirest_tests {
         s.tracks.push(s.tracks[0].clone());
         let multi = layout(&s, &[0, 1], 0, 1.0, Notation::Both);
         assert_eq!(multi.systems.iter().map(|sy| sy.bars.len()).sum::<usize>(), 6);
+    }
+}
+
+#[cfg(test)]
+mod jianpu_tests {
+    use super::draw::jianpu_degree;
+
+    #[test]
+    fn degrees_follow_the_key() {
+        assert_eq!(jianpu_degree(60, 0), (1, 0, 0), "middle C in C is 1");
+        assert_eq!(jianpu_degree(67, 0), (5, 0, 0));
+        assert_eq!(jianpu_degree(72, 0), (1, 0, 1), "an octave up: a dot above");
+        assert_eq!(jianpu_degree(59, 0), (7, 0, -1), "just under the tonic: 7 with a dot below");
+        assert_eq!(jianpu_degree(61, 0), (1, 1, 0), "C sharp is a sharp 1");
+        assert_eq!(jianpu_degree(67, 1), (1, 0, 0), "G in G major (one sharp) is 1");
+        assert_eq!(jianpu_degree(66, 1), (7, 0, -1));
+        assert_eq!(jianpu_degree(65, -1), (1, 0, 0), "F in F major (one flat) is 1");
+        assert_eq!(jianpu_degree(70, -1), (4, 0, 0), "B flat in F major is 4");
+        assert_eq!(jianpu_degree(63, -3), (1, 0, 0), "E flat in E flat major is 1");
     }
 }

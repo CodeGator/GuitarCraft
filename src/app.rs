@@ -315,7 +315,7 @@ impl App {
             redo: vec![],
             clipboard: vec![],
             cur_dur: Dur::Eighth,
-            zoom: 1.1,
+            zoom: 1.0,
             notation: Notation::Both,
             audio: None,
             sound_allowed: screenshot.is_none(),
