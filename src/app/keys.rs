@@ -208,6 +208,8 @@ impl App {
                 self.cmd_open = !self.cmd_open;
                 self.cmd_text.clear();
             }
+            ActionList => self.open_palette_with("@"),
+            ExpressionText => self.open_palette_with(">"),
             GoTo => self.goto_open = true,
             CheckBars => self.check_bar_duration(),
             DeleteNote if self.std_cursor.is_some() => self.std_delete(),
@@ -440,11 +442,11 @@ impl App {
             Loop => self.looping = !self.looping,
             // ----- Windows and view -----
             Help => self.guide_open = true,
-            ShowPalette => self.show_palette = !self.show_palette,
-            ShowGlobalView => self.show_tracks = !self.show_tracks,
+            ShowPalette => self.toggle_panel(super::dock::Pane::Palette),
+            ShowGlobalView => self.toggle_panel(super::dock::Pane::Tracks),
             SongInspector => self.toggle_inspector(InspectorTab::Song),
             TrackInspector => self.toggle_inspector(InspectorTab::Track),
-            KeyboardView => self.show_keyboard = !self.show_keyboard,
+            KeyboardView => self.toggle_panel(super::dock::Pane::Keyboard),
             Multitrack => self.single_track = !self.single_track,
             Stylesheet => self.open_stylesheet(),
             ZoomIn => self.zoom_step(1),
@@ -464,17 +466,17 @@ impl App {
 
     /// F5 / F6: shows the song or track settings, or hides them if they are showing.
     fn toggle_inspector(&mut self, tab: InspectorTab) {
-        if self.show_inspector && self.inspector == tab {
-            self.show_inspector = false;
+        if self.panel_shown(super::dock::Pane::Inspector) && self.inspector == tab {
+            self.hide_panel(super::dock::Pane::Inspector);
         } else {
-            self.show_inspector = true;
+            self.show_panel(super::dock::Pane::Inspector);
             self.inspector = tab;
         }
     }
 }
 
 /// Actions whose keys work while a text field on the score has the keyboard.
-const WHILE_TYPING: [Act; 9] = [Act::Save, Act::SaveAs, Act::Open, Act::Browse, Act::New, Act::NewChart, Act::Close, Act::Prefs, Act::CommandPalette];
+const WHILE_TYPING: [Act; 11] = [Act::Save, Act::SaveAs, Act::Open, Act::Browse, Act::New, Act::NewChart, Act::Close, Act::Prefs, Act::CommandPalette, Act::ActionList, Act::ExpressionText];
 
 /// The modifiers of a copy, cut or paste event: Ctrl, and Shift if it is held.
 fn clip_mods(shift: bool) -> Modifiers {

@@ -4,6 +4,8 @@
 mod about;
 mod actions;
 mod addtrack;
+mod ai;
+mod aipanel;
 mod batch;
 #[cfg(test)]
 mod flows;
@@ -13,6 +15,10 @@ mod chartstyle;
 mod chartui;
 mod chartxpose;
 mod chordscales;
+mod dock;
+mod expression;
+mod dockui;
+mod float;
 mod chordedit;
 mod chordlib;
 mod clipmenu;
@@ -127,10 +133,21 @@ pub struct App {
     mix_sent: (Vec<crate::model::Equalizer>, Vec<f32>),
     status: String,
     last_digit: Option<(u8, f64, usize, usize, usize)>,
-    show_fretboard: bool,
-    show_tracks: bool,
-    show_palette: bool,
-    show_inspector: bool,
+    /// Where each panel is: docked, tabbed or floating in the window (see `dock.rs`).
+    dock: egui_dock::DockState<dock::Pane>,
+    /// The panels popped out into windows of their own (see `float.rs`).
+    popped: Vec<dock::Pane>,
+    /// While the dock is being drawn it is out of `dock`; panel changes asked for then wait here
+    /// (the panel, and whether to show it).
+    dock_busy: bool,
+    dock_cmds: Vec<(dock::Pane, bool)>,
+    /// The layout as last saved, to save again only when it changed; `None` for pictures and
+    /// tests, which never touch the person's file.
+    layout_saved: Option<String>,
+    /// The notes sounding now, for the fretboard and keyboard.
+    sounding: Vec<(usize, u8, u8)>,
+    /// Where the score was drawn last frame (toasts sit in it).
+    score_rect: egui::Rect,
     inspector: InspectorTab,
     follow: bool,
     scroll_to_cursor: bool,
@@ -158,7 +175,6 @@ pub struct App {
     home_sel: usize,
     home_search: String,
     preview: Option<(String, Song)>,
-    show_keyboard: bool,
     kb_octave: i32,
     play_while_editing: bool,
     /// 0 page vertical, 1 page horizontal, 2 page grid, 3 screen vertical, 4 screen horizontal.
@@ -182,6 +198,8 @@ pub struct App {
     cmd_open: bool,
     cmd_text: String,
     cmd_sel: usize,
+    /// The AI Assistant panel.
+    ai: aipanel::AiPanel,
     trainer_open: bool,
     trainer_on: bool,
     trainer_start: f32,
@@ -301,7 +319,7 @@ impl App {
             redo: vec![],
             clipboard: vec![],
             cur_dur: Dur::Eighth,
-            zoom: 1.1,
+            zoom: 1.0,
             notation: Notation::Both,
             audio: None,
             sound_allowed: screenshot.is_none(),
@@ -324,10 +342,13 @@ impl App {
             mix_sent: (vec![], vec![]),
             status: "Ready. Click the score or use the arrow keys, then type fret numbers.".into(),
             last_digit: None,
-            show_fretboard: false,
-            show_tracks: true,
-            show_palette: true,
-            show_inspector: true,
+            dock: dock::default_layout(),
+            popped: vec![],
+            dock_busy: false,
+            dock_cmds: vec![],
+            layout_saved: None,
+            sounding: vec![],
+            score_rect: egui::Rect::NOTHING,
             inspector: InspectorTab::Song,
             follow: true,
             scroll_to_cursor: false,
@@ -351,7 +372,6 @@ impl App {
             home_sel: 0,
             home_search: String::new(),
             preview: None,
-            show_keyboard: false,
             kb_octave: 1,
             play_while_editing: true,
             view_mode: 0,
@@ -369,6 +389,7 @@ impl App {
             cmd_open: false,
             cmd_text: String::new(),
             cmd_sel: 0,
+            ai: Default::default(),
             trainer_open: false,
             trainer_on: false,
             trainer_start: 60.0,
@@ -429,6 +450,12 @@ impl App {
             midi_pending: vec![],
             clip_mark: false,
         };
+        if own_settings {
+            let layout = dock::load();
+            app.dock = layout.dock;
+            app.popped = layout.popped;
+            app.layout_saved = Some(dock::to_json(&app.dock, &app.popped));
+        }
         // The keys the person chose (the defaults for pictures and tests).
         shortcuts::set_keymap(shortcuts::Keymap::from_saved(&app.prefs.shortcuts));
         if own_settings {
@@ -451,8 +478,11 @@ impl App {
         // Extra views for checking pictures: --show keyboard,fretboard,track,screen
         for part in &show {
             match part.as_str() {
-                "keyboard" => app.show_keyboard = true,
-                "fretboard" => app.show_fretboard = true,
+                "keyboard" => app.show_panel(dock::Pane::Keyboard),
+                "ai" => app.show_panel(dock::Pane::Ai),
+                "fretboard" => app.show_panel(dock::Pane::Fretboard),
+                // A panel in a window of its own, for checking pop-out: --show popout.
+                "popout" => app.pop_out(dock::Pane::Palette),
                 "track" => app.inspector = InspectorTab::Track,
                 "bar" => app.open_popup(popups::Popup::TimeSig),
                 "key" => app.open_popup(popups::Popup::KeySig),

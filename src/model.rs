@@ -1200,6 +1200,8 @@ pub struct Track {
     pub show_std: bool,
     /// Show this track's tablature (stringed instruments only).
     pub show_tab: bool,
+    /// Show this track's numbered (jianpu) notation under its other staves.
+    pub show_num: bool,
     /// Two staves joined by a brace (keyboards only).
     pub grand_staff: bool,
     /// A capo over only some strings: its fret (0 = none) and the strings it
@@ -1242,6 +1244,7 @@ impl Default for Track {
             bars: vec![],
             show_std: true,
             show_tab: true,
+            show_num: false,
             grand_staff: false,
             partial_capo: 0,
             partial_capo_strings: 0,

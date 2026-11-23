@@ -76,6 +76,7 @@ pub type Cmd = fn(&mut App);
 
 pub fn commands() -> Vec<(&'static str, Cmd)> {
     vec![
+        ("ai: Show or hide the AI assistant", |a| a.toggle_panel(super::dock::Pane::Ai)),
         ("add-bar: Insert a bar after this one", |a| {
             a.insert_bar(a.bar + 1)
         }),
@@ -168,10 +169,10 @@ pub fn commands() -> Vec<(&'static str, Cmd)> {
             a.single_track = !a.single_track
         }),
         ("fretboard: Show or hide the fretboard", |a| {
-            a.show_fretboard = !a.show_fretboard
+            a.toggle_panel(super::dock::Pane::Fretboard)
         }),
         ("keyboard: Show or hide the keyboard", |a| {
-            a.show_keyboard = !a.show_keyboard
+            a.toggle_panel(super::dock::Pane::Keyboard)
         }),
         ("loop: Loop playback", |a| a.looping = !a.looping),
         ("metronome: Metronome", |a| a.metronome = !a.metronome),
@@ -418,21 +419,64 @@ impl App {
         self.lyrics_open = open;
     }
 
+    /// Opens the command palette in a mode, which is a first character: "@" is the action list
+    /// (the menu commands), ">" is expression text. Asking again for the mode it is in closes it.
+    pub(super) fn open_palette_with(&mut self, prefix: &str) {
+        if self.cmd_open && self.cmd_text.starts_with(prefix) {
+            self.cmd_open = false;
+        } else {
+            self.cmd_open = true;
+            self.cmd_text = prefix.to_string();
+        }
+        self.cmd_sel = 0;
+    }
+
     fn command_palette(&mut self, ctx: &egui::Context) {
         if !self.cmd_open {
             return;
         }
-        let list = commands();
-        let q = self.cmd_text.to_lowercase();
-        let hits: Vec<(&str, Cmd)> = list
-            .into_iter()
-            .filter(|(n, _)| {
-                q.trim().is_empty()
-                    || q == "?"
-                    || q.split_whitespace().all(|w| n.to_lowercase().contains(w))
-            })
-            .collect();
-        let mut run: Option<Cmd> = None;
+        /// What a row of the palette does.
+        enum Run {
+            Cmd(Cmd),
+            Act(super::shortcuts::Act),
+            Expr(super::expression::Entry),
+        }
+        let mode = self.cmd_text.chars().next().filter(|c| matches!(c, '@' | '>'));
+        let q = self.cmd_text.trim_start_matches(['@', '>']).to_lowercase();
+        let words_match = |name: &str| q.trim().is_empty() || q.trim() == "?" || q.split_whitespace().all(|w| name.to_lowercase().contains(w));
+        let rows: Vec<(String, Run)> = match mode {
+            Some('@') => {
+                use super::shortcuts::{ACTIONS, Act, Ctx, sc};
+                ACTIONS
+                    .iter()
+                    .filter(|x| x.ctx != Ctx::Chart)
+                    .filter(|x| !matches!(x.act, Act::Digits | Act::Quit | Act::CommandPalette | Act::ActionList | Act::ExpressionText))
+                    .filter(|x| words_match(&format!("{} {}", x.name, x.group.title())))
+                    .map(|x| {
+                        let keys = sc(x.act);
+                        let keys = if keys.is_empty() { String::new() } else { format!("   [{keys}]") };
+                        (format!("{}   \u{2014} {}{keys}", x.name, x.group.title()), Run::Act(x.act))
+                    })
+                    .collect()
+            }
+            Some(_) => super::expression::entries(&q).into_iter().map(|e| (e.name(), Run::Expr(e))).collect(),
+            None => commands()
+                .into_iter()
+                .filter(|(n, _)| words_match(n))
+                .map(|(n, f)| {
+                    let (pre, desc) = n.split_once(": ").unwrap_or((n, ""));
+                    (format!("{pre}   \u{2014} {desc}"), Run::Cmd(f))
+                })
+                .collect(),
+        };
+        let hint = match mode {
+            Some('@') => "Type a menu action, e.g. fretboard, multitrack, save\u{2026}",
+            Some(_) => "Type an expression, e.g. ff, G maj, 8va, coda, or any text\u{2026}",
+            None => "Type a command, e.g. palm, fermata, add-bar (@ actions, > expression)\u{2026}",
+        };
+        // Room for about a dozen rows (egui's own minimum is two), less on a short window.
+        let list_h = (ctx.content_rect().height() - 220.0).clamp(150.0, 400.0);
+        let mut run: Option<usize> = None;
         let mut close = false;
         egui::Window::new("Command palette")
             .title_bar(false)
@@ -440,14 +484,10 @@ impl App {
             .anchor(Align2::CENTER_TOP, Vec2::new(0.0, 90.0))
             .fixed_size(Vec2::new(460.0, 0.0))
             .show(ctx, |ui| {
-                let r = ui.add(
-                    egui::TextEdit::singleline(&mut self.cmd_text)
-                        .hint_text("Type a command, e.g. palm, fermata, add-bar\u{2026}")
-                        .desired_width(f32::INFINITY),
-                );
+                let r = ui.add(egui::TextEdit::singleline(&mut self.cmd_text).hint_text(hint).desired_width(f32::INFINITY));
                 r.request_focus();
                 if ui.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
-                    self.cmd_sel = (self.cmd_sel + 1).min(hits.len().saturating_sub(1));
+                    self.cmd_sel = (self.cmd_sel + 1).min(rows.len().saturating_sub(1));
                 }
                 if ui.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
                     self.cmd_sel = self.cmd_sel.saturating_sub(1);
@@ -455,34 +495,40 @@ impl App {
                 if r.changed() {
                     self.cmd_sel = 0;
                 }
-                egui::ScrollArea::vertical()
-                    .max_height(300.0)
-                    .show(ui, |ui| {
-                        for (k, (name, f)) in hits.iter().enumerate() {
-                            let (pre, desc) = name.split_once(": ").unwrap_or((name, ""));
-                            let resp = ui.selectable_label(
-                                k == self.cmd_sel,
-                                RichText::new(format!("{pre}   \u{2014} {desc}")),
-                            );
-                            if k == self.cmd_sel {
-                                resp.scroll_to_me(None);
-                            }
-                            if resp.clicked() {
-                                run = Some(*f);
-                            }
+                egui::ScrollArea::vertical().min_scrolled_height(list_h).max_height(list_h).show(ui, |ui| {
+                    for (k, (label, _)) in rows.iter().enumerate() {
+                        let resp = ui.selectable_label(k == self.cmd_sel, RichText::new(label));
+                        if k == self.cmd_sel {
+                            resp.scroll_to_me(None);
                         }
-                    });
-                if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                    run = hits.get(self.cmd_sel).map(|h| h.1);
+                        if resp.clicked() {
+                            run = Some(k);
+                        }
+                    }
+                });
+                // The highlighted expression says what it does, as in Guitar Pro 8.
+                if let Some((_, Run::Expr(e))) = rows.get(self.cmd_sel) {
+                    ui.separator();
+                    ui.label(RichText::new(e.describe()).weak());
+                }
+                if ui.input(|i| i.key_pressed(egui::Key::Enter)) && !rows.is_empty() {
+                    run = Some(self.cmd_sel.min(rows.len() - 1));
                 }
                 if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                     close = true;
                 }
             });
-        if let Some(f) = run {
+        if let Some(k) = run {
             self.cmd_open = false;
             self.cmd_text.clear();
-            f(self);
+            match &rows[k].1 {
+                Run::Cmd(f) => f(self),
+                Run::Act(a) => {
+                    self.run_act(*a);
+                    self.clamp_cursor();
+                }
+                Run::Expr(e) => e.apply(self),
+            }
         }
         if close {
             self.cmd_open = false;

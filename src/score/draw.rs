@@ -449,6 +449,9 @@ pub fn draw_bar_content(p: &Painter, c: &BarCtx) {
         if g.tab {
             draw_tab_beat(p, c, beat, bj, x);
         }
+        if g.num && c.voice == 0 {
+            draw_num_beat(p, c, beat, bj, x, &groups);
+        }
     }
     if g.tab {
         if c.rhythm {
@@ -457,6 +460,91 @@ pub fn draw_bar_content(p: &Painter, c: &BarCtx) {
         draw_runs(p, c, bar);
     }
     draw_let_ring(p, c, bar);
+}
+
+/// Numbered (jianpu) notation of a pitch: the scale degree (1 to 7) counted from the key's
+/// tonic (a minor key uses its relative major, so its tonic is 6), a sharp (1) or flat (-1),
+/// and the octave: 0 is the one starting at the tonic at or above middle C, dots go above or below.
+pub fn jianpu_degree(pitch: i32, key: i8) -> (u8, i8, i32) {
+    const SHARPS: [(u8, i8); 12] =
+        [(1, 0), (1, 1), (2, 0), (2, 1), (3, 0), (4, 0), (4, 1), (5, 0), (5, 1), (6, 0), (6, 1), (7, 0)];
+    const FLATS: [(u8, i8); 12] =
+        [(1, 0), (2, -1), (2, 0), (3, -1), (3, 0), (4, 0), (5, -1), (5, 0), (6, -1), (6, 0), (7, -1), (7, 0)];
+    let tonic = (key as i32 * 7).rem_euclid(12);
+    let rel = pitch - (60 + tonic);
+    let semi = rel.rem_euclid(12) as usize;
+    let (d, a) = if key < 0 { FLATS[semi] } else { SHARPS[semi] };
+    (d, a, rel.div_euclid(12))
+}
+
+/// One beat in the numbered lane: the degrees (a chord stacks, lowest at the bottom), a 0 for a
+/// rest, underlines for eighths and shorter, dashes for half and whole notes, a dot for a dotted one.
+fn draw_num_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32, groups: &[Vec<usize>]) {
+    let g = &c.g;
+    let z = c.z;
+    let track = &c.song.tracks[c.ti];
+    let key = c.song.master[c.bi].key;
+    let font = egui::FontId::proportional(13.0 * z);
+    let small = egui::FontId::proportional(8.5 * z);
+    let base = c.y0 + g.num_top + 13.0 * z;
+    let under = beat.dur.index().saturating_sub(2);
+    let mut pitches: Vec<i32> = beat
+        .notes
+        .iter()
+        .map(|n| track.pitch(n) as i32)
+        .collect();
+    pitches.sort_unstable();
+    pitches.dedup();
+    if pitches.is_empty() {
+        p.text(Pos2::new(x, base), Align2::CENTER_CENTER, "0", font.clone(), c.ink);
+    }
+    for (k, &pt) in pitches.iter().enumerate() {
+        let (d, acc, oct) = jianpu_degree(pt, key);
+        let y = base - k as f32 * 15.0 * z;
+        p.text(Pos2::new(x, y), Align2::CENTER_CENTER, d.to_string(), font.clone(), c.ink);
+        if acc != 0 {
+            p.text(
+                Pos2::new(x - 6.5 * z, y - 2.0 * z),
+                Align2::CENTER_CENTER,
+                if acc > 0 { "#" } else { "b" },
+                small.clone(),
+                c.ink,
+            );
+        }
+        let dots = oct.unsigned_abs() as usize;
+        for i in 0..dots {
+            let dy = if oct > 0 {
+                -8.5 * z - i as f32 * 3.5 * z
+            } else {
+                9.0 * z + 3.5 * z * under as f32 + 1.5 * z + i as f32 * 3.5 * z
+            };
+            p.circle_filled(Pos2::new(x, y + dy), 1.1 * z, c.ink);
+        }
+    }
+    let ytop = base + 8.5 * z;
+    let next_x = c.xs.get(bj + 1).map(|nx| c.o.x + nx);
+    let joined = groups.iter().find(|gr| gr.contains(&bj)).is_some_and(|gr| gr.contains(&(bj + 1)));
+    for u in 0..under {
+        let y = ytop + u as f32 * 3.0 * z;
+        let next_has = c.vbar.beats.get(bj + 1).is_some_and(|b| b.dur.index().saturating_sub(2) > u);
+        let end = match next_x {
+            Some(nx) if joined && next_has => nx - 5.5 * z,
+            _ => x + 5.5 * z,
+        };
+        p.line_segment([Pos2::new(x - 5.5 * z, y), Pos2::new(end, y)], PStroke::new(1.0 * z, c.ink));
+    }
+    let dashes = match beat.dur {
+        Dur::Whole => 3,
+        Dur::Half => 1,
+        _ => 0,
+    };
+    for i in 1..=dashes {
+        p.text(Pos2::new(x + i as f32 * 12.0 * z, base), Align2::CENTER_CENTER, "-", font.clone(), c.ink);
+    }
+    let dots = beat.dotted as usize + beat.double_dot as usize;
+    for i in 0..dots {
+        p.circle_filled(Pos2::new(x + 8.0 * z + i as f32 * 3.5 * z, base + 2.0 * z), 1.2 * z, c.ink);
+    }
 }
 
 pub fn draw_small_note(p: &Painter, c: Pos2, z: f32, ink: Color32) {

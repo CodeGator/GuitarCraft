@@ -878,7 +878,7 @@ Right brings the selected track ({name}) forward by                          tur
                         }
                     } else if let Some(zone) = score::header_zone(&lay, page, rel) {
                         // Clicking the title, tunings or tempo opens their settings.
-                        self.show_inspector = true;
+                        self.show_panel(super::dock::Pane::Inspector);
                         if zone == 2 {
                             // The tempo marking at the top of the score.
                             self.open_automations(0);

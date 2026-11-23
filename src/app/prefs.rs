@@ -1,6 +1,6 @@
 //! File > Preferences (Ctrl+,): the person's settings, kept between runs, laid out in
 //! the five tabs of Guitar Pro 8's Preferences window (General, Interface, Notation
-//! Errors, User Information, Audio & MIDI). As in the original, a change takes effect
+//! Errors, Misc (was User Information), Audio & MIDI), plus AI and Shortcuts. As in the original, a change takes effect
 //! straight away: there is no OK or Cancel. The settings are saved in
 //! `preferences.json` in GuitarCraft's settings folder.
 //!
@@ -18,7 +18,7 @@ use egui::{Align2, Color32, FontId, RichText, Ui, Vec2};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-pub const TABS: [&str; 6] = ["General", "Interface", "Notation Errors", "User Information", "Audio & MIDI", "Shortcuts"];
+pub const TABS: [&str; 7] = ["General", "Interface", "Notation Errors", "Misc", "Audio & MIDI", "AI", "Shortcuts"];
 
 /// How often to look for a newer version without being asked.
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug, Serialize, Deserialize)]
@@ -135,6 +135,20 @@ pub struct Prefs {
     pub midi_input: Option<String>,
     /// The built-in sound keeps playing while a MIDI output is open.
     pub midi_builtin_too: bool,
+    // ----- AI -----
+    /// Ollama is switched on as an AI provider.
+    pub ollama_on: bool,
+    /// Where Ollama listens (empty: `ai::OLLAMA_URL`).
+    pub ollama_url: String,
+    /// The Ollama model to use (empty: none chosen yet).
+    pub ollama_model: String,
+    /// The context size asked of Ollama (`num_ctx`), in tokens: how much text the model reads
+    /// at once. Larger sizes need more memory and run slower.
+    pub ollama_context: u32,
+    /// Claude is switched on as an AI provider.
+    pub claude_on: bool,
+    /// The Claude model to use.
+    pub claude_model: String,
     // ----- Shortcuts -----
     /// The keys the person changed, by action name (see `shortcuts::Keymap::to_saved`).
     pub shortcuts: std::collections::BTreeMap<String, Vec<String>>,
@@ -145,7 +159,7 @@ impl Default for Prefs {
         Prefs {
             default_template: 0,
             force_zoom: false,
-            zoom_pct: 110,
+            zoom_pct: 100,
             force_layout: false,
             force_style: 0,
             force_notation: 0,
@@ -173,6 +187,12 @@ impl Default for Prefs {
             midi_output: None,
             midi_input: None,
             midi_builtin_too: false,
+            ollama_on: false,
+            ollama_url: super::ai::OLLAMA_URL.into(),
+            ollama_model: String::new(),
+            ollama_context: super::ai::OLLAMA_CONTEXT,
+            claude_on: false,
+            claude_model: super::ai::CLAUDE_MODEL.into(),
             shortcuts: Default::default(),
         }
     }
@@ -186,7 +206,7 @@ fn session_file() -> Option<PathBuf> {
     Some(app_dir()?.join("session.json"))
 }
 
-fn write_json<T: Serialize + ?Sized>(f: Option<PathBuf>, v: &T) {
+pub(super) fn write_json<T: Serialize + ?Sized>(f: Option<PathBuf>, v: &T) {
     let Some(f) = f else { return };
     if let Some(dir) = f.parent() {
         let _ = std::fs::create_dir_all(dir);
@@ -215,6 +235,7 @@ impl Prefs {
             self.default_template = 0;
         }
         self.zoom_pct = self.zoom_pct.clamp(25, 400);
+        self.ollama_context = self.ollama_context.clamp(*super::ai::OLLAMA_CONTEXT_RANGE.start(), *super::ai::OLLAMA_CONTEXT_RANGE.end());
         self.layout = self.layout.min(LAYOUTS.len() as u8 - 1);
         // The old plus/minus swap becomes the same two shortcuts (unless they were set).
         if std::mem::take(&mut self.legacy_swap) && !self.shortcuts.contains_key("Shorter") && !self.shortcuts.contains_key("Longer") {
@@ -281,6 +302,14 @@ pub struct PrefsDlg {
     pub(super) clash: Option<Clash>,
     /// Shortcuts: what happened last.
     key_note: String,
+    /// AI: the last "Test connection" of each provider.
+    ollama_test: super::ai::Probe,
+    claude_test: super::ai::Probe,
+    /// AI: the Claude key being typed (never kept once saved), whether one is saved, and what
+    /// happened to it last.
+    key_input: String,
+    key_saved: bool,
+    ai_key_note: Option<(bool, String)>,
 }
 
 /// A key the person chose that another action already uses.
@@ -341,11 +370,54 @@ fn text_row(ui: &mut Ui, label: &str, v: &mut String) -> bool {
     changed
 }
 
+/// A model name to type, with the models the last test found to pick from.
+fn model_row(ui: &mut Ui, id: &str, v: &mut String, probe: &super::ai::Probe) {
+    row_w(ui, LABEL_W, "Model:", |ui| {
+        ui.add(egui::TextEdit::singleline(v).desired_width(240.0));
+        if let Some(super::ai::Test::Ok(found)) = &probe.result
+            && !found.is_empty()
+        {
+            egui::ComboBox::from_id_salt(id).width(70.0).selected_text("Pick").show_ui(ui, |ui| {
+                for m in found {
+                    if ui.selectable_label(v == m, m.as_str()).clicked() {
+                        *v = m.clone();
+                    }
+                }
+            });
+        }
+    });
+}
+
+/// The "Test connection" button and what the last test found. True when it was pressed.
+fn test_row(ui: &mut Ui, probe: &super::ai::Probe) -> bool {
+    let mut pressed = false;
+    row_w(ui, LABEL_W, "", |ui| {
+        pressed = ui.add_enabled(!probe.busy(), egui::Button::new("Test connection")).clicked();
+        match &probe.result {
+            _ if probe.busy() => note(ui, "Connecting..."),
+            Some(super::ai::Test::Ok(m)) => note(ui, &format!("Connected. {} model{} available.", m.len(), if m.len() == 1 { "" } else { "s" })),
+            Some(super::ai::Test::Failed(e)) => {
+                ui.label(RichText::new(e.as_str()).size(12.0).color(Color32::from_rgb(210, 90, 80)));
+            }
+            None => {}
+        }
+    });
+    pressed
+}
+
 impl App {
     /// File > Preferences... (Ctrl+,).
     pub(super) fn open_prefs(&mut self) {
         if self.prefs_dlg.is_none() {
-            self.prefs_dlg = Some(PrefsDlg { tab: 0, devices: Audio::output_device_names(), midi_ports: (crate::midi::output_port_names(), crate::midi::input_port_names()), ..PrefsDlg::default() });
+            self.prefs_dlg = Some(PrefsDlg { tab: 0, key_saved: super::ai::key::exists(), devices: Audio::output_device_names(), midi_ports: (crate::midi::output_port_names(), crate::midi::input_port_names()), ..PrefsDlg::default() });
+        }
+    }
+
+    /// Opens Preferences on the AI tab.
+    pub(super) fn open_prefs_ai(&mut self) {
+        self.open_prefs();
+        if let Some(d) = &mut self.prefs_dlg {
+            d.tab = 5;
         }
     }
 
@@ -467,7 +539,7 @@ impl App {
                 ui.spacing_mut().item_spacing.y = 6.0;
                 egui::Panel::top("pref-tabs").frame(egui::Frame::NONE).resizable(false).show(ui, |ui| {
                     tab_row(ui, &TABS, "pref-tab", &mut dlg.tab, |p, i, c, col| {
-                        let glyph = ["\u{2699}", "\u{25A3}", "\u{26A0}", "\u{263A}", "\u{266B}", "\u{2328}"][i];
+                        let glyph = ["\u{2699}", "\u{25A3}", "\u{26A0}", "\u{263A}", "\u{266B}", "\u{2728}", "\u{2328}"][i];
                         p.text(c, Align2::CENTER_CENTER, glyph, FontId::proportional(20.0), col);
                     });
                 });
@@ -476,18 +548,18 @@ impl App {
                     .resizable(false)
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
+                            if ui.button("Restore defaults").on_hover_text("Every setting on this tab back to how GuitarCraft starts").clicked() {
+                                self.restore_tab(dlg.tab);
+                                dlg.recording = None;
+                                dlg.clash = None;
+                                if dlg.tab == 4 {
+                                    restart_audio = true;
+                                }
+                            }
                             note(ui, "Changes take effect straight away.");
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 if ui.button("Close").clicked() {
                                     close = true;
-                                }
-                                if ui.button("Restore defaults").on_hover_text("Every setting on this tab back to how GuitarCraft starts").clicked() {
-                                    self.restore_tab(dlg.tab);
-                                    dlg.recording = None;
-                                    dlg.clash = None;
-                                    if dlg.tab == 4 {
-                                        restart_audio = true;
-                                    }
                                 }
                             });
                         });
@@ -499,6 +571,7 @@ impl App {
                         2 => self.errors_tab(ui),
                         3 => self.user_tab(ui),
                         4 => self.audio_tab(ui, &mut dlg.devices, &mut dlg.midi_ports, &mut restart_audio, &mut test_sound, &mut midi_changed),
+                        5 => self.ai_tab(ui, &mut dlg),
                         _ => self.shortcuts_tab(ui, &mut dlg),
                     });
                 });
@@ -563,6 +636,14 @@ impl App {
                 p.midi_output = d.midi_output;
                 p.midi_input = d.midi_input;
                 p.midi_builtin_too = d.midi_builtin_too;
+            }
+            5 => {
+                p.ollama_on = d.ollama_on;
+                p.ollama_url = d.ollama_url;
+                p.ollama_model = d.ollama_model;
+                p.ollama_context = d.ollama_context;
+                p.claude_on = d.claude_on;
+                p.claude_model = d.claude_model;
             }
             _ => {
                 p.shortcuts.clear();
@@ -693,12 +774,93 @@ impl App {
         });
         row_w(ui, LABEL_W, "Invalid hammer-on / pull-off:", |ui| {
             switch(ui, &mut p.err_hopo);
-            note(ui, "Nothing on that string before it to start from");
+            note(ui, "Nothing on that string after it to slur to");
         });
         row_w(ui, LABEL_W, "Bar never reached in playback:", |ui| {
             switch(ui, &mut p.err_unreachable);
             note(ui, "A repeat or jump means playback skips it");
         });
+    }
+
+    fn ai_tab(&mut self, ui: &mut Ui, dlg: &mut PrefsDlg) {
+        let ctx = ui.ctx().clone();
+        dlg.ollama_test.poll();
+        dlg.claude_test.poll();
+        if dlg.ollama_test.busy() || dlg.claude_test.busy() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(200));
+        }
+        let p = &mut self.prefs;
+        heading(ui, "Ollama");
+        note(ui, "A model running on your computer, or on one you run yourself. Nothing leaves your network.");
+        ui.add_space(6.0);
+        row_w(ui, LABEL_W, "Use Ollama:", |ui| {
+            switch(ui, &mut p.ollama_on);
+        });
+        text_row(ui, "Server address:", &mut p.ollama_url);
+        model_row(ui, "ollama-model", &mut p.ollama_model, &dlg.ollama_test);
+        row_w(ui, LABEL_W, "Context size:", |ui| {
+            ui.add(egui::DragValue::new(&mut p.ollama_context).range(super::ai::OLLAMA_CONTEXT_RANGE).speed(256));
+            note(ui, "tokens");
+            for size in [8192, 16_384, 32_768] {
+                if ui.small_button(format!("{}k", size / 1024)).clicked() {
+                    p.ollama_context = size;
+                }
+            }
+        });
+        note(ui, "How much text the model reads at once. Larger sizes use more memory and run slower.");
+        if test_row(ui, &dlg.ollama_test) {
+            dlg.ollama_test.test_ollama(&ctx, &p.ollama_url);
+        }
+        ui.add_space(14.0);
+        heading(ui, "Claude");
+        note(ui, "Anthropic's AI service. Needs an API key from console.anthropic.com. What you ask is sent over the internet to Anthropic.");
+        ui.add_space(6.0);
+        row_w(ui, LABEL_W, "Use Claude:", |ui| {
+            switch(ui, &mut p.claude_on);
+        });
+        let (mut save, mut remove) = (false, false);
+        row_w(ui, LABEL_W, "API key:", |ui| {
+            let hint = if dlg.key_saved { "saved - paste a new key to replace it" } else { "paste your key here" };
+            ui.add(egui::TextEdit::singleline(&mut dlg.key_input).password(true).hint_text(hint).desired_width(240.0));
+            save = ui.add_enabled(!dlg.key_input.trim().is_empty(), egui::Button::new("Save")).clicked();
+            remove = ui.add_enabled(dlg.key_saved, egui::Button::new("Remove")).clicked();
+        });
+        if save {
+            dlg.ai_key_note = Some(match super::ai::key::set(&dlg.key_input) {
+                Ok(()) => {
+                    dlg.key_input.clear();
+                    dlg.key_saved = true;
+                    dlg.claude_test.result = None;
+                    (true, "Key saved.".to_string())
+                }
+                Err(e) => (false, format!("Couldn't save the key: {e}")),
+            });
+        }
+        if remove {
+            dlg.ai_key_note = Some(match super::ai::key::remove() {
+                Ok(()) => {
+                    dlg.key_saved = false;
+                    dlg.claude_test.result = None;
+                    (true, "Key removed.".to_string())
+                }
+                Err(e) => (false, format!("Couldn't remove the key: {e}")),
+            });
+        }
+        if let Some((ok, text)) = &dlg.ai_key_note {
+            row_w(ui, LABEL_W, "", |ui| {
+                if *ok {
+                    note(ui, text);
+                } else {
+                    ui.label(RichText::new(text.as_str()).size(12.0).color(Color32::from_rgb(210, 90, 80)));
+                }
+            });
+        }
+        model_row(ui, "claude-model", &mut p.claude_model, &dlg.claude_test);
+        if test_row(ui, &dlg.claude_test) {
+            dlg.claude_test.test_claude(&ctx, &super::ai::key::get().unwrap_or_default());
+        }
+        ui.add_space(8.0);
+        note(ui, "The key is kept in the Windows Credential Manager, never in GuitarCraft's preferences file.");
     }
 
     fn user_tab(&mut self, ui: &mut Ui) {
@@ -1120,11 +1282,12 @@ mod tests {
 
     #[test]
     fn odd_saved_values_are_brought_into_range() {
-        let p: Prefs = serde_json::from_str(r#"{"default_template": 999, "zoom_pct": 5, "layout": 9}"#).unwrap();
+        let p: Prefs = serde_json::from_str(r#"{"default_template": 999, "zoom_pct": 5, "layout": 9, "ollama_context": 10}"#).unwrap();
         let p = p.fixed();
         assert_eq!(p.default_template, 0);
         assert_eq!(p.zoom_pct, 25);
         assert_eq!(p.layout, 4);
+        assert_eq!(p.ollama_context, 2048);
         assert!(p.highlight_played_bar, "missing fields keep their defaults");
     }
 }

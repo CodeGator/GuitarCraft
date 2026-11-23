@@ -1,5 +1,6 @@
 //! The menu bar, laid out like the original's menus.
 
+use super::dock::Pane;
 use super::popups::Popup;
 use super::{App, InspectorTab, Pending};
 use crate::model::*;
@@ -356,7 +357,7 @@ impl App {
         }
         if item(ui, "Track Settings...", "").clicked() {
             self.inspector = InspectorTab::Track;
-            self.show_inspector = true;
+            self.show_panel(Pane::Inspector);
             ui.close();
         }
         ui.separator();
@@ -819,6 +820,14 @@ impl App {
             self.cmd_text.clear();
             ui.close();
         }
+        if item_if(ui, song, "Show Action List", &sc(Act::ActionList)) {
+            self.open_palette_with("@");
+            ui.close();
+        }
+        if item_if(ui, song, "Show Expression Text", &sc(Act::ExpressionText)) {
+            self.open_palette_with(">");
+            ui.close();
+        }
     }
 
     fn sound_menu(&mut self, ui: &mut Ui) {
@@ -905,21 +914,43 @@ impl App {
     }
 
     fn view_menu(&mut self, ui: &mut Ui) {
-        if check(ui, self.show_palette, "Show Editing Palette", &sc(Act::ShowPalette)).clicked() {
-            self.show_palette = !self.show_palette;
+        for (pane, label, keys) in [
+            (Pane::Palette, "Show Editing Palette", sc(Act::ShowPalette)),
+            (Pane::Inspector, "Show Inspector", String::new()),
+            (Pane::Ai, "Show AI Assistant", String::new()),
+            (Pane::Tracks, "Show Global View", sc(Act::ShowGlobalView)),
+            (Pane::Fretboard, "Show Fretboard View", String::new()),
+            (Pane::Keyboard, "Show Keyboard View", sc(Act::KeyboardView)),
+        ] {
+            if pane == Pane::Fretboard {
+                ui.separator();
+            }
+            if check(ui, self.panel_shown(pane), label, &keys).clicked() {
+                self.toggle_panel(pane);
+            }
         }
-        if check(ui, self.show_inspector, "Show Inspector", "").clicked() {
-            self.show_inspector = !self.show_inspector;
+        ui.menu_button("Pop Out Panel", |ui| {
+            for pane in Pane::PANELS {
+                let out = self.popped.contains(&pane);
+                if ui.selectable_label(out, pane.title()).on_hover_text("A panel in a window of its own, which can leave the main window").clicked() {
+                    if out {
+                        self.dock_panel(pane);
+                    } else {
+                        self.pop_out(pane);
+                    }
+                    ui.close();
+                }
+            }
+        });
+        if ui.add_enabled(!self.popped.is_empty(), egui::Button::new("Dock All Panels")).clicked() {
+            for pane in std::mem::take(&mut self.popped) {
+                self.show_panel(pane);
+            }
+            ui.close();
         }
-        if check(ui, self.show_tracks, "Show Global View", &sc(Act::ShowGlobalView)).clicked() {
-            self.show_tracks = !self.show_tracks;
-        }
-        ui.separator();
-        if check(ui, self.show_fretboard, "Show Fretboard View", "").clicked() {
-            self.show_fretboard = !self.show_fretboard;
-        }
-        if check(ui, self.show_keyboard, "Show Keyboard View", &sc(Act::KeyboardView)).clicked() {
-            self.show_keyboard = !self.show_keyboard;
+        if item(ui, "Reset Panel Layout", "").clicked() {
+            self.reset_panel_layout();
+            ui.close();
         }
         ui.separator();
         if check(ui, !self.single_track, "Multitrack", &sc(Act::Multitrack)).clicked() {

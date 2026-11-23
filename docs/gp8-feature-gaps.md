@@ -27,11 +27,18 @@ exist under another name. Check before starting work on one, and tick items off 
       notation (standard + tab, standard only, tab only; stringed tracks only) and copy chord
       diagrams (off strips them from beat and all-track copies; scale diagrams don't exist
       yet). Bars playback never reaches are also shown in red (added 2026-11-22, uses `Song::play_order`).
-      Not tried by hand in the running app. Language option removed 2026-11-22 (no plans for other languages). Greyed out for now: MIDI output and input.
+      Tried by hand in the running app (confirmed 2026-11-23). Language option removed 2026-11-22 (no plans for other languages). Greyed out for now: MIDI output and input.
 - [ ] **Audio Note Settings** (Shift+F): playback settings for individual notes.
 - [ ] **Design mode** (Ctrl+Alt+D): palette mode for adjusting how the score is laid out.
-- [ ] **Action list** (Ctrl+Alt+E) and **Expression text** (Ctrl+Shift+E). The command palette
-      (Ctrl+E) already exists.
+- [x] **Action list** (Ctrl+Alt+E) and **Expression text** (Ctrl+Shift+E): added 2026-11-23, as
+      in the Guitar Pro 8 guide both are modes of the command palette (Tools menu, or "@" and
+      ">" typed first in the palette; `src/app/tools.rs`, `src/app/expression.rs`). Action list:
+      every shortcut-list action (not the chord chart ones), searched by name or group, with its
+      keys shown. Expression text: with nothing typed it lists everything (chord roots first, then dynamics, octave signs, key signatures, directions; the highlighted entry's action is named under the list, as in GP8); a typed term becomes a dynamic (ff), a chord name (G maj, Bbm7),
+      a key signature (G maj, E min), an octave sign (8va), a direction (Coda, D.S. al Fine) or,
+      failing those, text above the beat; chord and key both show for "G maj". The guide gives no
+      preset list and its Windows shortcuts aren't stated (we use Ctrl+Alt+E and Ctrl+Shift+E by
+      analogy with the Mac ones). Not tried by hand in the running app. Not done: clefs.
 - [ ] **Drum view** instrument view (fretboard and keyboard views already exist).
 - [~] **MIDI capture**: note entry from a MIDI keyboard, beat by beat; choice of MIDI input and
       output devices. Started 2026-11-22, plan in `midi-design.md`: output devices, MIDI
@@ -63,11 +70,23 @@ exist under another name. Check before starting work on one, and tick items off 
       The record's last four bytes don't follow multi-rest (3 with all on and with all off, 1
       with track 1 only); probably which view was open when saved, a guess. We always write 0,
       which Guitar Pro 8 accepts. Not written to GPX.
-      Not tried by eye in the app.
-- [ ] **File password protection**: lock a file; lock icon on its tab; unlock prompt.
-- [ ] **Numbered (jianpu) notation**: option exists but is greyed out (`src/app/side.rs`).
+      Verified by eye in the app (confirmed 2026-11-23).
+- [~] **Numbered (jianpu) notation**: added 2026-11-23. The "2" button in the track's staff
+      switches (Track settings) shows a lane under the other staves (`draw_num_beat` in
+      `src/score/draw.rs`, saved in .gc as `show_num`). Degrees count from the key's tonic (a
+      minor key uses its relative major), sounding pitch (so a guitar reads an octave lower than its standard staff, as in Guitar Pro 8: checked 2026-11-23 against one note), dots above or
+      below for octaves, underlines for eighths and shorter (joined within a beam group),
+      dashes for half and whole notes, dots for dotted notes, 0 for rests. Not done: ties,
+      tuplet numbers, grace notes, bar lines through the lane, a lane for voices 2 to 4, a
+      numbered-only view, drums; not read from or written to .gp/.gpx/.gp5 files. Chords
+      taller than two notes overflow the lane. Compared with Guitar Pro 8 by eye and found
+      matching (confirmed 2026-11-23).
 - [ ] **Import TablEdit and Power Tab**: menu items exist but are greyed out (formats not
       publicly documented).
+
+## Not doing
+
+- **File password protection** (decided 2026-11-23).
 
 ## Probably never (sound production, per the README)
 
