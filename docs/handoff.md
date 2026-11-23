@@ -27,8 +27,9 @@ going).
   minimum was two rows).
 - **AI Assistant panel** (`src/app/aipanel.rs`, `ai::ask` in `src/app/ai.rs`): a docked
   conversation with Ollama or Claude. Return sends (Shift+Return for a new line), there is no
-  Send button, the typing box uses 18 pt text (`INPUT_TEXT_SIZE`), and "What will be sent" shows
-  the exact text. It answers in words and never edits the score.
+  Send button, and the typing box uses 15 pt text (`INPUT_TEXT_SIZE`). The "What will be sent"
+  preview was removed in 0.10.0 at the owner's request. It answers in words and never edits the
+  score.
 - **Layout changes made to match GP8:** files open at 100% zoom (was 110%), mouse-wheel scrolling
   is twice as fast (`line_scroll_speed` 80 in `setup_style`), and note columns are narrower
   (`col_width` in `src/score.rs`) so Morning Walk's first three bars share a line.
@@ -58,21 +59,35 @@ going).
 1. **AI, step one of the build order** in `docs/ai-design.md`: lyrics syllable splitting, then
    chord suggestions for chord charts. These need a preview-and-apply step (one undoable
    edit) that the panel doesn't have yet. The open questions at the end of that document are
-   still open: default provider, where "what is sent" lives, a spending limit, saving answers,
+   still open: default provider, a spending limit, saving answers,
    and key storage outside Windows and macOS.
 2. **Still missing from Guitar Pro 8** (see the gap list): Audio Note Settings (Shift+F),
    instrument change automation, Drum view, Design mode, and importing TablEdit and Power Tab.
    File password protection was decided against.
 3. Try Claude with a real key and fix whatever shows up.
-4. **Split score view** (an idea, not started): a movable splitter in the score view so two
-   parts of a large score show at once. Off by default, switched on and off from the View menu
-   (and the command palette) and remembered in prefs. `score()` in `src/app/bottom.rs` lays the
-   score out once and draws it in one `ScrollArea` (`id_salt("score")`); a split would be two
-   scroll areas over that same layout, so the cost is mostly painting. The drawing and
-   interaction code inside that closure (drag select, click to place the cursor, hit tests,
-   cursor and play position) would move into a helper that takes a pane index. Open choices:
-   top/bottom, side by side or switchable; which pane follows the cursor and playback (suggest
-   the one last clicked); zoom and view mode shared at first.
+4. **Split score view** (in progress): a movable splitter in the score view so two parts of a
+   large score show at once. Off by default, switched on and off from the View menu (and the
+   command palette) and remembered in prefs. Decided: top and bottom only, and only in the
+   vertical-scrolling layouts (Page - Vertical and Screen - Vertical). Both panes then have the
+   same width, so one layout serves both. In Grid and the Horizontal layouts the menu item is
+   disabled with a note; the setting is kept, so it returns when you go back to a vertical
+   layout. (Grid already shows several pages; a left/right split for the Horizontal layouts
+   would be a separate feature.) `score()` in `src/app/bottom.rs` lays the score out once and
+   draws it in one `ScrollArea`; a split is two scroll areas over that same layout. The
+   drawing and interaction code (drag select, click to place the cursor, hit tests, cursor and
+   play position) moves into a helper that takes a pane index. The pane last clicked follows
+   the cursor and playback; zoom and view mode are shared.
+5. **AI proposal cards, as in Dunbrec** (an idea, not started): let the assistant suggest score
+   changes that appear as a card under its answer, with a preview and Apply / Dismiss; nothing
+   changes until Apply. Dunbrec does this in `crates/dunbrec-app/src/assistant.rs` (`split_blocks`,
+   `proposal()`, `card()`) and `edits.rs`: the prompt lists fenced block tags, each reply is split
+   into prose and code, a tagged block is parsed into an `Edit` (a parse error is shown instead
+   of a card), and Apply goes back to the app as a command. Here the prompt in `ai.rs` currently
+   says the assistant can't change the score, the panel only shows plain text, and every edit
+   already goes through `App::edit`, so Apply would be undoable. This is the "preview and apply
+   step" that item 1 above needs. The decision to make first is which edit types the model may
+   propose (a small one to start: replace a bar range with ASCII tab, which `textmidi.rs`
+   already reads; later tuning, tempo, section markers).
 
 ## How we work here
 
