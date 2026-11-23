@@ -359,6 +359,8 @@ pub fn setup_fonts(ctx: &egui::Context) -> bool {
 
 pub fn setup_style(ctx: &egui::Context) {
     ctx.set_theme(egui::Theme::Dark);
+    // egui's default (40 points per wheel notch) feels sluggish; this applies to every scroll area.
+    ctx.options_mut(|o| o.input_options.line_scroll_speed = 80.0);
     ctx.style_mut_of(egui::Theme::Dark, |s| {
         s.spacing.button_padding = egui::vec2(8.0, 4.0);
         s.visuals.panel_fill = egui::Color32::from_rgb(36, 38, 43);
