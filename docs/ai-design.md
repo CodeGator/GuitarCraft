@@ -6,8 +6,12 @@ for each), and, the same day, the **AI Assistant panel** (`src/app/aipanel.rs`, 
 pane; `ai::ask` sends a conversation to Ollama's `/api/chat` or Claude's messages call on a
 background thread, not streamed). The panel answers in words only: provider choice, an
 optional "include the bars at the cursor / selected bars" box (ASCII tablature, key and time
-signature, no title or artist, at most 16 bars), "What will be sent", Return to send (Shift+Return for a new line; no Send button),
-Stop, New chat. Tested with unit tests and one live Ollama question
+signature, no title or artist, at most 16 bars, plus facts the program works out from the notes:
+the notes used, the scales that contain them and the chord on each beat, `src/app/aifacts.rs`),
+Return to send (Shift+Return for a new line; no Send button), Stop, New chat (at the top of the
+panel). The "What will be sent" preview was built and then removed at the owner's request.
+Ollama can be kept loaded: the model is loaded when the panel shows it, and kept for 30 minutes
+(Preferences > AI > Keep model loaded). Tested with unit tests and one live Ollama question
 (`cargo test ollama_answers_live -- --ignored`); not yet tried with a real Claude key. This is
 the base the ideas below build on: the next step is idea 1 or 2, with the preview and apply
 steps. This document lists what the AI could be used for, picks a few to build first, and sets
@@ -29,10 +33,13 @@ the rules every one of them follows.
 
 ## Rules for every feature
 
-1. **Nothing is sent until the person asks.** No background calls, no sending on open or on
-   save. A feature shows what it is about to send (a "Show what is sent" line) and which
-   provider gets it. Ollama on the same computer sends nothing off it; Claude does, and the
-   window says so.
+1. **Nothing of the person's is sent until they ask.** No background calls that carry their
+   music or text, no sending on open or on save. The window says which provider gets a question
+   ("Goes to ..."). Ollama on the same computer sends nothing off it; Claude does, and the
+   window says so. (The earlier idea of a "Show what is sent" line was dropped by the owner.)
+   One exception, for Ollama only: loading the model in the background when the panel shows
+   it, so the first answer is faster. That request names the model and the context size and
+   carries nothing else, and Preferences > AI > Keep model loaded turns it off.
 2. **Send the least.** The selection or the current bar range by default, never the whole song
    unless asked. File names, paths and the person's details (Preferences > Misc) are never
    included.
@@ -153,15 +160,13 @@ Ranked by how well they fit the rules above. Effort is small (days), medium or l
 2. **Lyrics syllables** (idea 1): the smallest end-to-end feature, to settle the preview,
    apply, cancel and error pieces.
 3. **Chord suggestions** (idea 2): first use of a preview inside the score area.
-4. **Ask about this passage** (idea 3): the side panel and the "what is sent" line.
+4. **Ask about this passage** (idea 3): the side panel, built (with the facts from `aifacts.rs`).
 5. **Palette mode** (idea 4).
 6. README, in-app help, Preferences note ("asked of them" wording), gap doc.
 
 ## Open questions
 
 - **Should Claude be the default when both are on,** or should every tool ask each time?
-- **Where does the "what is sent" line live:** in each tool, or in one shared window all AI
-  requests pass through (simpler to keep honest, one more click)?
 - **Is a spending limit wanted in the app,** or is the size warning enough?
 - **Do the answers need to be saved** with the song (a note on the bar) or are they throwaway?
 - **Are the macOS and Linux key stores in scope** for the first release? Today only Windows

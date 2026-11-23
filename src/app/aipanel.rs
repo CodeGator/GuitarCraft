@@ -1,8 +1,7 @@
 //! The AI Assistant panel: a conversation with Ollama or Claude, docked like the other panels.
 //! Nothing is sent until the person presses Return (Shift+Return adds a line; there is no Send
-//! button). They choose whether the bars at the cursor (or
-//! the selected ones) go along as ASCII tablature, and "What will be sent" shows exactly what
-//! leaves the program. The assistant only answers in words: it never changes the score.
+//! button). They choose whether the bars at the cursor (or the selected ones) go along as
+//! ASCII tablature. The assistant only answers in words: it never changes the score.
 //! See `docs/ai-design.md`.
 
 use super::ai::{self, Ask, Pending, Provider, Turn};
@@ -11,7 +10,7 @@ use crate::model::*;
 use egui::{Frame, Margin, RichText, Ui};
 
 /// The size of the text in the box the question is typed in (the usual size is about 13).
-const INPUT_TEXT_SIZE: f32 = 18.0;
+const INPUT_TEXT_SIZE: f32 = 15.0;
 
 /// The most bars sent at once, so a question stays small enough for a modest model.
 const MAX_BARS: usize = 16;
@@ -27,8 +26,9 @@ pub struct AiPanel {
     pub choice: Option<Provider>,
     /// Send the bars at the cursor along with the question.
     pub with_bars: bool,
-    /// "What will be sent" is open.
-    pub show_sent: bool,
+    /// The Ollama model last loaded in the background (its address, name and context size), and
+    /// when, so it is loaded again only if something changed or it has had time to unload.
+    warmed: Option<(String, std::time::Instant)>,
     /// A question that hasn't been answered yet.
     pending: Option<Pending>,
     /// Why the last question got no answer.
@@ -116,7 +116,22 @@ impl App {
             mb.num,
             mb.den
         );
-        Some((a, b, format!("{head}\n\n{}", tab.trim())))
+        // What the program works out from the notes (voice 1, which is what the tablature shows).
+        let beats: Vec<super::aifacts::BeatNotes> = track.bars[a..=b]
+            .iter()
+            .enumerate()
+            .flat_map(|(i, bar)| {
+                bar.beats.iter().enumerate().map(move |(j, beat)| (a + i + 1, j + 1, beat))
+            })
+            .map(|(bar, beat, bt)| super::aifacts::BeatNotes {
+                bar,
+                beat,
+                pitches: bt.notes.iter().filter(|n| !n.dead).map(|n| track.pitch(n)).collect(),
+            })
+            .collect();
+        let facts = super::aifacts::passage_facts(&beats);
+        let text = if facts.is_empty() { format!("{head}\n\n{}", tab.trim()) } else { format!("{head}\n\n{}\n\n{facts}", tab.trim()) };
+        Some((a, b, text))
     }
 
     /// Where a question to this provider goes, in words.
@@ -133,6 +148,22 @@ impl App {
     /// The text that goes with the question this time, if the person asked for the bars.
     fn ai_context(&self, panel: &AiPanel) -> Option<String> {
         if panel.with_bars { self.ai_bars().map(|b| b.2) } else { None }
+    }
+
+    /// Loads the Ollama model in the background when the assistant is showing it, so the first
+    /// question doesn't wait for the load. Once per model and context size, and again only after
+    /// it has had time to unload. Nothing of the person's is sent.
+    fn ai_warm(&self, ctx: &egui::Context, p: &mut AiPanel, current: Option<&(Provider, String)>) {
+        let Some((Provider::Ollama, model)) = current else { return };
+        if !self.prefs.ollama_warm || model.trim().is_empty() {
+            return;
+        }
+        let key = format!("{}|{}|{}", self.prefs.ollama_url.trim(), model.trim(), self.prefs.ollama_context);
+        let fresh = p.warmed.as_ref().is_some_and(|(k, at)| *k == key && at.elapsed() < ai::OLLAMA_REWARM);
+        if !fresh {
+            ai::warm_ollama(ctx, &self.prefs.ollama_url, model.trim(), self.prefs.ollama_context);
+            p.warmed = Some((key, std::time::Instant::now()));
+        }
     }
 
     /// Sends what is in the box.
@@ -161,11 +192,16 @@ impl App {
             provider,
             ollama_url: self.prefs.ollama_url.clone(),
             ollama_context: self.prefs.ollama_context,
+            ollama_keep: self.prefs.ollama_warm,
             model,
             key: if provider == Provider::Claude { ai::key::get().unwrap_or_default() } else { String::new() },
             system: ai::SYSTEM.to_string(),
             turns,
         };
+        // A question keeps the model loaded too, so the timer for loading it again starts now.
+        if let Some((_, at)) = panel.warmed.as_mut() {
+            *at = std::time::Instant::now();
+        }
         panel.pending = Some(ai::ask(ctx, ask));
         panel.input.clear();
         panel.error = None;
@@ -178,14 +214,21 @@ impl App {
         p.poll();
         let providers = self.ai_providers();
         let current = providers.iter().find(|(q, _)| Some(*q) == p.choice).or(providers.first()).cloned();
+        self.ai_warm(&ctx, &mut p, current.as_ref());
 
+        // "New chat" lives at the top, where a small panel can't push it out of view.
+        let can_clear = !p.turns.is_empty() && !p.busy();
+        let mut new_chat = false;
         egui::Panel::top("ai-top").frame(Frame::new().inner_margin(Margin::symmetric(10, 8))).resizable(false).show(ui, |ui| {
             match &current {
                 None => {
                     ui.label(RichText::new("No AI provider is switched on.").color(egui::Color32::from_rgb(235, 170, 90)));
-                    if ui.button("Open Preferences > AI").clicked() {
-                        self.open_prefs_ai();
-                    }
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.button("Open Preferences > AI").clicked() {
+                            self.open_prefs_ai();
+                        }
+                        new_chat |= ui.add_enabled(can_clear, egui::Button::new("New chat")).clicked();
+                    });
                 }
                 Some((now, model)) => {
                     ui.horizontal_wrapped(|ui| {
@@ -206,11 +249,17 @@ impl App {
                         if !model.trim().is_empty() {
                             ui.label(RichText::new(model).weak());
                         }
+                        new_chat |= ui.add_enabled(can_clear, egui::Button::new("New chat")).clicked();
                     });
                     ui.label(RichText::new(format!("Goes to {}.", self.ai_destination(*now))).small().weak());
                 }
             }
         });
+
+        if new_chat {
+            p.turns.clear();
+            p.error = None;
+        }
 
         egui::Panel::bottom("ai-bottom").frame(Frame::new().inner_margin(Margin::same(10))).resizable(false).show(ui, |ui| {
             if let Some(e) = &p.error {
@@ -225,27 +274,9 @@ impl App {
                 None => "Include the bars of this track".to_string(),
             };
             ui.add_enabled(bars.is_some(), egui::Checkbox::new(&mut p.with_bars, label))
-                .on_hover_text("Sent as ASCII tablature with the key and time signature. The title, artist and file name are not sent.")
+                .on_hover_text("Sent as ASCII tablature with the key and time signature, and the notes, scales and chords GuitarCraft finds in them. The title, artist and file name are not sent.")
                 .on_disabled_hover_text("Only tracks with strings can be sent as tablature");
-            if let Some(cur) = &current {
-                let open = p.show_sent;
-                let head = egui::CollapsingHeader::new("What will be sent").open(Some(open)).show(ui, |ui| {
-                    ui.label(RichText::new(format!("To: {}", self.ai_destination(cur.0))).small());
-                    egui::ScrollArea::vertical().id_salt("ai-sent").max_height(150.0).show(ui, |ui| {
-                        let mut text = ai::SYSTEM.to_string();
-                        if let Some(c) = self.ai_context(&p) {
-                            text.push_str("\n\n");
-                            text.push_str(&c);
-                        }
-                        text.push_str(&format!("\n\nQuestion: {}", p.input.trim()));
-                        ui.add(egui::Label::new(RichText::new(text).monospace().small()).selectable(true));
-                    });
-                });
-                if head.header_response.clicked() {
-                    p.show_sent = !open;
-                }
-            }
-            let id = ui.make_persistent_id("ai-input");
+            let id =ui.make_persistent_id("ai-input");
             // Return sends; Shift+Return adds a line. Taken before the box sees it.
             let enter = ui.memory(|m| m.has_focus(id))
                 && ui.input_mut(|i| {
@@ -258,7 +289,11 @@ impl App {
                     .font(egui::FontId::proportional(INPUT_TEXT_SIZE))
                     .desired_rows(4)
                     .desired_width(f32::INFINITY)
-                    .hint_text("Ask about the music, or about GuitarCraft. Press Return to send, Shift+Return for a new line."),
+                    .hint_text(
+                        // Clearly greyer than typed text, so the two can't be mixed up.
+                        RichText::new("Ask about the music, or about GuitarCraft. Press Return to send, Shift+Return for a new line.")
+                            .color(egui::Color32::from_gray(110)),
+                    ),
             );
             ui.horizontal(|ui| {
                 if p.busy() {
@@ -271,12 +306,6 @@ impl App {
                 } else if enter && !p.input.trim().is_empty() {
                     self.ai_send(&ctx, &mut p);
                 }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.add_enabled(!p.turns.is_empty() && !p.busy(), egui::Button::new("New chat")).clicked() {
-                        p.turns.clear();
-                        p.error = None;
-                    }
-                });
             });
         });
 

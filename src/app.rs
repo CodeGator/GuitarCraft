@@ -5,6 +5,7 @@ mod about;
 mod actions;
 mod addtrack;
 mod ai;
+mod aifacts;
 mod aipanel;
 mod batch;
 #[cfg(test)]

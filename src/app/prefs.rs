@@ -145,6 +145,9 @@ pub struct Prefs {
     /// The context size asked of Ollama (`num_ctx`), in tokens: how much text the model reads
     /// at once. Larger sizes need more memory and run slower.
     pub ollama_context: u32,
+    /// Load the Ollama model when the assistant opens and keep it in memory between questions,
+    /// so the first answer doesn't wait for it to load.
+    pub ollama_warm: bool,
     /// Claude is switched on as an AI provider.
     pub claude_on: bool,
     /// The Claude model to use.
@@ -191,6 +194,7 @@ impl Default for Prefs {
             ollama_url: super::ai::OLLAMA_URL.into(),
             ollama_model: String::new(),
             ollama_context: super::ai::OLLAMA_CONTEXT,
+            ollama_warm: true,
             claude_on: false,
             claude_model: super::ai::CLAUDE_MODEL.into(),
             shortcuts: Default::default(),
@@ -642,6 +646,7 @@ impl App {
                 p.ollama_url = d.ollama_url;
                 p.ollama_model = d.ollama_model;
                 p.ollama_context = d.ollama_context;
+                p.ollama_warm = d.ollama_warm;
                 p.claude_on = d.claude_on;
                 p.claude_model = d.claude_model;
             }
@@ -808,6 +813,10 @@ impl App {
             }
         });
         note(ui, "How much text the model reads at once. Larger sizes use more memory and run slower.");
+        row_w(ui, LABEL_W, "Keep model loaded:", |ui| {
+            switch(ui, &mut p.ollama_warm);
+        });
+        note(ui, "Loads the model when the assistant opens and keeps it in memory for 30 minutes, so the first answer is faster. Uses memory while it is loaded.");
         if test_row(ui, &dlg.ollama_test) {
             dlg.ollama_test.test_ollama(&ctx, &p.ollama_url);
         }
