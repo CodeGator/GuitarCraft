@@ -27,14 +27,21 @@ fn config_file() -> Option<PathBuf> {
     Some(app_dir()?.join("recent.json"))
 }
 
+/// The recent files that are still there. A file that has been moved, deleted or renamed (a
+/// chord chart saved under an older extension, say) isn't offered any more.
+pub fn only_existing(list: Vec<PathBuf>) -> Vec<PathBuf> {
+    list.into_iter().filter(|p| p.exists()).collect()
+}
+
 pub fn load_recent() -> Vec<PathBuf> {
     let Some(f) = config_file() else {
         return vec![];
     };
-    std::fs::read(&f)
+    let list = std::fs::read(&f)
         .ok()
         .and_then(|d| serde_json::from_slice::<Vec<PathBuf>>(&d).ok())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    only_existing(list)
 }
 
 pub fn save_recent(list: &[PathBuf]) {
@@ -303,6 +310,32 @@ pub fn template(k: usize) -> Song {
     s
 }
 
+/// The names to list recent files under: the file name without its extension, as before, but
+/// where two files would read the same, the extension is added, and where they still would, the
+/// folder they are in, so each can be told from the other.
+pub(super) fn recent_labels(files: &[PathBuf]) -> Vec<String> {
+    let lower = |s: String| s.to_lowercase();
+    let stem = |p: &PathBuf| p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let full = |p: &PathBuf| p.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let stems: Vec<String> = files.iter().map(stem).collect();
+    let fulls: Vec<String> = files.iter().map(full).collect();
+    files
+        .iter()
+        .enumerate()
+        .map(|(i, p)| {
+            let same = |names: &[String]| names.iter().filter(|n| lower((*n).clone()) == lower(names[i].clone())).count() > 1;
+            if !same(&stems) {
+                return stems[i].clone();
+            }
+            if !same(&fulls) {
+                return fulls[i].clone();
+            }
+            let folder = p.parent().and_then(|d| d.file_name()).map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+            if folder.is_empty() { fulls[i].clone() } else { format!("{}  ({folder})", fulls[i]) }
+        })
+        .collect()
+}
+
 enum Item {
     Recent(PathBuf),
     Template(usize),
@@ -315,18 +348,7 @@ impl App {
     fn home_items(&self) -> Vec<(String, Item)> {
         let q = self.home_search.to_lowercase();
         let mut v: Vec<(String, Item)> = match self.home_tab {
-            0 => self
-                .recent
-                .iter()
-                .map(|p| {
-                    (
-                        p.file_stem()
-                            .map(|s| s.to_string_lossy().to_string())
-                            .unwrap_or_default(),
-                        Item::Recent(p.clone()),
-                    )
-                })
-                .collect(),
+            0 => recent_labels(&self.recent).into_iter().zip(self.recent.iter()).map(|(name, p)| (name, Item::Recent(p.clone()))).collect(),
             1 => TEMPLATES
                 .iter()
                 .enumerate()
@@ -682,5 +704,49 @@ impl App {
         if open_chart {
             self.request(Pending::NewChart);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn paths(list: &[&str]) -> Vec<PathBuf> {
+        list.iter().map(PathBuf::from).collect()
+    }
+
+    #[test]
+    fn names_that_differ_are_listed_as_before() {
+        assert_eq!(recent_labels(&paths(&["a/One.gp", "b/Two.gp"])), vec!["One", "Two"]);
+    }
+
+    #[test]
+    fn the_same_name_in_two_formats_gets_its_extension() {
+        let l = recent_labels(&paths(&["s/Morning Walk.gp", "s/Morning Walk.musicxml", "s/Other.gp"]));
+        assert_eq!(l, vec!["Morning Walk.gp", "Morning Walk.musicxml", "Other"]);
+    }
+
+    #[test]
+    fn the_same_file_name_in_two_folders_gets_its_folder() {
+        let l = recent_labels(&paths(&["samples/Morning Walk.gp", "Desktop/Morning Walk.gp", "samples/Morning Walk.musicxml"]));
+        assert_eq!(l, vec!["Morning Walk.gp  (samples)", "Morning Walk.gp  (Desktop)", "Morning Walk.musicxml"]);
+    }
+
+    #[test]
+    fn capitals_do_not_make_names_different() {
+        let l = recent_labels(&paths(&["a/song.gp", "b/Song.gp"]));
+        assert_eq!(l, vec!["song.gp  (a)", "Song.gp  (b)"]);
+    }
+
+    #[test]
+    fn files_that_are_gone_are_not_offered_as_recent() {
+        let dir = std::env::temp_dir().join(format!("gc-recent-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let there = dir.join("Here.gp");
+        std::fs::write(&there, b"x").unwrap();
+        let gone = dir.join("Gone.gp");
+        assert_eq!(only_existing(vec![gone.clone(), there.clone()]), vec![there.clone()]);
+        assert!(only_existing(vec![gone]).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

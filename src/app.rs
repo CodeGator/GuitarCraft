@@ -1517,6 +1517,14 @@ impl App {
             self.refuse("That file is already open.");
             return;
         }
+        // Gone since the list was made (deleted or moved while GuitarCraft was open): say so, and
+        // stop offering it.
+        if !p.exists() {
+            self.recent.retain(|x| full_path(x) != p);
+            home::save_recent(&self.recent);
+            self.status = notice::failed("That file is no longer there, so it was removed from the recent files.".to_string());
+            return;
+        }
         if crate::chart::is_chart_path(&p) {
             self.open_chart_path(p);
             return;
