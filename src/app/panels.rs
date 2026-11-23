@@ -53,8 +53,28 @@ impl App {
                         ui.selectable_value(&mut self.zoom, z, format!("{}%", (z * 100.0) as i32));
                     }
                 });
+            // The page layout, as in View (the order of `view_mode`): icons only, with the name
+            // as a tip, so the list stays small.
+            let mode = usize::from(self.view_mode).min(super::prefs::LAYOUTS.len() - 1);
+            let combo = egui::ComboBox::from_id_salt("view-mode").width(48.0).selected_text("").show_ui(ui, |ui| {
+                ui.spacing_mut().item_spacing.y = 2.0;
+                for (v, label) in super::prefs::LAYOUTS.iter().enumerate() {
+                    if super::icons::icon_toggle(ui, v == mode, label, super::icons::LAYOUT_ICONS[v]).clicked() {
+                        self.view_mode = v as u8;
+                        ui.close();
+                    }
+                }
+            });
+            // The chosen layout's icon in the closed box.
+            let at = combo.response.rect;
+            super::icons::LAYOUT_ICONS[mode](
+                ui.painter(),
+                Rect::from_center_size(Pos2::new(at.left() + 14.0, at.center().y), Vec2::splat(16.0)),
+                Color32::from_gray(235),
+            );
+            combo.response.on_hover_text(format!("Layout: {}", super::prefs::LAYOUTS[mode]));
             ui.add_space(6.0);
-            if icon_toggle(ui, false, &super::shortcuts::tip("Undo", super::shortcuts::Act::Undo), icon_undo).clicked() {
+            if icon_toggle(ui, false, &super::shortcuts::tip("Undo",super::shortcuts::Act::Undo), icon_undo).clicked() {
                 self.do_undo();
             }
             if icon_toggle(ui, false, &super::shortcuts::tip("Redo", super::shortcuts::Act::Redo), icon_redo).clicked() {

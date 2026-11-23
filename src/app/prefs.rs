@@ -68,7 +68,7 @@ const BUFFERS: [Option<u32>; 6] = [None, Some(128), Some(256), Some(512), Some(1
 /// The page layouts, as in View (the order of `App::view_mode`).
 pub const FORCED_STYLES: [&str; 4] = ["Standard", "Rock", "Classic", "Jazz"];
 pub const FORCED_NOTATIONS: [&str; 3] = ["Standard notation and tablature", "Standard notation only", "Tablature only"];
-const LAYOUTS: [&str; 5] = ["Page - Vertical", "Page - Horizontal", "Page - Grid", "Screen - Vertical", "Screen - Horizontal"];
+pub const LAYOUTS: [&str; 5] = ["Page - Vertical", "Page - Horizontal", "Page - Grid", "Screen - Vertical", "Screen - Horizontal"];
 
 impl Prefs {
     /// The checks that are on, as `model::ERR_*` bits.
