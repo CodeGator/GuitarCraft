@@ -15,6 +15,7 @@ mod chartui;
 mod chartxpose;
 mod chordscales;
 mod dock;
+mod expression;
 mod dockui;
 mod float;
 mod chordedit;

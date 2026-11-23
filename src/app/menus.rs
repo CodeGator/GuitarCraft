@@ -820,6 +820,14 @@ impl App {
             self.cmd_text.clear();
             ui.close();
         }
+        if item_if(ui, song, "Show Action List", &sc(Act::ActionList)) {
+            self.open_palette_with("@");
+            ui.close();
+        }
+        if item_if(ui, song, "Show Expression Text", &sc(Act::ExpressionText)) {
+            self.open_palette_with(">");
+            ui.close();
+        }
     }
 
     fn sound_menu(&mut self, ui: &mut Ui) {

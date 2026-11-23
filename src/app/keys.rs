@@ -208,6 +208,8 @@ impl App {
                 self.cmd_open = !self.cmd_open;
                 self.cmd_text.clear();
             }
+            ActionList => self.open_palette_with("@"),
+            ExpressionText => self.open_palette_with(">"),
             GoTo => self.goto_open = true,
             CheckBars => self.check_bar_duration(),
             DeleteNote if self.std_cursor.is_some() => self.std_delete(),
@@ -474,7 +476,7 @@ impl App {
 }
 
 /// Actions whose keys work while a text field on the score has the keyboard.
-const WHILE_TYPING: [Act; 9] = [Act::Save, Act::SaveAs, Act::Open, Act::Browse, Act::New, Act::NewChart, Act::Close, Act::Prefs, Act::CommandPalette];
+const WHILE_TYPING: [Act; 11] = [Act::Save, Act::SaveAs, Act::Open, Act::Browse, Act::New, Act::NewChart, Act::Close, Act::Prefs, Act::CommandPalette, Act::ActionList, Act::ExpressionText];
 
 /// The modifiers of a copy, cut or paste event: Ctrl, and Shift if it is held.
 fn clip_mods(shift: bool) -> Modifiers {

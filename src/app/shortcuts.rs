@@ -128,7 +128,7 @@ acts! {
     New, NewChart, Open, Browse, Close, CloseAll, Save, SaveAs, Print, Prefs, Quit,
     // Editing
     Undo, Redo, Cut, Copy, Paste, AllTrackCut, AllTrackCopy, SpecialPaste, SelectAll,
-    CommandPalette, GoTo, CheckBars, DeleteNote, DeleteBeats, InsertBeat, CopyLastBeat,
+    CommandPalette, ActionList, ExpressionText, GoTo, CheckBars, DeleteNote, DeleteBeats, InsertBeat, CopyLastBeat,
     // Moving around
     MoveRight, MoveLeft, StringUp, StringDown, BarStart, BarEnd, NextBar, PrevBar,
     FirstBar, LastBar, ForwardFourBars, BackFourBars, NextStaff, PrevStaff,
@@ -228,6 +228,8 @@ pub const ACTIONS: &[Action] = &[
     a(SpecialPaste, "Special paste", G::Edit, Score, &[ctrl_shift(Key::V)]),
     a(SelectAll, "Select all", G::Edit, Score, &[ctrl(Key::A)]),
     a(CommandPalette, "Command palette", G::Edit, Score, &[ctrl(Key::E)]),
+    a(ActionList, "Action list", G::Edit, Score, &[ctrl_alt(Key::E)]),
+    a(ExpressionText, "Expression text", G::Edit, Score, &[ctrl_shift(Key::E)]),
     a(GoTo, "Go to a bar", G::Edit, Score, &[ctrl(Key::G)]),
     a(CheckBars, "Check bar duration", G::Edit, Score, &[key(Key::F4)]),
     a(DeleteNote, "Delete the note", G::Edit, Score, &[key(Key::Delete)]).also(&[key(Key::Backspace)]),
