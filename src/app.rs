@@ -510,6 +510,11 @@ impl App {
                     app.play_beat = Some((0, 3));
                     app.play_tick = Some((0, 1.6 * crate::model::QUARTER as f32));
                 }
+                "numbers" => {
+                    // The numbered lane on every track, with a tie, a grace note, a three-note chord
+                    // and a triplet in bar 2 of the first track, for checking.
+                    app.song.numbers_check();
+                }
                 "short" => {
                     // Bar 1 one beat short and bar 2 half a beat long, for checking.
                     let t = &mut app.song.tracks[0];

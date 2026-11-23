@@ -108,3 +108,12 @@ geometric middle):
 Not known yet: the frequencies of the Low and High shelves (GuitarCraft guesses 100 Hz and
 8 kHz). Only the sound in GuitarCraft depends on these. Files store knob positions, so they
 open the same in Guitar Pro either way.
+
+## Files made by GuitarCraft, for comparing with Guitar Pro 8
+
+Not read by any test. Open each in both programs and compare.
+
+| File | What it holds | Made with |
+|---|---|---|
+| `Morning Walk.gp` | The demo song, as GuitarCraft saves it. | `guitarcraft --convert demo "tests/fixtures/Morning Walk.gp"` |
+| `Morning Walk - numbered check.gp` | The demo with bar 2 of the Steel Guitar changed: beat 2 tied to beat 1, a grace note on beat 3, a three-note chord on beat 4, a triplet on beats 5 to 7 (and one more eighth to keep the bar full). Switch the numbered lane on for the Steel Guitar in both programs (the file doesn't carry it). | `guitarcraft --convert demo:numbers "tests/fixtures/Morning Walk - numbered check.gp"` |

@@ -52,14 +52,35 @@ pub struct Geom {
     pub lane_top: f32,
     pub tab_top: f32,
     pub rhythm_top: f32,
-    /// Numbered (jianpu) notation: a lane under the other staves.
+    /// Numbered (jianpu) notation: a lane between the notation staff and the tablature.
     pub num: bool,
     pub num_top: f32,
+    /// Height of one numbered lane (one per voice in use, each tall enough for the track's
+    /// biggest chord and, if it has tuplets, their numbers) and where its digits sit in it.
+    pub num_lane: f32,
+    pub num_base: f32,
+    pub num_lanes: usize,
     pub bottom: f32,
     /// Keyboards: a second (bass clef) staff joined by a brace.
     pub grand: bool,
     pub std2_top: f32,
     pub clef: Clef,
+}
+
+/// What a track's numbered lanes must hold: how many voices are in use (one lane each) and whether
+/// any beat is a tuplet (its bracket needs room above the digits).
+fn num_extent(track: &Track) -> (usize, bool) {
+    let (mut lanes, mut tuplets) = (1, false);
+    for bar in &track.bars {
+        for v in 0..VOICES {
+            if !bar.voice_used(v) {
+                continue;
+            }
+            lanes = lanes.max(v + 1);
+            tuplets |= bar.voice(v).iter().any(|b| b.tuplet > 0);
+        }
+    }
+    (lanes, tuplets)
 }
 
 /// Which staves a track shows (notation, tablature) for the chosen view. Only
@@ -103,6 +124,19 @@ impl Geom {
                 y = std2_top + 4.0 * ls + 34.0 * z;
             }
         }
+        // Numbered (jianpu) lanes go between the notation staff and the tablature, as in Guitar Pro 8.
+        let num = track.show_num && notation != Notation::TabOnly && track.clef() != Clef::Percussion;
+        // Starts inside the gap under the staff (where dynamics go), which is roomier than GP8's.
+        let num_top = y - 18.0 * z;
+        let (mut num_lane, mut num_base, mut num_lanes) = (34.0 * z, 13.0 * z, 1);
+        if num {
+            let (lanes, tuplets) = num_extent(track);
+            let pad = if tuplets { 12.0 * z } else { 0.0 };
+            num_lane = 34.0 * z + pad;
+            num_base = 13.0 * z + pad;
+            num_lanes = lanes;
+            y = num_top + num_lane * lanes as f32;
+        }
         let lane_top = y;
         let tab_top = lane_top + 18.0 * z;
         let mut rhythm_top = tab_top;
@@ -110,11 +144,6 @@ impl Geom {
             rhythm_top = tab_top + (strings as f32 - 1.0) * ts + 4.0 * z;
             let below = (0..VOICES).any(|v| tab_rhythm_pos(st, v, std) == 1);
             y = rhythm_top + if below { 26.0 } else { 10.0 } * z;
-        }
-        let num = track.show_num && notation != Notation::TabOnly && track.clef() != Clef::Percussion;
-        let num_top = y + 4.0 * z;
-        if num {
-            y = num_top + 34.0 * z;
         }
         Geom {
             z,
@@ -131,6 +160,9 @@ impl Geom {
             rhythm_top,
             num,
             num_top,
+            num_lane,
+            num_base,
+            num_lanes,
             bottom: y + if lyrics_below { 20.0 } else { 4.0 } * z,
             grand,
             std2_top,
@@ -1916,6 +1948,16 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
                     );
                 }
             }
+            // The numbered lanes get the bar line too (heavier at a repeat or the song's end).
+            if g.num {
+                let heavy = mb.repeat_close > 0 || bi + 1 == song.bar_count();
+                // Joins the staff above to the tablature below, so the bar line runs unbroken.
+                let low = if g.grand { g.std2_top } else { g.std_top };
+                let a = if g.std { y0 + low + 4.0 * g.ls } else { y0 + g.num_top };
+                let b = if g.tab { y0 + g.tab_top } else { y0 + g.num_top + g.num_lane * g.num_lanes as f32 };
+                let w = if heavy { 2.5 * z } else { line.width };
+                p.line_segment([Pos2::new(ex, a), Pos2::new(ex, b)], PStroke::new(w, INK));
+            }
             let mut hx = bx + 4.0 * z;
             if bl.clef {
                 for (st, cl) in g.std_staves() {
@@ -1942,6 +1984,17 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
                     }
                 }
                 hx += 28.0 * z;
+            }
+            // The numbered lane says which note is 1: "1=G".
+            if g.num && (bl.clef || bl.key_shown) {
+                p.text(
+                    // In the clef's column at the start of a system, so the key and the repeat sign stay clear.
+                    Pos2::new(if bl.clef { bx + 3.0 * z } else { hx - 4.0 * z }, y0 + g.num_top + g.num_base),
+                    Align2::LEFT_CENTER,
+                    format!("1={}", draw::jianpu_tonic(mb.key)),
+                    bold(11.0 * z),
+                    INK,
+                );
             }
             if bl.key_shown && mb.key != 0 {
                 for (st, cl) in g.std_staves() {

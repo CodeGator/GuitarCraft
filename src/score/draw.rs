@@ -168,7 +168,8 @@ pub fn draw_bar_content(p: &Painter, c: &BarCtx) {
             .find(|b| !b.is_rest())
             .map(|b| b.dynamic)
     } else {
-        None
+        // Guitar Pro 8 doesn't mark the default dynamic (mf) at the start of a track, only a change.
+        Some(Dynamic::default())
     };
     for (bj, beat) in bar.beats.iter().enumerate() {
         let Some(&bx) = c.xs.get(bj) else { continue };
@@ -449,7 +450,7 @@ pub fn draw_bar_content(p: &Painter, c: &BarCtx) {
         if g.tab {
             draw_tab_beat(p, c, beat, bj, x);
         }
-        if g.num && c.voice == 0 {
+        if g.num {
             draw_num_beat(p, c, beat, bj, x, &groups);
         }
     }
@@ -460,6 +461,12 @@ pub fn draw_bar_content(p: &Painter, c: &BarCtx) {
         draw_runs(p, c, bar);
     }
     draw_let_ring(p, c, bar);
+}
+
+/// The note numbered 1 in a key (a minor key uses its relative major), such as "G" for one sharp.
+pub fn jianpu_tonic(key: i8) -> &'static str {
+    const NAMES: [&str; 15] = ["Cb", "Gb", "Db", "Ab", "Eb", "Bb", "F", "C", "G", "D", "A", "E", "B", "F#", "C#"];
+    NAMES[(key.clamp(-7, 7) + 7) as usize]
 }
 
 /// Numbered (jianpu) notation of a pitch: the scale degree (1 to 7) counted from the key's
@@ -477,8 +484,10 @@ pub fn jianpu_degree(pitch: i32, key: i8) -> (u8, i8, i32) {
     (d, a, rel.div_euclid(12))
 }
 
-/// One beat in the numbered lane: the degrees (a chord stacks, lowest at the bottom), a 0 for a
-/// rest, underlines for eighths and shorter, dashes for half and whole notes, a dot for a dotted one.
+/// One beat in the numbered lane, as Guitar Pro 8 draws it: the degree of the note on the beat's
+/// lowest string (a chord shows one digit only), a 0 for a rest, underlines for eighths and shorter, dashes for
+/// half and whole notes, a dot for a dotted one, a small digit for a grace note, an arc over a
+/// slur (hammer-on or legato) and a curved bracket over a tuplet. A tie draws nothing.
 fn draw_num_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32, groups: &[Vec<usize>]) {
     let g = &c.g;
     let z = c.z;
@@ -486,43 +495,71 @@ fn draw_num_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32, groups
     let key = c.song.master[c.bi].key;
     let font = egui::FontId::proportional(13.0 * z);
     let small = egui::FontId::proportional(8.5 * z);
-    let base = c.y0 + g.num_top + 13.0 * z;
+    // Each voice has its own lane.
+    let lane_top = c.y0 + g.num_top + c.voice as f32 * g.num_lane;
+    let base = lane_top + g.num_base;
     let under = beat.dur.index().saturating_sub(2);
-    let mut pitches: Vec<i32> = beat
-        .notes
-        .iter()
-        .map(|n| track.pitch(n) as i32)
-        .collect();
-    pitches.sort_unstable();
-    pitches.dedup();
-    if pitches.is_empty() {
-        p.text(Pos2::new(x, base), Align2::CENTER_CENTER, "0", font.clone(), c.ink);
-    }
-    for (k, &pt) in pitches.iter().enumerate() {
-        let (d, acc, oct) = jianpu_degree(pt, key);
-        let y = base - k as f32 * 15.0 * z;
-        p.text(Pos2::new(x, y), Align2::CENTER_CENTER, d.to_string(), font.clone(), c.ink);
-        if acc != 0 {
-            p.text(
-                Pos2::new(x - 6.5 * z, y - 2.0 * z),
-                Align2::CENTER_CENTER,
-                if acc > 0 { "#" } else { "b" },
-                small.clone(),
-                c.ink,
-            );
-        }
-        let dots = oct.unsigned_abs() as usize;
-        for i in 0..dots {
-            let dy = if oct > 0 {
-                -8.5 * z - i as f32 * 3.5 * z
-            } else {
-                9.0 * z + 3.5 * z * under as f32 + 1.5 * z + i as f32 * 3.5 * z
-            };
-            p.circle_filled(Pos2::new(x, y + dy), 1.1 * z, c.ink);
-        }
-    }
     let ytop = base + 8.5 * z;
     let next_x = c.xs.get(bj + 1).map(|nx| c.o.x + nx);
+    // A chord shows the note on its lowest string, which is the first one Guitar Pro 8 lists.
+    match beat.notes.iter().max_by_key(|n| n.string) {
+        None => {
+            p.text(Pos2::new(x, base), Align2::CENTER_CENTER, "0", font.clone(), c.ink);
+        }
+        Some(n) => {
+            let (d, acc, oct) = jianpu_degree(track.pitch(n) as i32, key);
+            if let Some(f) = n.grace {
+                // A grace note: a small digit just before. Its underline runs into the beat's own.
+                let gp = track.pitch(&Note { fret: f, grace: None, ..n.clone() }) as i32;
+                let (gd, gacc, _) = jianpu_degree(gp, key);
+                let gx = x - 11.0 * z;
+                p.text(Pos2::new(gx, base), Align2::CENTER_CENTER, gd.to_string(), egui::FontId::proportional(9.0 * z), c.ink);
+                if gacc != 0 {
+                    p.text(
+                        Pos2::new(gx - 5.0 * z, base - 2.0 * z),
+                        Align2::CENTER_CENTER,
+                        if gacc > 0 { "#" } else { "b" },
+                        egui::FontId::proportional(6.5 * z),
+                        c.ink,
+                    );
+                }
+                let end = if under > 0 { x - 5.5 * z } else { gx + 3.5 * z };
+                p.line_segment([Pos2::new(gx - 3.5 * z, ytop), Pos2::new(end, ytop)], PStroke::new(1.0 * z, c.ink));
+            }
+            p.text(Pos2::new(x, base), Align2::CENTER_CENTER, d.to_string(), font.clone(), c.ink);
+            if acc != 0 {
+                p.text(
+                    Pos2::new(x - 6.5 * z, base - 2.0 * z),
+                    Align2::CENTER_CENTER,
+                    if acc > 0 { "#" } else { "b" },
+                    small.clone(),
+                    c.ink,
+                );
+            }
+            let dots = oct.unsigned_abs() as usize;
+            for i in 0..dots {
+                let dy = if oct > 0 {
+                    -8.5 * z - i as f32 * 3.5 * z
+                } else {
+                    9.0 * z + 3.5 * z * under as f32 + 1.5 * z + i as f32 * 3.5 * z
+                };
+                p.circle_filled(Pos2::new(x, base + dy), 1.1 * z, c.ink);
+            }
+            // A slur (hammer-on or legato): an arc over this digit and the next note's span.
+            if (n.hammer || n.fx.legato)
+                && let Some(nx) = next_x
+            {
+                let width = c.ws.get(bj + 1).copied().unwrap_or(20.0 * z);
+                let (a, b) = (Pos2::new(x - 2.0 * z, base - 14.0 * z), Pos2::new(nx + width - 5.0 * z, base - 14.0 * z));
+                p.add(QuadraticBezierShape::from_points_stroke(
+                    [a, Pos2::new((a.x + b.x) * 0.5, a.y - 8.0 * z), b],
+                    false,
+                    Color32::TRANSPARENT,
+                    PStroke::new(0.9 * z, c.ink),
+                ));
+            }
+        }
+    }
     let joined = groups.iter().find(|gr| gr.contains(&bj)).is_some_and(|gr| gr.contains(&(bj + 1)));
     for u in 0..under {
         let y = ytop + u as f32 * 3.0 * z;
@@ -538,12 +575,40 @@ fn draw_num_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32, groups
         Dur::Half => 1,
         _ => 0,
     };
+    // The dashes share out the note's whole span, so one for a half note sits halfway to the next beat.
+    let span = match next_x {
+        Some(nx) => nx - x,
+        None => c.ws.get(bj).copied().unwrap_or(24.0 * z * (dashes + 1) as f32),
+    };
     for i in 1..=dashes {
-        p.text(Pos2::new(x + i as f32 * 12.0 * z, base), Align2::CENTER_CENTER, "-", font.clone(), c.ink);
+        let dx = span * i as f32 / (dashes + 1) as f32;
+        p.text(Pos2::new(x + dx, base), Align2::CENTER_CENTER, "\u{2013}", font.clone(), c.ink);
     }
     let dots = beat.dotted as usize + beat.double_dot as usize;
     for i in 0..dots {
         p.circle_filled(Pos2::new(x + 8.0 * z + i as f32 * 3.5 * z, base + 2.0 * z), 1.2 * z, c.ink);
+    }
+    // A tuplet: a curved bracket with its number over the whole run, drawn once at the run's start.
+    let beats = &c.vbar.beats;
+    if beat.tuplet > 0 && (bj == 0 || beats[bj - 1].tuplet != beat.tuplet) {
+        let mut e = bj;
+        while e + 1 < beats.len() && beats[e + 1].tuplet == beat.tuplet && e + 1 - bj < beat.tuplet as usize {
+            e += 1;
+        }
+        let x0 = x - 6.0 * z;
+        let x1 = c.o.x + c.xs.get(e).copied().unwrap_or(c.xs[bj]) + 6.0 * z;
+        let ty = base - 13.0 * z;
+        let mid = (x0 + x1) * 0.5;
+        let s = PStroke::new(0.9 * z, c.ink);
+        for (from, to) in [(x0, mid - 5.0 * z), (x1, mid + 5.0 * z)] {
+            let pts = [
+                Pos2::new(from, ty + 3.0 * z),
+                Pos2::new(from + (to - from) * 0.15, ty - 1.5 * z),
+                Pos2::new(to, ty - 1.5 * z),
+            ];
+            p.add(QuadraticBezierShape::from_points_stroke(pts, false, Color32::TRANSPARENT, s));
+        }
+        p.text(Pos2::new(mid, ty - 1.0 * z), Align2::CENTER_CENTER, beat.tuplet.to_string(), italic(9.0 * z), c.ink);
     }
 }
 

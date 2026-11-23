@@ -120,8 +120,32 @@ changes. Ollama is the path to tune.
   model, or `think: false` for qwen3 (not tried).
 - **The bar spacing was tuned from one example** (Morning Walk). Check a busy score with
   16th notes or two-digit frets; if it looks cramped, raise the `11.0` in `col_width`.
-- **Jianpu gaps:** ties, tuplet numbers, grace notes, bar lines through the lane, voices 2 to 4,
-  chords of more than two notes, drums, and `.gp`/`.gpx`/`.gp5` files don't carry it.
+- **Comparison with GP8 (2026-11-23, owner opened `samples/Morning Walk.gp` in both):** layout,
+  notation pitches, tab and marks agree. Fixed: the numbered lane now sits between the staff and
+  the tab with "1=G"; the default dynamic (mf) is no longer shown at the start of a track (GP8
+  stores MF on every beat and shows none). Open: GP8 shows **no chord names** (G, D, ...) though
+  the file defines them with ShowName on; no file saved by GP8 has chord names, so we have never
+  checked our encoding. Ask the owner to add a chord in GP8, save it as a fixture in
+  `tests/fixtures/gp8/`, and compare. Same for the numbered lane (a GP8 file with it on shows
+  where GP8 stores it). Also open: the owner's running window showed a `*` (file modified) right
+  after opening; a fresh command-line open didn't; the mixer (volume/pan/mute/solo, EQ, track
+  visibility) sets `dirty` directly (`bottom.rs`), so a touch there is the likely cause, not
+  reproduced. GP8 shows the selected track only (our window shows the whole score), as the file
+  carries no ScoreViews.
+- **Jianpu, matched to GP8 crops 2026-11-23 (owner's zoomed screenshots of bars 1-6):** chord = one
+  digit (lowest string), tie = nothing, hammer-on/legato = arc, tuplet = curved bracket, grace
+  underline joined, lane between staff and tab with "1=G". Code: `draw_num_beat` in
+  `score/draw.rs`, `num_extent` and the `num_*` fields of `Geom` in `score.rs`. Check with
+  `--show numbers` or `tests/fixtures/Morning Walk - numbered check.gp` (make it again with
+  `guitarcraft --convert demo:numbers <path>`). Not compared with GP8: extra voices, a busy
+  score, dynamics under the staff touching the lane, repeat bars. Still open: drums (GP8 has none
+  either), and `.gp`/`.gpx`/`.gp5` files don't carry the setting (needs a GP8 file with the lane
+  on, to see where GP8 stores it). No drawing tests yet.
+- **Stem direction on a triplet (open, 2026-11-23):** in measure 2 of the numbered check file the
+  triplet group (staff positions 6, 3, 6; middle line is 4) has stems DOWN in ours (average above
+  the middle, `stem_up_of` in `score/draw.rs`) and UP in GP8. A "farthest note" rule also says
+  down, so GP8 uses something else. Everything else in bars 1-6 agrees. Needs a larger GP8 crop
+  of the staff, or a second example (other pitches), before changing the rule.
 - **MIDI:** input has never been tried with a real keyboard; one slide is silent because it
   shares a channel with another note (see `docs/midi-design.md`); real-time recording isn't built.
 - **README screenshots** in `docs/readme/` were taken before the 100% zoom and tighter spacing,
