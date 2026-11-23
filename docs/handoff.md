@@ -1,23 +1,23 @@
 # Handoff
 
-Written 2026-11-23, at the end of a long session on `version-0.10.0` (nothing of it released
-yet). Read this first, then `docs/gp8-feature-gaps.md` (what is left to build) and
+Written 2026-11-23, after releasing 0.10.0 and starting `version-0.11.0`. Read this first, then
+`docs/gp8-feature-gaps.md` (what is left to build) and
 `docs/ai-design.md` (the AI rules and ideas).
 
 ## Where things stand
 
-- **Released:** v0.9.0, published 2026-11-23 (https://github.com/CodeGator/GuitarCraft/releases/tag/v0.9.0).
-  MSI and portable zip, unsigned. The MSI was never installed by hand; only the checksums were
-  checked.
-- **Working branch:** `version-0.10.0` (version already bumped to 0.10.0), **pushed to GitHub**
-  and up to date with everything below except this handoff edit. Not merged, not released.
-- **Branches on GitHub:** `main`, `release`, `version-0.10.0`, and an old merged
-  `version-0.8.0` that could be deleted.
+- **Released:** v0.10.0, published 2026-11-23 (https://github.com/CodeGator/GuitarCraft/releases/tag/v0.10.0),
+  from PR #20. MSI and portable zip, unsigned. The MSI was never installed by hand; only the
+  checksums were checked (they match). v0.9.0 is the one before it.
+- **Working branch:** `version-0.11.0`, made from `main` after the release, version bumped to
+  0.11.0 (one commit, not pushed yet). Nothing else is on it.
+- **Branches on GitHub:** `main`, `release`, and an old merged `version-0.8.0` that could be
+  deleted.
 - **Tests:** `cargo test --release` passes in full (235 passed, 6 ignored live tests that need a
   model or a key). The three `dock` tests the last handoff called failing passed in this
   session's runs; I don't know why they used to fail, so don't trust it blindly.
 
-## What 0.9.0 added
+## What 0.9.0 added (older; 0.10.0 is in the next section)
 
 - Dockable and floating panels, and Preferences > AI (Ollama and Claude settings, key in the
   system credential store).
@@ -32,7 +32,7 @@ yet). Read this first, then `docs/gp8-feature-gaps.md` (what is left to build) a
   is twice as fast (`line_scroll_speed` 80 in `setup_style`), and note columns are narrower
   (`col_width` in `src/score.rs`).
 
-## What 0.10.0 has so far (on the branch, not released)
+## What 0.10.0 added (released)
 
 The owner has checked all of the UI below by eye (2026-11-23). The AI model side was driven by unit
 tests and live Ollama calls.
@@ -166,12 +166,12 @@ changes. Ollama is the path to tune.
 3. **Still missing from Guitar Pro 8** (see the gap list): Audio Note Settings (Shift+F),
    instrument change automation, Drum view, Design mode, and importing TablEdit and Power Tab.
    File password protection was decided against.
-4. **Release 0.10.0** when the owner says: pull request `version-0.10.0` into `main` (see "How we
+4. **Release 0.11.0** when the owner says: pull request `version-0.11.0` into `main` (see "How we
    work here"). Update the README screenshots first if wanted.
 
 ## How we work here
 
-- **Never commit or push to `main`.** Work on the version branch (`version-0.10.0` now). When it is
+- **Never commit or push to `main`.** Work on the version branch (`version-0.11.0` now). When it is
   ready: pull request into `main` with a merge commit, then
   `git push origin origin/main:release` (check it fast-forwards), wait about 3 minutes for the
   workflow to draft the release, check the checksums, publish it. Then delete the merged branch
