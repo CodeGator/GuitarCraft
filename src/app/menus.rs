@@ -917,6 +917,7 @@ impl App {
         for (pane, label, keys) in [
             (Pane::Palette, "Show Editing Palette", sc(Act::ShowPalette)),
             (Pane::Inspector, "Show Inspector", String::new()),
+            (Pane::Ai, "Show AI Assistant", String::new()),
             (Pane::Tracks, "Show Global View", sc(Act::ShowGlobalView)),
             (Pane::Fretboard, "Show Fretboard View", String::new()),
             (Pane::Keyboard, "Show Keyboard View", sc(Act::KeyboardView)),

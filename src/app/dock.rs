@@ -25,6 +25,8 @@ pub enum Pane {
     Tracks,
     Fretboard,
     Keyboard,
+    /// Questions for Ollama or Claude.
+    Ai,
     /// A pane an older build had. Layouts that name one still load; the tab is dropped.
     #[serde(other)]
     Retired,
@@ -32,7 +34,7 @@ pub enum Pane {
 
 impl Pane {
     /// The panels the View menu and the toolbar switch on and off.
-    pub const PANELS: [Pane; 5] = [Pane::Palette, Pane::Inspector, Pane::Tracks, Pane::Fretboard, Pane::Keyboard];
+    pub const PANELS: [Pane; 6] = [Pane::Palette, Pane::Inspector, Pane::Ai, Pane::Tracks, Pane::Fretboard, Pane::Keyboard];
 
     pub fn title(self) -> &'static str {
         match self {
@@ -42,6 +44,7 @@ impl Pane {
             Pane::Tracks => "Tracks",
             Pane::Fretboard => "Fretboard",
             Pane::Keyboard => "Keyboard",
+            Pane::Ai => "AI Assistant",
             Pane::Retired => "",
         }
     }
@@ -54,6 +57,7 @@ impl Pane {
             Pane::Tracks => [820.0, 260.0],
             Pane::Fretboard => [900.0, 190.0],
             Pane::Keyboard => [900.0, 150.0],
+            Pane::Ai => [380.0, 620.0],
             Pane::Score | Pane::Retired => [800.0, 600.0],
         }
     }
@@ -82,6 +86,8 @@ impl Default for Layout {
 const PALETTE_SHARE: f32 = 0.16;
 /// Share of the width the inspector starts with.
 const INSPECTOR_SHARE: f32 = 0.19;
+/// Share of the width the AI panel starts with, when it has no group to join.
+const AI_SHARE: f32 = 0.26;
 /// Share of the height the tracks panel starts with.
 const TRACKS_SHARE: f32 = 0.24;
 
@@ -138,6 +144,12 @@ pub fn open(dock: &mut DockState<Pane>, pane: Pane) {
         Pane::Tracks => {
             if !join(dock, &[Pane::Fretboard, Pane::Keyboard], pane) {
                 dock.main_surface_mut().split_below(NodeIndex::root(), 1.0 - TRACKS_SHARE, vec![pane]);
+            }
+        }
+        // On the right, as another tab of the inspector's group when that is there.
+        Pane::Ai => {
+            if !join(dock, &[Pane::Inspector], pane) {
+                split_score(dock, Split::Right, 1.0 - AI_SHARE, pane);
             }
         }
         Pane::Retired => {}

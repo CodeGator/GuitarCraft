@@ -76,6 +76,7 @@ pub type Cmd = fn(&mut App);
 
 pub fn commands() -> Vec<(&'static str, Cmd)> {
     vec![
+        ("ai: Show or hide the AI assistant", |a| a.toggle_panel(super::dock::Pane::Ai)),
         ("add-bar: Insert a bar after this one", |a| {
             a.insert_bar(a.bar + 1)
         }),

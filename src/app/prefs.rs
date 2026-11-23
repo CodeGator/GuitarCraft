@@ -413,6 +413,14 @@ impl App {
         }
     }
 
+    /// Opens Preferences on the AI tab.
+    pub(super) fn open_prefs_ai(&mut self) {
+        self.open_prefs();
+        if let Some(d) = &mut self.prefs_dlg {
+            d.tab = 5;
+        }
+    }
+
     /// Applies the forced zoom and page layout to a song just opened or created.
     pub(super) fn apply_forced_view(&mut self) {
         if self.prefs.force_zoom {

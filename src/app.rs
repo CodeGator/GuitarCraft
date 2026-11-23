@@ -5,6 +5,7 @@ mod about;
 mod actions;
 mod addtrack;
 mod ai;
+mod aipanel;
 mod batch;
 #[cfg(test)]
 mod flows;
@@ -197,6 +198,8 @@ pub struct App {
     cmd_open: bool,
     cmd_text: String,
     cmd_sel: usize,
+    /// The AI Assistant panel.
+    ai: aipanel::AiPanel,
     trainer_open: bool,
     trainer_on: bool,
     trainer_start: f32,
@@ -386,6 +389,7 @@ impl App {
             cmd_open: false,
             cmd_text: String::new(),
             cmd_sel: 0,
+            ai: Default::default(),
             trainer_open: false,
             trainer_on: false,
             trainer_start: 60.0,
@@ -475,6 +479,7 @@ impl App {
         for part in &show {
             match part.as_str() {
                 "keyboard" => app.show_panel(dock::Pane::Keyboard),
+                "ai" => app.show_panel(dock::Pane::Ai),
                 "fretboard" => app.show_panel(dock::Pane::Fretboard),
                 // A panel in a window of its own, for checking pop-out: --show popout.
                 "popout" => app.pop_out(dock::Pane::Palette),
