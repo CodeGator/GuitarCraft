@@ -803,6 +803,9 @@ impl App {
         ui.add_space(6.0);
         row_w(ui, LABEL_W, "Use Ollama:", |ui| {
             switch(ui, &mut p.ollama_on);
+            if !p.ollama_on {
+                note(ui, "Switch on to use Ollama in the AI Assistant.");
+            }
         });
         text_row(ui, "Server address:", &mut p.ollama_url);
         model_row(ui, "ollama-model", &mut p.ollama_model, &dlg.ollama_test);
@@ -829,6 +832,9 @@ impl App {
         ui.add_space(6.0);
         row_w(ui, LABEL_W, "Use Claude:", |ui| {
             switch(ui, &mut p.claude_on);
+            if !p.claude_on {
+                note(ui, "Switch on to use Claude in the AI Assistant.");
+            }
         });
         let (mut save, mut remove) = (false, false);
         row_w(ui, LABEL_W, "API key:", |ui| {

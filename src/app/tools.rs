@@ -200,7 +200,13 @@ pub fn commands() -> Vec<(&'static str, Cmd)> {
 /// the shortcut list: the guide shows the person's key for it, and leaves the
 /// brackets out when it has none (see `shortcuts::fill_keys`). Keys that can't be
 /// changed (arrows, digits, Tab) are written as they are.
-const GUIDE: [(&str, &str); 14] = [
+/// The user guide as (title, text) with the shortcuts filled in from the keymap, for the AI
+/// assistant to answer questions about GuitarCraft from.
+pub(super) fn guide_sections() -> Vec<(String, String)> {
+    GUIDE.iter().map(|(t, b)| (t.to_string(), super::shortcuts::fill_keys(b))).collect()
+}
+
+const GUIDE: [(&str, &str); 15] = [
     (
         "The main screen",
         "The toolbar is at the top: start screen, the three panel buttons (palette, tracks, settings), zoom, undo/redo, the transport buttons and the display that shows the track, bar, time signature, time and tempo. The editing palette is on the left, the score in the middle, the Song/Track/Bar/Beat settings on the right and the tracks list with the mixer and bar overview at the bottom.",
@@ -255,7 +261,11 @@ const GUIDE: [(&str, &str); 14] = [
     ),
     (
         "Views",
-        "View \u{25B8} Page - Vertical, Page - Horizontal, Page - Grid, Screen - Vertical and Screen - Horizontal change how the music is laid out. Ctrl + mouse wheel, Zoom In ({ZoomIn}) and Zoom Out ({ZoomOut}) zoom. The palette ({ShowPalette}), tracks list ({ShowGlobalView}), song settings ({SongInspector}), track settings ({TrackInspector}) and full screen ({FullScreen}) can be shown or hidden, and Multitrack ({Multitrack}) switches between all tracks and one track.",
+        "View \u{25B8} Score \u{25B8} Page - Vertical, Page - Horizontal, Page - Grid, Screen - Vertical and Screen - Horizontal change how the music is laid out; the layout button next to Zoom in the toolbar does the same. Score \u{25B8} Split Score View, in the two vertical layouts, shows the score in two views one above the other, each scrolling on its own, with a bar between them to drag; the view you last clicked follows the cursor and playback. Ctrl + mouse wheel, Zoom In ({ZoomIn}) and Zoom Out ({ZoomOut}) zoom. View \u{25B8} Panels shows or hides the palette ({ShowPalette}), tracks list ({ShowGlobalView}), settings, fretboard, keyboard ({KeyboardView}) and AI Assistant, and pops a panel out into a window of its own. Full screen ({FullScreen}) and Multitrack ({Multitrack}), which switches between all tracks and one track, are in the View menu too.",
+    ),
+    (
+        "The AI assistant",
+        "View \u{25B8} Panels \u{25B8} Show AI Assistant opens a panel where you can ask a question about your music or about GuitarCraft. Turn on Ollama (a model on your computer) or Claude (an online service, needs an API key) in Preferences \u{25B8} AI. Nothing is sent until you press Return. There is nothing to tick: with each question it sends an outline of your song (the track and section names), a summary of the track (its key, every note used and the scales that fit best) and the bars you have selected, or the one the cursor is on, as tablature. Questions about using GuitarCraft are also answered from this guide. Ask it to change the score, for example to copy a section to another place or delete bars, and it shows a card with the steps it would take; nothing changes until you press Apply, and one Undo takes it back. New chat clears the conversation.",
     ),
 ];
 

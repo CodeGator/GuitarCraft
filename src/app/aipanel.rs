@@ -1,10 +1,13 @@
 //! The AI Assistant panel: a conversation with Ollama or Claude, docked like the other panels.
 //! Nothing is sent until the person presses Return (Shift+Return adds a line; there is no Send
 //! button). They choose whether the bars at the cursor (or the selected ones) go along as
-//! ASCII tablature. The assistant only answers in words: it never changes the score.
+//! ASCII tablature. The assistant can propose changes to the score as cards under its answer
+//! (see `aiplan`); nothing changes until the person presses Apply.
 //! See `docs/ai-design.md`.
 
 use super::ai::{self, Ask, Pending, Provider, Turn};
+use super::aiplan;
+use std::collections::HashMap;
 use super::App;
 use crate::model::*;
 use egui::{Frame, Margin, RichText, Ui};
@@ -24,8 +27,8 @@ pub struct AiPanel {
     pub input: String,
     /// The provider chosen when more than one is switched on.
     pub choice: Option<Provider>,
-    /// Send the bars at the cursor along with the question.
-    pub with_bars: bool,
+    /// The cards for the changes the assistant proposed, by answer and block.
+    pub cards: HashMap<(usize, usize), Card>,
     /// The Ollama model last loaded in the background (its address, name and context size), and
     /// when, so it is loaded again only if something changed or it has had time to unload.
     warmed: Option<(String, std::time::Instant)>,
@@ -116,38 +119,48 @@ impl App {
             mb.num,
             mb.den
         );
-        // What the program works out from the notes (voice 1, which is what the tablature shows).
-        let beats: Vec<super::aifacts::BeatNotes> = track.bars[a..=b]
-            .iter()
-            .enumerate()
-            .flat_map(|(i, bar)| {
-                bar.beats.iter().enumerate().map(move |(j, beat)| (a + i + 1, j + 1, beat))
-            })
-            .map(|(bar, beat, bt)| super::aifacts::BeatNotes {
-                bar,
-                beat,
-                pitches: bt.notes.iter().filter(|n| !n.dead).map(|n| track.pitch(n)).collect(),
-            })
-            .collect();
-        let facts = super::aifacts::passage_facts(&beats);
+        let facts = super::aifacts::passage_facts(&beat_notes(track, a, b));
         let text = if facts.is_empty() { format!("{head}\n\n{}", tab.trim()) } else { format!("{head}\n\n{}\n\n{facts}", tab.trim()) };
         Some((a, b, text))
     }
 
-    /// Where a question to this provider goes, in words.
-    fn ai_destination(&self, p: Provider) -> String {
-        match p {
-            Provider::Claude => "Claude, over the internet (api.anthropic.com)".into(),
-            Provider::Ollama => {
-                let url = self.prefs.ollama_url.trim();
-                format!("Ollama at {}", if url.is_empty() { ai::OLLAMA_URL } else { url })
-            }
+    /// The key, the notes used and the scales that fit best, counted over every bar of the
+    /// current track, so a question about a few bars has the rest of the music for context. A
+    /// few bars can use two notes, which fit dozens of scales. None for a track without strings.
+    fn ai_track_summary(&self) -> Option<String> {
+        let track = self.song.tracks.get(self.track)?;
+        if !track.has_strings() || track.bars.is_empty() {
+            return None;
         }
+        let beats = beat_notes(track, 0, track.bars.len() - 1);
+        let facts = super::aifacts::track_facts(&beats, track.bars.len());
+        if facts.is_empty() {
+            return None;
+        }
+        let key = self.song.master.first().map(|m| super::popups::key_label(m.key, m.key_minor)).unwrap_or_default();
+        Some(format!("{facts}\nThe key signature at the start is {key}."))
     }
 
-    /// The text that goes with the question this time, if the person asked for the bars.
-    fn ai_context(&self, panel: &AiPanel) -> Option<String> {
-        if panel.with_bars { self.ai_bars().map(|b| b.2) } else { None }
+    /// What goes with a question besides the question: the program decides, so there is nothing
+    /// to tick. An order to change the score ("Copy the intro to the end") needs only the names of
+    /// the tracks and sections, so it gets the song outline and nothing else; the how-to text of
+    /// the user guide would only talk the model into explaining instead of doing. Any other question
+    /// gets the outline, a summary of the track (a few bars say little about the key) and the bars
+    /// selected, or the one the cursor is on. None for a chord chart, which has no score.
+    fn ai_context(&self, order: bool) -> Option<String> {
+        if self.chart.is_some() {
+            return None;
+        }
+        let mut parts: Vec<String> = vec![aiplan::outline(&self.song)];
+        if !order {
+            if let Some(summary) = self.ai_track_summary() {
+                parts.push(summary);
+            }
+            if let Some(bars) = self.ai_bars() {
+                parts.push(bars.2);
+            }
+        }
+        Some(parts.join("\n\n"))
     }
 
     /// Loads the Ollama model in the background when the assistant is showing it, so the first
@@ -181,12 +194,23 @@ impl App {
             panel.error = Some("Choose a model in Preferences > AI first.".into());
             return;
         }
-        let context = self.ai_context(panel);
+        // What goes with this question and not with the ones before it (see `ai_context`): for an
+        // order only the song outline, otherwise also the sections of the user guide that match the
+        // question, the summary of the track and the bars selected.
+        let order = aiplan::is_change_request(&question);
+        let mut extra: Vec<String> = vec![];
+        if !order && let Some(g) = super::aihelp::guide_context(&question, &super::tools::guide_sections()) {
+            extra.push(g);
+        }
+        if let Some(context) = self.ai_context(order) {
+            extra.push(context);
+        }
         panel.turns.push(Turn { from_user: true, text: question.clone() });
-        // The bars go with this question only, not with the ones before it.
         let mut turns = panel.turns.clone();
-        if let (Some(ctx_text), Some(last)) = (context, turns.last_mut()) {
-            last.text = format!("{ctx_text}\n\nQuestion: {question}");
+        if !extra.is_empty()
+            && let Some(last) = turns.last_mut()
+        {
+            last.text = format!("{}\n\nQuestion: {question}\n\n{}", extra.join("\n\n"), aiplan::REMINDER);
         }
         let ask = Ask {
             provider,
@@ -195,7 +219,7 @@ impl App {
             ollama_keep: self.prefs.ollama_warm,
             model,
             key: if provider == Provider::Claude { ai::key::get().unwrap_or_default() } else { String::new() },
-            system: ai::SYSTEM.to_string(),
+            system: ai::system_prompt(),
             turns,
         };
         // A question keeps the model loaded too, so the timer for loading it again starts now.
@@ -219,45 +243,35 @@ impl App {
         // "New chat" lives at the top, where a small panel can't push it out of view.
         let can_clear = !p.turns.is_empty() && !p.busy();
         let mut new_chat = false;
-        egui::Panel::top("ai-top").frame(Frame::new().inner_margin(Margin::symmetric(10, 8))).resizable(false).show(ui, |ui| {
+        egui::Panel::top("ai-top").frame(Frame::new().inner_margin(Margin::symmetric(10, 6))).resizable(false).show(ui, |ui| {
             match &current {
                 None => {
                     ui.label(RichText::new("No AI provider is switched on.").color(egui::Color32::from_rgb(235, 170, 90)));
                     ui.horizontal_wrapped(|ui| {
-                        if ui.button("Open Preferences > AI").clicked() {
+                        // A model that is set up but switched off: one click to switch it on.
+                        let model = self.prefs.ollama_model.trim().to_string();
+                        if !model.is_empty()
+                            && ui.button("Switch on Ollama").on_hover_text("Use the model you chose in AI Preferences").clicked()
+                        {
+                            self.prefs.ollama_on = true;
+                            self.prefs.save();
+                        }
+                        if ui.button("AI Preferences").clicked() {
                             self.open_prefs_ai();
                         }
                         new_chat |= ui.add_enabled(can_clear, egui::Button::new("New chat")).clicked();
                     });
                 }
-                Some((now, model)) => {
-                    ui.horizontal_wrapped(|ui| {
-                        ui.label("Ask using:");
-                        if providers.len() > 1 {
-                            egui::ComboBox::from_id_salt("ai-provider")
-                                .selected_text(now.name())
-                                .show_ui(ui, |ui| {
-                                    for (q, _) in &providers {
-                                        if ui.selectable_label(q == now, q.name()).clicked() {
-                                            p.choice = Some(*q);
-                                        }
-                                    }
-                                });
-                        } else {
-                            ui.label(RichText::new(now.name()).strong());
-                        }
-                        if !model.trim().is_empty() {
-                            ui.label(RichText::new(model).weak());
-                        }
-                        new_chat |= ui.add_enabled(can_clear, egui::Button::new("New chat")).clicked();
-                    });
-                    ui.label(RichText::new(format!("Goes to {}.", self.ai_destination(*now))).small().weak());
+                Some(_) => {
+                    // Nothing about the provider or model here: that is in AI Preferences.
+                    new_chat |= ui.add_enabled(can_clear, egui::Button::new("New chat")).clicked();
                 }
             }
         });
 
         if new_chat {
             p.turns.clear();
+            p.cards.clear();
             p.error = None;
         }
 
@@ -266,17 +280,7 @@ impl App {
                 ui.label(RichText::new(e).color(egui::Color32::from_rgb(235, 120, 110)));
                 ui.add_space(4.0);
             }
-            // The bars at the cursor, if the person wants them in the question.
-            let bars = self.ai_bars();
-            let label = match &bars {
-                Some((a, b, _)) if a == b => format!("Include bar {} of this track", a + 1),
-                Some((a, b, _)) => format!("Include bars {} to {} of this track", a + 1, b + 1),
-                None => "Include the bars of this track".to_string(),
-            };
-            ui.add_enabled(bars.is_some(), egui::Checkbox::new(&mut p.with_bars, label))
-                .on_hover_text("Sent as ASCII tablature with the key and time signature, and the notes, scales and chords GuitarCraft finds in them. The title, artist and file name are not sent.")
-                .on_disabled_hover_text("Only tracks with strings can be sent as tablature");
-            let id =ui.make_persistent_id("ai-input");
+            let id = ui.make_persistent_id("ai-input");
             // Return sends; Shift+Return adds a line. Taken before the box sees it.
             let enter = ui.memory(|m| m.has_focus(id))
                 && ui.input_mut(|i| {
@@ -309,6 +313,7 @@ impl App {
             });
         });
 
+        let mut retry = false;
         egui::CentralPanel::default().frame(Frame::new().inner_margin(Margin::symmetric(10, 4))).show(ui, |ui| {
             egui::ScrollArea::vertical().id_salt("ai-history").stick_to_bottom(true).auto_shrink([false, false]).show(ui, |ui| {
                 if p.turns.is_empty() {
@@ -316,28 +321,280 @@ impl App {
                     ui.label(
                         RichText::new(
                             "Ask a question about your music or about GuitarCraft. Nothing is sent until you press Return. \
-                             The assistant answers in words; it doesn't change your score.\n\n\
-                             Try: \u{201C}What key is this in?\u{201D} (with the bars included), \u{201C}What scale fits these bars?\u{201D}, \
-                             or \u{201C}How do I add a repeat?\u{201D}",
+                             It can also change your score: it proposes the change as a card, and nothing happens until you press Apply.\n\n\
+                             Try: \u{201C}What key is this song in?\u{201D}, \
+                             \u{201C}What scale fits these bars?\u{201D} (select some bars first), \
+                             \u{201C}How do I add a repeat?\u{201D}, \
+                             or \u{201C}Copy the intro and paste it after the last bar\u{201D}",
                         )
                         .weak(),
                     );
                 }
                 let who = current.as_ref().map(|c| c.0.name()).unwrap_or("Assistant");
-                for t in &p.turns {
+                let turns = p.turns.clone();
+                for (ti, t) in turns.iter().enumerate() {
                     ui.add_space(6.0);
                     let fill = if t.from_user { egui::Color32::from_rgb(44, 48, 56) } else { egui::Color32::from_rgb(34, 36, 42) };
                     Frame::new().fill(fill).corner_radius(6.0).inner_margin(Margin::same(8)).show(ui, |ui| {
                         ui.set_width(ui.available_width());
                         ui.label(RichText::new(if t.from_user { "You" } else { who }).small().strong());
-                        ui.add(egui::Label::new(&t.text).selectable(true));
-                        if !t.from_user && ui.small_button("Copy").clicked() {
-                            ui.ctx().copy_text(t.text.clone());
+                        if t.from_user {
+                            ui.add(egui::Label::new(&t.text).selectable(true));
+                        } else {
+                            // The answer in pieces: words, and a card for each proposed change.
+                            for (bi, block) in aiplan::split_blocks(&t.text).into_iter().enumerate() {
+                                match block {
+                                    aiplan::Block::Prose(text) => {
+                                        ui.add(egui::Label::new(text).selectable(true));
+                                    }
+                                    aiplan::Block::Code { lang, text } if aiplan::is_plan(lang, text) => {
+                                        self.plan_card(ui, &mut p, (ti, bi), text);
+                                    }
+                                    aiplan::Block::Code { text, .. } => {
+                                        ui.add(egui::Label::new(RichText::new(text).monospace().small()).selectable(true));
+                                    }
+                                }
+                            }
+                            // An order that got an explanation instead of a plan: the answer can
+                            // differ each time, so offer to ask again.
+                            let has_plan = aiplan::split_blocks(&t.text).iter().any(|b| matches!(b, aiplan::Block::Code { lang, text } if aiplan::is_plan(lang, text)));
+                            if ti + 1 == turns.len() && ti >= 1 && !has_plan && turns[ti - 1].from_user && aiplan::is_change_request(&turns[ti - 1].text) {
+                                ui.label(RichText::new("No change was proposed.").small().weak());
+                                if ui.small_button("Ask again").on_hover_text("Ask the same thing again; the answer can differ each time").clicked() {
+                                    retry = true;
+                                }
+                            }
+                            if ui.small_button("Copy").clicked() {
+                                ui.ctx().copy_text(t.text.clone());
+                            }
                         }
                     });
                 }
             });
         });
+        // Ask again: take back the order and its answer and send the order once more.
+        if retry && p.turns.len() >= 2 && !p.busy() {
+            let order = p.turns[p.turns.len() - 2].text.clone();
+            let keep = p.turns.len() - 2;
+            p.turns.truncate(keep);
+            p.cards.retain(|k, _| k.0 < keep);
+            p.input = order;
+            self.ai_send(&ctx, &mut p);
+        }
         self.ai = p;
+    }
+}
+
+/// A change the assistant proposed, as the card under its answer shows it.
+pub struct Card {
+    steps: Vec<aiplan::Step>,
+    /// What the steps would do to the song as it was when the card first showed, or why they can't.
+    preview: Result<aiplan::Outcome, String>,
+    /// What the person did with it.
+    done: Option<Done>,
+}
+
+enum Done {
+    Applied(String),
+    Dismissed,
+    Failed(String),
+}
+
+impl Card {
+    fn new(text: &str, song: &Song) -> Card {
+        match aiplan::parse(text) {
+            Err(e) => Card { steps: vec![], preview: Err(e), done: None },
+            Ok(steps) => {
+                let preview = aiplan::run(&mut song.clone(), &steps);
+                Card { steps, preview, done: None }
+            }
+        }
+    }
+}
+
+impl App {
+    /// The card for a plan in the assistant's answer: what it would do, and Apply and Dismiss.
+    /// Nothing changes until Apply, which is one edit that Undo takes back.
+    fn plan_card(&mut self, ui: &mut Ui, p: &mut AiPanel, key: (usize, usize), text: &str) {
+        let card = p.cards.entry(key).or_insert_with(|| Card::new(text, &self.song));
+        let mut apply = false;
+        let mut dismiss = false;
+        Frame::new()
+            .fill(egui::Color32::from_rgb(28, 40, 58))
+            .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(70, 110, 170)))
+            .corner_radius(6.0)
+            .inner_margin(Margin::same(8))
+            .show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.label(RichText::new("Proposed change").strong());
+                match &card.preview {
+                    Err(e) => {
+                        ui.label(RichText::new(format!("This can't be applied. {e}")).color(egui::Color32::from_rgb(235, 120, 110)));
+                    }
+                    Ok(o) => {
+                        for (i, line) in o.lines.iter().enumerate() {
+                            ui.label(format!("{}. {line}", i + 1));
+                        }
+                        if o.bars_after != o.bars_before {
+                            ui.label(RichText::new(format!("The song goes from {} to {} bars.", o.bars_before, o.bars_after)).weak());
+                        }
+                        for n in &o.notes {
+                            ui.label(RichText::new(n).color(egui::Color32::from_rgb(235, 170, 90)));
+                        }
+                    }
+                }
+                match &card.done {
+                    Some(Done::Applied(s)) => {
+                        ui.label(RichText::new(format!("Applied. {s} Edit > Undo takes it back.")).color(egui::Color32::from_rgb(120, 200, 130)));
+                    }
+                    Some(Done::Dismissed) => {
+                        ui.label(RichText::new("Dismissed.").weak());
+                    }
+                    Some(Done::Failed(e)) => {
+                        ui.label(RichText::new(format!("Not applied. {e}")).color(egui::Color32::from_rgb(235, 120, 110)));
+                    }
+                    None => {
+                        ui.horizontal(|ui| {
+                            if ui.add_enabled(card.preview.is_ok(), egui::Button::new("Apply")).on_hover_text("Make this change to the score. One Undo takes it back.").clicked() {
+                                apply = true;
+                            }
+                            if ui.button("Dismiss").clicked() {
+                                dismiss = true;
+                            }
+                        });
+                    }
+                }
+            });
+        if dismiss {
+            card.done = Some(Done::Dismissed);
+        }
+        if apply {
+            let steps = card.steps.clone();
+            card.done = Some(match self.ai_apply_plan(&steps) {
+                Ok(summary) => Done::Applied(summary),
+                Err(e) => Done::Failed(e),
+            });
+        }
+    }
+
+    /// Makes the proposed change to the score as one edit. The steps are checked again against
+    /// the song as it is now (it may have changed since the card showed), on a copy, so a plan that
+    /// no longer fits changes nothing.
+    fn ai_apply_plan(&mut self, steps: &[aiplan::Step]) -> Result<String, String> {
+        if self.chart.is_some() {
+            return Err("Open a score first; a chord chart can't take these changes.".into());
+        }
+        let mut trial = self.song.clone();
+        let outcome = aiplan::run(&mut trial, steps)?;
+        self.snapshot();
+        self.song = trial;
+        self.sel_anchor = None;
+        self.clamp_cursor();
+        self.total_secs = self.song_seconds();
+        self.status = format!("Applied the assistant's change ({} step(s)).", outcome.lines.len());
+        Ok(if outcome.bars_after != outcome.bars_before {
+            format!("The song now has {} bars.", outcome.bars_after)
+        } else {
+            String::new()
+        })
+    }
+}
+
+/// The notes on each beat of bars `from` to `to` of a track (voice 1, which is what the tablature
+/// shows; dead notes have no pitch), with the bar and beat counted from 1.
+fn beat_notes(track: &Track, from: usize, to: usize) -> Vec<super::aifacts::BeatNotes> {
+    track.bars[from..=to]
+        .iter()
+        .enumerate()
+        .flat_map(|(i, bar)| bar.beats.iter().enumerate().map(move |(j, beat)| (from + i + 1, j + 1, beat)))
+        .map(|(bar, beat, bt)| super::aifacts::BeatNotes {
+            bar,
+            beat,
+            pitches: bt.notes.iter().filter(|n| !n.dead).map(|n| track.pitch(n)).collect(),
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Builds the facts for bars 1 and 2 of the sample song and its whole-track summary, prints
+    /// them, and asks the Ollama on this computer "What scale fits these bars?" with them.
+    /// Run by hand: `cargo test summary_live -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn summary_live() {
+        let song = crate::fileio::load_song(std::path::Path::new("samples/Morning Walk.gp")).expect("sample song");
+        let track = song.tracks.iter().find(|t| t.has_strings()).expect("a string track");
+        let bars = super::super::aifacts::passage_facts(&beat_notes(track, 0, 1));
+        let whole = super::super::aifacts::track_facts(&beat_notes(track, 0, track.bars.len() - 1), track.bars.len());
+        println!("BARS 1-2:\n{bars}\n\nWHOLE TRACK:\n{whole}\n");
+        let question = "What scale fits these bars?";
+        let a = Ask {
+            provider: Provider::Ollama,
+            ollama_url: String::new(),
+            ollama_context: 16_384,
+            ollama_keep: true,
+            model: std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "qwen3:8b".into()),
+            key: String::new(),
+            system: ai::system_prompt(),
+            turns: vec![Turn { from_user: true, text: format!("Bars 1 to 2 of the track:\n{bars}\n\n{whole}\n\nQuestion: {question}") }],
+        };
+        let answer = ai::ask_now(&a).expect("Ollama should answer");
+        println!("ANSWER: {answer}");
+    }
+
+    /// Asks the Ollama on this computer to change the sample song, through the real prompt, and
+    /// shows what the card would say. Run by hand:
+    /// `cargo test plan_live -- --ignored --nocapture` (PLAN_QUESTION and OLLAMA_MODEL choose).
+    #[test]
+    #[ignore]
+    fn plan_live() {
+        let song = crate::fileio::load_song(std::path::Path::new("samples/Morning Walk.gp")).expect("sample song");
+        let question = std::env::var("PLAN_QUESTION").unwrap_or_else(|_| "Copy the intro and paste it past the last bar of the song".into());
+        let outline = aiplan::outline(&song);
+        // What the panel sends with a question: the guide sections that match (unless
+        // PLAN_NO_GUIDE is set), the outline, and the summary of the track.
+        let track = song.tracks.iter().find(|t| t.has_strings()).expect("a string track");
+        let summary = crate::app::aifacts::track_facts(&beat_notes(track, 0, track.bars.len() - 1), track.bars.len());
+        let mut extra: Vec<String> = vec![];
+        // PLAN_OLD=1 sends what the panel sent before the reminder: the guide for every question,
+        // and nothing after it.
+        let old = std::env::var("PLAN_OLD").is_ok();
+        if std::env::var("PLAN_NO_GUIDE").is_err()
+            && (old || !aiplan::is_change_request(&question))
+            && let Some(g) = crate::app::aihelp::guide_context(&question, &crate::app::tools::guide_sections())
+        {
+            extra.push(g);
+        }
+        extra.push(format!("{outline}\n\n{summary}"));
+        let reminder = if old { String::new() } else { format!("\n\n{}", aiplan::REMINDER) };
+        let sent = format!("{}\n\nQuestion: {question}{reminder}", extra.join("\n\n"));
+        println!("SENT {} chars; guide attached: {}", sent.len(), sent.contains("From the GuitarCraft user guide"));
+        println!("OUTLINE: {outline}\nQUESTION: {question}\n");
+        let a = Ask {
+            provider: Provider::Ollama,
+            ollama_url: String::new(),
+            ollama_context: std::env::var("PLAN_CTX").ok().and_then(|v| v.parse().ok()).unwrap_or(16_384),
+            ollama_keep: true,
+            model: std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "qwen3:8b".into()),
+            key: String::new(),
+            system: ai::system_prompt(),
+            turns: vec![Turn { from_user: true, text: sent }],
+        };
+        let answer = ai::ask_now(&a).expect("Ollama should answer");
+        println!("ANSWER:\n{answer}\n");
+        for block in aiplan::split_blocks(&answer) {
+            if let aiplan::Block::Code { lang, text } = block
+                && aiplan::is_plan(lang, text)
+            {
+                let card = Card::new(text, &song);
+                match card.preview {
+                    Ok(o) => println!("CARD:\n{}\n{} -> {} bars; notes: {:?}", o.lines.join("\n"), o.bars_before, o.bars_after, o.notes),
+                    Err(e) => println!("CARD ERROR: {e}"),
+                }
+            }
+        }
     }
 }

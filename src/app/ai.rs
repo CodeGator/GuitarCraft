@@ -224,8 +224,19 @@ are included they are ASCII tablature: the lines are the strings from the highes
 frets, x is a dead note, h a hammer-on, p a pull-off, / and \\ slides, b a bend, ~ vibrato and L a tied note. \
 Below the tablature there may be facts the program worked out from the notes (the notes used, the scales that \
 contain them, the chords they spell). Use them instead of working these out yourself, but they are possibilities: \
-when several fit, say so, and the key signature may not match the music. \
-You can't change the score yourself; say what the person could do. If you aren't sure, say so.";
+when several fit, say so, and the key signature may not match the music. A block headed \"The whole track\" \
+describes every bar of the track, not only the bars asked about: a few bars can use very few notes, so use it \
+to decide the key and say which scale fits the whole piece as well as the bars. \
+A question may also come with parts of the GuitarCraft user guide. For a question about using GuitarCraft, answer \
+from that text: use its menu names and shortcuts exactly, and if it doesn't cover the question, say so rather \
+than guessing at menus or features GuitarCraft might have. \
+If you aren't sure, say so.";
+
+/// Everything the assistant is told about itself: who it is, and how to propose changes to the
+/// score (see `aiplan`).
+pub fn system_prompt() -> String {
+    format!("{SYSTEM}\n\n{}", super::aiplan::PLAN_HELP)
+}
 
 /// The result of a question: the answer, or why there isn't one.
 pub type Answer = Result<String, String>;
@@ -255,7 +266,7 @@ pub fn ask(ctx: &egui::Context, a: Ask) -> Pending {
     Pending { rx }
 }
 
-fn ask_now(a: &Ask) -> Answer {
+pub fn ask_now(a: &Ask) -> Answer {
     match a.provider {
         Provider::Ollama => {
             let url = format!("{}/api/chat", ollama_base(&a.ollama_url));
@@ -298,7 +309,7 @@ fn messages(turns: &[Turn]) -> Vec<Value> {
 pub fn ollama_body(model: &str, context: u32, system: &str, turns: &[Turn], keep: bool) -> String {
     let mut all = vec![serde_json::json!({ "role": "system", "content": system })];
     all.extend(messages(turns));
-    let mut body = serde_json::json!({ "model": model, "stream": false, "options": { "num_ctx": context }, "messages": all });
+    let mut body = serde_json::json!({ "model": model, "stream": false, "options": { "num_ctx": context, "temperature": OLLAMA_TEMPERATURE }, "messages": all });
     if keep {
         body["keep_alive"] = OLLAMA_KEEP_ALIVE.into();
     }
@@ -308,6 +319,11 @@ pub fn ollama_body(model: &str, context: u32, system: &str, turns: &[Turn], keep
 /// How long Ollama keeps a model in memory after it was last used, when the person has asked for
 /// it to be kept loaded.
 pub const OLLAMA_KEEP_ALIVE: &str = "30m";
+
+/// How adventurous Ollama's answers are (its own default is 0.8). Lower keeps the assistant to
+/// the format it was asked for: a plan is a block of JSON, and a model that wanders writes
+/// something else.
+pub const OLLAMA_TEMPERATURE: f32 = 0.3;
 
 /// How long after loading (or the last question) the model is loaded again, a little less than
 /// [`OLLAMA_KEEP_ALIVE`] so it never has time to unload.
@@ -428,6 +444,7 @@ mod tests {
         let o: Value = serde_json::from_str(&ollama_body("qwen3:4b", 8192, "sys", &turns, false)).unwrap();
         assert_eq!(o["model"], "qwen3:4b");
         assert!(o.get("keep_alive").is_none(), "Ollama's own timeout applies unless asked");
+        assert!((o["options"]["temperature"].as_f64().unwrap() - 0.3).abs() < 1e-6, "answers keep to the format asked for");
         let kept: Value = serde_json::from_str(&ollama_body("qwen3:4b", 8192, "sys", &turns, true)).unwrap();
         assert_eq!(kept["keep_alive"], OLLAMA_KEEP_ALIVE);
         assert_eq!(o["stream"], false);
@@ -491,6 +508,29 @@ mod tests {
             turns: vec![Turn { from_user: true, text: "Which note is the open high E string on a guitar? Quote \"E\" in your answer.".into() }],
         };
         let answer = ask_now(&a).expect("Ollama should answer");
+        println!("ANSWER: {answer}");
+        assert!(!answer.is_empty());
+    }
+
+    /// Asks Claude one thing, through the real request path, with the key saved in Preferences > AI
+    /// (read from the system credential store; it is never printed). Spends a few tokens.
+    /// Run by hand: `cargo test claude_answers_live -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn claude_answers_live() {
+        let key = key::get().expect("save a Claude API key in Preferences > AI first");
+        let model = std::env::var("CLAUDE_MODEL").unwrap_or_else(|_| CLAUDE_MODEL.into());
+        let a = Ask {
+            provider: Provider::Claude,
+            ollama_url: String::new(),
+            ollama_context: 4096,
+            ollama_keep: false,
+            model,
+            key,
+            system: "Answer in one short sentence.".into(),
+            turns: vec![Turn { from_user: true, text: "Which note is the open high E string on a guitar? Quote \"E\" in your answer.".into() }],
+        };
+        let answer = ask_now(&a).expect("Claude should answer");
         println!("ANSWER: {answer}");
         assert!(!answer.is_empty());
     }
