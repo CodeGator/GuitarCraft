@@ -9,6 +9,11 @@ use std::path::PathBuf;
 
 /// GuitarCraft's settings folder: in APPDATA, otherwise in HOME.
 pub(super) fn app_dir() -> Option<PathBuf> {
+    // The tests get a folder of their own. They save preferences, the recent files and the panel
+    // layout like the program does, and once did that over the person's real settings.
+    if cfg!(test) {
+        return Some(std::env::temp_dir().join(format!("GuitarCraft-tests-{}", std::process::id())));
+    }
     let base = std::env::var_os("APPDATA").or_else(|| std::env::var_os("HOME"))?;
     Some(PathBuf::from(base).join("GuitarCraft"))
 }
@@ -748,5 +753,15 @@ mod tests {
         assert_eq!(only_existing(vec![gone.clone(), there.clone()]), vec![there.clone()]);
         assert!(only_existing(vec![gone]).is_empty());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn tests_never_use_the_real_settings_folder() {
+        // A test that saves preferences (or the recent files, or the layout) once replaced the
+        // person's own with defaults. In a test the settings folder is a temporary one.
+        let dir = app_dir().expect("a settings folder");
+        let real = std::env::var_os("APPDATA").map(|a| PathBuf::from(a).join("GuitarCraft"));
+        assert_ne!(Some(dir.clone()), real, "{}", dir.display());
+        assert!(dir.starts_with(std::env::temp_dir()), "{}", dir.display());
     }
 }

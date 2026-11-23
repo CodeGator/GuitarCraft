@@ -702,9 +702,18 @@ fn a_refusal_is_a_warning_box_and_a_failure_is_an_error_box() {
         vec![("warning", "A song needs at least one track.".to_string())]
     );
     assert_eq!(r.app.status, "A song needs at least one track.");
-    // Failure: a file that can't be opened.
+    // A file that has gone: it says so, and is dropped from the recent files.
     r.app.open_path(std::path::PathBuf::from("Z:/no/such/file.gp"));
     let shown = super::notice::take_shown();
+    assert_eq!(shown.len(), 1);
+    assert_eq!(shown[0].0, "error");
+    assert!(shown[0].1.starts_with("That file is no longer there"), "{}", shown[0].1);
+    // Failure: a file that is there but can't be read.
+    let bad = std::env::temp_dir().join(format!("gc-bad-{}.gp", std::process::id()));
+    std::fs::write(&bad, b"this is not a Guitar Pro file").unwrap();
+    r.app.open_path(bad.clone());
+    let shown = super::notice::take_shown();
+    let _ = std::fs::remove_file(&bad);
     assert_eq!(shown.len(), 1);
     assert_eq!(shown[0].0, "error");
     assert!(shown[0].1.starts_with("Couldn't open the file"), "{}", shown[0].1);
