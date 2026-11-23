@@ -28,8 +28,7 @@ going).
 - **AI Assistant panel** (`src/app/aipanel.rs`, `ai::ask` in `src/app/ai.rs`): a docked
   conversation with Ollama or Claude. Return sends (Shift+Return for a new line), there is no
   Send button, and the typing box uses 15 pt text (`INPUT_TEXT_SIZE`). The "What will be sent"
-  preview was removed in 0.10.0 at the owner's request. It answers in words and never edits the
-  score.
+  preview was removed in 0.10.0 at the owner's request. It answers in words and, since 0.10.0, proposes score changes as cards (see "AI plans" below).
 - **Layout changes made to match GP8:** files open at 100% zoom (was 110%), mouse-wheel scrolling
   is twice as fast (`line_scroll_speed` 80 in `setup_style`), and note columns are narrower
   (`col_width` in `src/score.rs`) so Morning Walk's first three bars share a line.
@@ -41,7 +40,7 @@ going).
   panic at `epaint-0.36.2/src/textures.rs:337`, headless. They fail the same way without any of
   this session's changes. The release workflow doesn't run tests, so they never blocked it.
 - **The AI panel has been tried with Ollama only** (one live question, kept as the ignored test
-  `ollama_answers_live`). Claude has never been called with a real key. The first Ollama answer
+  `ollama_answers_live`). Claude: a real key was saved and "Test connection" worked (2026-11-23), but answering needs prepaid API credits, which the owner chose not to buy, so no question has been answered by Claude (`claude_answers_live` is the ignored test for it). The first Ollama answer
   can take a minute while the model loads.
 - **The bar spacing was tuned from one example** (Morning Walk). Check a busy score with
   16th notes or two-digit frets; if it looks cramped, raise the `11.0` in `col_width`.
@@ -64,30 +63,20 @@ going).
 2. **Still missing from Guitar Pro 8** (see the gap list): Audio Note Settings (Shift+F),
    instrument change automation, Drum view, Design mode, and importing TablEdit and Power Tab.
    File password protection was decided against.
-3. Try Claude with a real key and fix whatever shows up.
-4. **Split score view** (in progress): a movable splitter in the score view so two parts of a
-   large score show at once. Off by default, switched on and off from the View menu (and the
-   command palette) and remembered in prefs. Decided: top and bottom only, and only in the
-   vertical-scrolling layouts (Page - Vertical and Screen - Vertical). Both panes then have the
-   same width, so one layout serves both. In Grid and the Horizontal layouts the menu item is
-   disabled with a note; the setting is kept, so it returns when you go back to a vertical
-   layout. (Grid already shows several pages; a left/right split for the Horizontal layouts
-   would be a separate feature.) `score()` in `src/app/bottom.rs` lays the score out once and
-   draws it in one `ScrollArea`; a split is two scroll areas over that same layout. The
-   drawing and interaction code (drag select, click to place the cursor, hit tests, cursor and
-   play position) moves into a helper that takes a pane index. The pane last clicked follows
-   the cursor and playback; zoom and view mode are shared.
-5. **AI proposal cards, as in Dunbrec** (an idea, not started): let the assistant suggest score
-   changes that appear as a card under its answer, with a preview and Apply / Dismiss; nothing
-   changes until Apply. Dunbrec does this in `crates/dunbrec-app/src/assistant.rs` (`split_blocks`,
-   `proposal()`, `card()`) and `edits.rs`: the prompt lists fenced block tags, each reply is split
-   into prose and code, a tagged block is parsed into an `Edit` (a parse error is shown instead
-   of a card), and Apply goes back to the app as a command. Here the prompt in `ai.rs` currently
-   says the assistant can't change the score, the panel only shows plain text, and every edit
-   already goes through `App::edit`, so Apply would be undoable. This is the "preview and apply
-   step" that item 1 above needs. The decision to make first is which edit types the model may
-   propose (a small one to start: replace a bar range with ASCII tab, which `textmidi.rs`
-   already reads; later tuning, tempo, section markers).
+3. Claude questions are untested: the key works, but answering needs prepaid API credits (the owner won't pay for them). Do this only if that changes; run `cargo test claude_answers_live -- --ignored --nocapture`. Meanwhile Ollama is the path to tune for.
+4. **Split score view** (built, not yet checked by eye): View > Score > Split Score View shows
+   the score in two views one above the other, each with its own scroll, in the two vertical
+   layouts only (Page - Vertical and Screen - Vertical), where both share one layout. Off by
+   default, saved in prefs (`split_score`). `score()` in `src/app/bottom.rs` now draws one or two
+   `score_pane`s; the one last clicked follows the cursor and playback; the bar between them is
+   dragged (`split_frac`, not saved). Left to do: a command-palette entry, a mark showing which
+   view is active, and a left/right split for the Horizontal layouts if wanted.
+5. **More AI plan steps** (the cards are built, see "AI plans" below): the toolbox so far is copy,
+   paste and delete bars. Natural next steps, each a small addition to `aiplan.rs` (a `Step`
+   variant, its run code, its line on the card, its test, a line in `PLAN_HELP`): transpose a
+   range, set the tempo, rename or add a section, add or remove a track, set a repeat. Also still
+   to do: a natural-language mode in the command palette, chord suggestions for charts, and
+   "fix messy tab".
 
 ## How we work here
 
@@ -109,3 +98,27 @@ going).
 - **Sample to test with:** `samples/Morning Walk.gp`.
 - The person has old eyes: keep text large and readable in new windows.
 - Git warns "LF will be replaced by CRLF" on every commit; it is harmless here.
+
+## AI plans (the assistant changing the score)
+
+The assistant proposes a change as a fenced block tagged `guitarcraft-plan` holding a JSON list of
+steps. `src/app/aiplan.rs` is the whole core and has no UI: `parse` reads the list, `run` checks
+every step against the real song and carries it out (on a copy first, to show the card), and
+`PLAN_HELP` is what the model is told. The steps are `copy_bars`, `paste_bars` (insert or
+replace, at a bar or "end") and `delete_bars`; tracks and sections are named, and `find_track`
+also takes a track number, as the outline lists them. `outline` (tracks, sections with their
+bars) goes with every question except an order, which gets only the outline (see
+`ai_context`), so the model can name them. There are no checkboxes: the program decides what goes with a question. `src/app/aipanel.rs` splits each answer into prose and
+blocks (`split_blocks`) and draws a card for a plan (`plan_card`): the steps in words, the bar
+count before and after, notes (bars of a different length), and Apply / Dismiss. Apply runs the
+plan again on a copy of the song as it is now, and only then takes one undo snapshot and swaps it
+in (`ai_apply_plan`), so a plan that no longer fits changes nothing and one Undo takes it back.
+Nothing happens without Apply, and a chord chart refuses a plan.
+
+Checked live with `qwen3:8b` on the Morning Walk sample (`cargo test plan_live -- --ignored
+--nocapture`, set `PLAN_QUESTION`): "copy the intro and paste it past the last bar", "copy the
+guitar track for Verse 1 and paste it into measure 12" and a three-step delete-and-copy all gave
+valid cards (the model resolved "guitar track" and "Verse 1" to the real names). It chose insert
+for "paste into measure 12"; the card says so and the person can ask for replace. An answer takes
+about 100 seconds on the 8 GB card (the 8B model at 16K context spills to the CPU). Not tried:
+Claude, the card on screen, a large song.
