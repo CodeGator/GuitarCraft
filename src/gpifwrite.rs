@@ -494,7 +494,7 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
                     let mut beat_ids = vec![];
                     for (j, beat) in bar.voice(v).iter().enumerate() {
                         // On a grand staff each staff keeps the notes on its side of middle C.
-                        let notes: Vec<&Note> = beat
+                        let mut notes: Vec<&Note> = beat
                             .notes
                             .iter()
                             .filter(|n| match low {
@@ -502,6 +502,8 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
                                 Some(l) => (t.pitch(n) < 60) == l,
                             })
                             .collect();
+                        // Low string first, as Guitar Pro 8 lists a chord (it shows the first one in the numbered lane).
+                        notes.sort_by_key(|n| std::cmp::Reverse(n.string));
                         let graced: Vec<Note> = notes
                             .iter()
                             .filter_map(|n| {

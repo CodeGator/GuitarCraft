@@ -68,7 +68,7 @@ const BUFFERS: [Option<u32>; 6] = [None, Some(128), Some(256), Some(512), Some(1
 /// The page layouts, as in View (the order of `App::view_mode`).
 pub const FORCED_STYLES: [&str; 4] = ["Standard", "Rock", "Classic", "Jazz"];
 pub const FORCED_NOTATIONS: [&str; 3] = ["Standard notation and tablature", "Standard notation only", "Tablature only"];
-const LAYOUTS: [&str; 5] = ["Page - Vertical", "Page - Horizontal", "Page - Grid", "Screen - Vertical", "Screen - Horizontal"];
+pub const LAYOUTS: [&str; 5] = ["Page - Vertical", "Page - Horizontal", "Page - Grid", "Screen - Vertical", "Screen - Horizontal"];
 
 impl Prefs {
     /// The checks that are on, as `model::ERR_*` bits.
@@ -99,6 +99,8 @@ pub struct Prefs {
     /// Copying beats or bars keeps their chord diagrams.
     pub copy_diagrams: bool,
     pub layout: u8,
+    /// Show the score in two views one above the other (only in the vertical layouts).
+    pub split_score: bool,
     /// Reopen the files that were open when GuitarCraft was last closed.
     pub reopen_last: bool,
     pub update_check: UpdateCheck,
@@ -145,6 +147,9 @@ pub struct Prefs {
     /// The context size asked of Ollama (`num_ctx`), in tokens: how much text the model reads
     /// at once. Larger sizes need more memory and run slower.
     pub ollama_context: u32,
+    /// Load the Ollama model when the assistant opens and keep it in memory between questions,
+    /// so the first answer doesn't wait for it to load.
+    pub ollama_warm: bool,
     /// Claude is switched on as an AI provider.
     pub claude_on: bool,
     /// The Claude model to use.
@@ -165,6 +170,7 @@ impl Default for Prefs {
             force_notation: 0,
             copy_diagrams: true,
             layout: 0,
+            split_score: false,
             reopen_last: false,
             update_check: UpdateCheck::Never,
             last_update_check: 0,
@@ -191,6 +197,7 @@ impl Default for Prefs {
             ollama_url: super::ai::OLLAMA_URL.into(),
             ollama_model: String::new(),
             ollama_context: super::ai::OLLAMA_CONTEXT,
+            ollama_warm: true,
             claude_on: false,
             claude_model: super::ai::CLAUDE_MODEL.into(),
             shortcuts: Default::default(),
@@ -642,6 +649,7 @@ impl App {
                 p.ollama_url = d.ollama_url;
                 p.ollama_model = d.ollama_model;
                 p.ollama_context = d.ollama_context;
+                p.ollama_warm = d.ollama_warm;
                 p.claude_on = d.claude_on;
                 p.claude_model = d.claude_model;
             }
@@ -795,6 +803,9 @@ impl App {
         ui.add_space(6.0);
         row_w(ui, LABEL_W, "Use Ollama:", |ui| {
             switch(ui, &mut p.ollama_on);
+            if !p.ollama_on {
+                note(ui, "Switch on to use Ollama in the AI Assistant.");
+            }
         });
         text_row(ui, "Server address:", &mut p.ollama_url);
         model_row(ui, "ollama-model", &mut p.ollama_model, &dlg.ollama_test);
@@ -808,6 +819,10 @@ impl App {
             }
         });
         note(ui, "How much text the model reads at once. Larger sizes use more memory and run slower.");
+        row_w(ui, LABEL_W, "Keep model loaded:", |ui| {
+            switch(ui, &mut p.ollama_warm);
+        });
+        note(ui, "Loads the model when the assistant opens and keeps it in memory for 30 minutes, so the first answer is faster. Uses memory while it is loaded.");
         if test_row(ui, &dlg.ollama_test) {
             dlg.ollama_test.test_ollama(&ctx, &p.ollama_url);
         }
@@ -817,6 +832,9 @@ impl App {
         ui.add_space(6.0);
         row_w(ui, LABEL_W, "Use Claude:", |ui| {
             switch(ui, &mut p.claude_on);
+            if !p.claude_on {
+                note(ui, "Switch on to use Claude in the AI Assistant.");
+            }
         });
         let (mut save, mut remove) = (false, false);
         row_w(ui, LABEL_W, "API key:", |ui| {
@@ -1289,5 +1307,15 @@ mod tests {
         assert_eq!(p.layout, 4);
         assert_eq!(p.ollama_context, 2048);
         assert!(p.highlight_played_bar, "missing fields keep their defaults");
+    }
+
+    #[test]
+    fn the_split_view_is_off_unless_chosen_and_is_remembered() {
+        assert!(!Prefs::default().split_score, "off by default");
+        let old: Prefs = serde_json::from_str(r#"{"zoom_pct": 100}"#).unwrap();
+        assert!(!old.split_score, "a preferences file from before has it off");
+        let on = Prefs { split_score: true, ..Prefs::default() };
+        let back: Prefs = serde_json::from_str(&serde_json::to_string(&on).unwrap()).unwrap();
+        assert!(back.split_score);
     }
 }

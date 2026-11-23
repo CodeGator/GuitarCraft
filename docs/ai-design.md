@@ -4,11 +4,15 @@ Status: ideas, 2026-11-23. Built so far: Preferences > AI (`src/app/ai.rs`: the 
 Claude settings, the Claude key in the system credential store, a "Test connection" button
 for each), and, the same day, the **AI Assistant panel** (`src/app/aipanel.rs`, a dockable
 pane; `ai::ask` sends a conversation to Ollama's `/api/chat` or Claude's messages call on a
-background thread, not streamed). The panel answers in words only: provider choice, an
-optional "include the bars at the cursor / selected bars" box (ASCII tablature, key and time
-signature, no title or artist, at most 16 bars), "What will be sent", Return to send (Shift+Return for a new line; no Send button),
-Stop, New chat. Tested with unit tests and one live Ollama question
-(`cargo test ollama_answers_live -- --ignored`); not yet tried with a real Claude key. This is
+background thread, not streamed). The panel answers in words, and can propose changes to the score as cards (`src/app/aiplan.rs`: copy, paste and delete bars; Apply is one undoable edit): an
+the bars selected, or the one at the cursor, sent automatically (ASCII tablature, key and time
+signature, no title or artist, at most 16 bars, plus facts the program works out from the notes:
+the notes used, the scales that contain them and the chord on each beat, `src/app/aifacts.rs`, and a summary of the whole track: its key, every note used and the scales that fit best, with the share of notes each covers),
+Return to send (Shift+Return for a new line; no Send button), Stop, New chat (at the top of the
+panel). The "What will be sent" preview was built and then removed at the owner's request.
+Ollama can be kept loaded: the model is loaded when the panel shows it, and kept for 30 minutes
+(Preferences > AI > Keep model loaded). Tested with unit tests and one live Ollama question
+(`cargo test ollama_answers_live -- --ignored`); a Claude key was accepted by "Test connection" but no Claude answer has been seen (answering needs paid API credits). This is
 the base the ideas below build on: the next step is idea 1 or 2, with the preview and apply
 steps. This document lists what the AI could be used for, picks a few to build first, and sets
 the rules every one of them follows.
@@ -29,10 +33,15 @@ the rules every one of them follows.
 
 ## Rules for every feature
 
-1. **Nothing is sent until the person asks.** No background calls, no sending on open or on
-   save. A feature shows what it is about to send (a "Show what is sent" line) and which
-   provider gets it. Ollama on the same computer sends nothing off it; Claude does, and the
-   window says so.
+1. **Nothing of the person's is sent until they ask.** No background calls that carry their
+   music or text, no sending on open or on save. Which provider is used is set in Preferences >
+   AI, and the panel shows nothing about it (the owner's choice: there is no room, and the
+   outcome is what matters). Ollama on the same computer sends nothing off it; Claude does, and
+   Preferences > AI says so. (The earlier ideas of a "Show what is sent" line and a "Goes to ..."
+   line were dropped by the owner.)
+   One exception, for Ollama only: loading the model in the background when the panel shows
+   it, so the first answer is faster. That request names the model and the context size and
+   carries nothing else, and Preferences > AI > Keep model loaded turns it off.
 2. **Send the least.** The selection or the current bar range by default, never the whole song
    unless asked. File names, paths and the person's details (Preferences > Misc) are never
    included.
@@ -94,7 +103,7 @@ Ranked by how well they fit the rules above. Effort is small (days), medium or l
    the candidates the app produces. Probably better done without AI. *Effort: medium.*
 8. **Name the sections.** Suggest Intro, Verse, Chorus markers from the repeat structure and
    the chords. Small, cheap, easy to undo. *Effort: small.*
-9. **Help.** Ask a question about GuitarCraft and answer from the user guide (the text already
+9. **Help** (built): ask a question about GuitarCraft and answer from the user guide (the text already
    in `tools.rs`, `GUIDE`). Send the whole guide as context to Claude, the best matching
    sections to a local model. *Effort: small.*
 10. **Explain a notation warning.** The bar-duration and notation checks say what is wrong;
@@ -131,8 +140,8 @@ Ranked by how well they fit the rules above. Effort is small (days), medium or l
   for JSON tasks a tool definition the model must call, so the reply is already structured.
 - **Streaming:** not at first. Long answers (idea 3) are the first thing that would want it;
   add it for those when a one-minute wait is annoying.
-- **Which provider:** the first one switched on, Claude if both are, unless the tool lets
-  the person choose. A small "Ask using: Ollama / Claude" choice in each tool's window.
+- **Which provider:** the first one switched on (Ollama before Claude). There is no choice in
+  the panel; it is set in Preferences > AI.
 - **Prompts live in one file** (`src/app/ai_prompts.rs`), one function per task, so they can
   be read and changed in one place and tested without a network.
 - **Cost:** for Claude, estimate the size before sending (characters over about 3.5) and ask
@@ -153,15 +162,13 @@ Ranked by how well they fit the rules above. Effort is small (days), medium or l
 2. **Lyrics syllables** (idea 1): the smallest end-to-end feature, to settle the preview,
    apply, cancel and error pieces.
 3. **Chord suggestions** (idea 2): first use of a preview inside the score area.
-4. **Ask about this passage** (idea 3): the side panel and the "what is sent" line.
+4. **Ask about this passage** (idea 3): the side panel, built (with the facts from `aifacts.rs`).
 5. **Palette mode** (idea 4).
 6. README, in-app help, Preferences note ("asked of them" wording), gap doc.
 
 ## Open questions
 
 - **Should Claude be the default when both are on,** or should every tool ask each time?
-- **Where does the "what is sent" line live:** in each tool, or in one shared window all AI
-  requests pass through (simpler to keep honest, one more click)?
 - **Is a spending limit wanted in the app,** or is the size warning enough?
 - **Do the answers need to be saved** with the song (a note on the bar) or are they throwaway?
 - **Are the macOS and Linux key stores in scope** for the first release? Today only Windows

@@ -205,6 +205,8 @@ pub struct Ask {
     /// Ollama: the server address (empty: Ollama's own) and the context size.
     pub ollama_url: String,
     pub ollama_context: u32,
+    /// Ask Ollama to keep the model loaded between questions.
+    pub ollama_keep: bool,
     /// The model to ask, for either provider.
     pub model: String,
     /// Claude's API key.
@@ -220,7 +222,21 @@ pub const SYSTEM: &str = "You are the assistant inside GuitarCraft, a desktop ed
 music notation in the style of Guitar Pro. Answer briefly and concretely, for a guitarist. When bars of music \
 are included they are ASCII tablature: the lines are the strings from the highest to the lowest, numbers are \
 frets, x is a dead note, h a hammer-on, p a pull-off, / and \\ slides, b a bend, ~ vibrato and L a tied note. \
-You can't change the score yourself; say what the person could do. If you aren't sure, say so.";
+Below the tablature there may be facts the program worked out from the notes (the notes used, the scales that \
+contain them, the chords they spell). Use them instead of working these out yourself, but they are possibilities: \
+when several fit, say so, and the key signature may not match the music. A block headed \"The whole track\" \
+describes every bar of the track, not only the bars asked about: a few bars can use very few notes, so use it \
+to decide the key and say which scale fits the whole piece as well as the bars. \
+A question may also come with parts of the GuitarCraft user guide. For a question about using GuitarCraft, answer \
+from that text: use its menu names and shortcuts exactly, and if it doesn't cover the question, say so rather \
+than guessing at menus or features GuitarCraft might have. \
+If you aren't sure, say so.";
+
+/// Everything the assistant is told about itself: who it is, and how to propose changes to the
+/// score (see `aiplan`).
+pub fn system_prompt() -> String {
+    format!("{SYSTEM}\n\n{}", super::aiplan::PLAN_HELP)
+}
 
 /// The result of a question: the answer, or why there isn't one.
 pub type Answer = Result<String, String>;
@@ -250,11 +266,11 @@ pub fn ask(ctx: &egui::Context, a: Ask) -> Pending {
     Pending { rx }
 }
 
-fn ask_now(a: &Ask) -> Answer {
+pub fn ask_now(a: &Ask) -> Answer {
     match a.provider {
         Provider::Ollama => {
             let url = format!("{}/api/chat", ollama_base(&a.ollama_url));
-            let body = ollama_body(&a.model, a.ollama_context, &a.system, &a.turns);
+            let body = ollama_body(&a.model, a.ollama_context, &a.system, &a.turns, a.ollama_keep);
             let config = format!("header = \"content-type: application/json\"\ndata = \"{}\"\n", conf_quote(&body));
             read_ollama_chat(&curl_for(&url, &config, ASK_SECONDS)?)
         }
@@ -288,11 +304,53 @@ fn messages(turns: &[Turn]) -> Vec<Value> {
 }
 
 /// The request for Ollama's `/api/chat`: one answer, not streamed.
-pub fn ollama_body(model: &str, context: u32, system: &str, turns: &[Turn]) -> String {
+/// With `keep` the model stays in memory for [`OLLAMA_KEEP_ALIVE`] after the answer (Ollama's own
+/// choice is five minutes).
+pub fn ollama_body(model: &str, context: u32, system: &str, turns: &[Turn], keep: bool) -> String {
     let mut all = vec![serde_json::json!({ "role": "system", "content": system })];
     all.extend(messages(turns));
-    serde_json::json!({ "model": model, "stream": false, "options": { "num_ctx": context }, "messages": all }).to_string()
+    let mut body = serde_json::json!({ "model": model, "stream": false, "options": { "num_ctx": context, "temperature": OLLAMA_TEMPERATURE }, "messages": all });
+    if keep {
+        body["keep_alive"] = OLLAMA_KEEP_ALIVE.into();
+    }
+    body.to_string()
 }
+
+/// How long Ollama keeps a model in memory after it was last used, when the person has asked for
+/// it to be kept loaded.
+pub const OLLAMA_KEEP_ALIVE: &str = "30m";
+
+/// How adventurous Ollama's answers are (its own default is 0.8). Lower keeps the assistant to
+/// the format it was asked for: a plan is a block of JSON, and a model that wanders writes
+/// something else.
+pub const OLLAMA_TEMPERATURE: f32 = 0.3;
+
+/// How long after loading (or the last question) the model is loaded again, a little less than
+/// [`OLLAMA_KEEP_ALIVE`] so it never has time to unload.
+pub const OLLAMA_REWARM: std::time::Duration = std::time::Duration::from_secs(25 * 60);
+
+/// The request that loads a model into memory without asking it anything. The context size must
+/// be the one the questions will use: Ollama loads the model again if it differs.
+pub fn ollama_warm_body(model: &str, context: u32) -> String {
+    serde_json::json!({ "model": model, "stream": false, "keep_alive": OLLAMA_KEEP_ALIVE, "options": { "num_ctx": context } }).to_string()
+}
+
+/// Loads the Ollama model in the background so the first question doesn't wait for it. Nothing
+/// of the person's is sent: the request names the model and says nothing else. Failures are
+/// ignored; a question that comes later will report them.
+pub fn warm_ollama(ctx: &egui::Context, url: &str, model: &str, context: u32) {
+    let url = format!("{}/api/generate", ollama_base(url));
+    let body = ollama_warm_body(model, context);
+    let ctx = ctx.clone();
+    std::thread::spawn(move || {
+        let config = format!("header = \"content-type: application/json\"\ndata = \"{}\"\n", conf_quote(&body));
+        let _ = curl_for(&url, &config, WARM_SECONDS);
+        ctx.request_repaint();
+    });
+}
+
+/// The longest a model is given to load.
+const WARM_SECONDS: u32 = 180;
 
 /// The request for Claude's messages call.
 pub fn claude_body(model: &str, system: &str, turns: &[Turn]) -> String {
@@ -383,8 +441,12 @@ mod tests {
     #[test]
     fn requests_are_built_for_each_provider() {
         let turns = vec![Turn { from_user: true, text: "What key?".into() }];
-        let o: Value = serde_json::from_str(&ollama_body("qwen3:4b", 8192, "sys", &turns)).unwrap();
+        let o: Value = serde_json::from_str(&ollama_body("qwen3:4b", 8192, "sys", &turns, false)).unwrap();
         assert_eq!(o["model"], "qwen3:4b");
+        assert!(o.get("keep_alive").is_none(), "Ollama's own timeout applies unless asked");
+        assert!((o["options"]["temperature"].as_f64().unwrap() - 0.3).abs() < 1e-6, "answers keep to the format asked for");
+        let kept: Value = serde_json::from_str(&ollama_body("qwen3:4b", 8192, "sys", &turns, true)).unwrap();
+        assert_eq!(kept["keep_alive"], OLLAMA_KEEP_ALIVE);
         assert_eq!(o["stream"], false);
         assert_eq!(o["options"]["num_ctx"], 8192);
         assert_eq!(o["messages"][0]["role"], "system");
@@ -393,6 +455,21 @@ mod tests {
         assert_eq!(c["system"], "sys");
         assert_eq!(c["messages"][0]["role"], "user");
         assert!(c["max_tokens"].as_u64().unwrap() > 0);
+    }
+
+    #[test]
+    fn the_warm_up_names_only_the_model_and_the_same_context_as_the_questions() {
+        let w: Value = serde_json::from_str(&ollama_warm_body("qwen3:8b", 16_384)).unwrap();
+        assert_eq!(w["model"], "qwen3:8b");
+        assert_eq!(w["options"]["num_ctx"], 16_384);
+        assert_eq!(w["keep_alive"], OLLAMA_KEEP_ALIVE);
+        // No prompt or messages: Ollama loads the model and says nothing.
+        assert!(w.get("prompt").is_none() && w.get("messages").is_none());
+        // Same context as a question, or Ollama would load the model a second time.
+        let turns = vec![Turn { from_user: true, text: "x".into() }];
+        let q: Value = serde_json::from_str(&ollama_body("qwen3:8b", 16_384, "s", &turns, true)).unwrap();
+        assert_eq!(w["options"]["num_ctx"], q["options"]["num_ctx"]);
+        assert!(OLLAMA_REWARM < std::time::Duration::from_secs(30 * 60));
     }
 
     #[test]
@@ -424,12 +501,36 @@ mod tests {
             provider: Provider::Ollama,
             ollama_url: String::new(),
             ollama_context: 4096,
+            ollama_keep: false,
             model,
             key: String::new(),
             system: "Answer in one short sentence.".into(),
             turns: vec![Turn { from_user: true, text: "Which note is the open high E string on a guitar? Quote \"E\" in your answer.".into() }],
         };
         let answer = ask_now(&a).expect("Ollama should answer");
+        println!("ANSWER: {answer}");
+        assert!(!answer.is_empty());
+    }
+
+    /// Asks Claude one thing, through the real request path, with the key saved in Preferences > AI
+    /// (read from the system credential store; it is never printed). Spends a few tokens.
+    /// Run by hand: `cargo test claude_answers_live -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn claude_answers_live() {
+        let key = key::get().expect("save a Claude API key in Preferences > AI first");
+        let model = std::env::var("CLAUDE_MODEL").unwrap_or_else(|_| CLAUDE_MODEL.into());
+        let a = Ask {
+            provider: Provider::Claude,
+            ollama_url: String::new(),
+            ollama_context: 4096,
+            ollama_keep: false,
+            model,
+            key,
+            system: "Answer in one short sentence.".into(),
+            turns: vec![Turn { from_user: true, text: "Which note is the open high E string on a guitar? Quote \"E\" in your answer.".into() }],
+        };
+        let answer = ask_now(&a).expect("Claude should answer");
         println!("ANSWER: {answer}");
         assert!(!answer.is_empty());
     }

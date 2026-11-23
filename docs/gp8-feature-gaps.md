@@ -72,15 +72,22 @@ exist under another name. Check before starting work on one, and tick items off 
       which Guitar Pro 8 accepts. Not written to GPX.
       Verified by eye in the app (confirmed 2026-11-23).
 - [~] **Numbered (jianpu) notation**: added 2026-11-23. The "2" button in the track's staff
-      switches (Track settings) shows a lane under the other staves (`draw_num_beat` in
+      switches (Track settings) shows a lane between the notation staff and the tab, with "1=G" at the start of each system
+      (moved there 2026-11-23 after the owner compared with GP8; `draw_num_beat` in
       `src/score/draw.rs`, saved in .gc as `show_num`). Degrees count from the key's tonic (a
       minor key uses its relative major), sounding pitch (so a guitar reads an octave lower than its standard staff, as in Guitar Pro 8: checked 2026-11-23 against one note), dots above or
       below for octaves, underlines for eighths and shorter (joined within a beam group),
-      dashes for half and whole notes, dots for dotted notes, 0 for rests. Not done: ties,
-      tuplet numbers, grace notes, bar lines through the lane, a lane for voices 2 to 4, a
-      numbered-only view, drums; not read from or written to .gp/.gpx/.gp5 files. Chords
-      taller than two notes overflow the lane. Compared with Guitar Pro 8 by eye and found
-      matching (confirmed 2026-11-23).
+      dashes for half and whole notes, dots for dotted notes, 0 for rests. Compared with
+      Guitar Pro 8 by eye and found matching (confirmed 2026-11-23). Matched to two zoomed GP8
+      crops (bars 1-6 of the guitar, 2026-11-23): a chord shows ONE digit, the note on its lowest
+      string (the first note GP8 lists; our writer now lists a chord low string first, as GP8
+      does); a tie draws nothing; a hammer-on or legato draws an arc over the digit and the next
+      note's span; a tuplet is a curved bracket with the number, just above the digits; a grace
+      note is a small digit whose underline runs into the beat's own; bar lines run through the
+      lane (heavier at a repeat or the end); one lane per voice in use (not compared with GP8).
+      Check it with `--show numbers` or `tests/fixtures/Morning Walk - numbered check.gp`. Not
+      done: a numbered-only view; drums have none (Guitar Pro 8 has none either); not read from
+      or written to .gp/.gpx/.gp5 files (not known how Guitar Pro 8 stores it).
 - [ ] **Import TablEdit and Power Tab**: menu items exist but are greyed out (formats not
       publicly documented).
 

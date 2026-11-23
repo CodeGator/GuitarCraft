@@ -455,3 +455,69 @@ pub fn multitrack_icon(p: &egui::Painter, r: Rect, c: Color32) {
     }
     p.line_segment([r.left_top(), r.left_bottom()], s);
 }
+
+/// One page in a page-layout icon.
+fn page_box(p: &egui::Painter, x: f32, y: f32, w: f32, h: f32, c: Color32) {
+    p.rect_stroke(
+        Rect::from_min_size(Pos2::new(x, y), Vec2::new(w, h)),
+        1.0,
+        PStroke::new(1.3, c),
+        egui::StrokeKind::Inside,
+    );
+}
+
+/// Pages one above the other (Page - Vertical).
+pub fn icon_layout_page_vertical(p: &egui::Painter, r: Rect, c: Color32) {
+    let (x, y) = (r.center().x - 4.5, r.top());
+    page_box(p, x, y, 9.0, 7.0, c);
+    page_box(p, x, y + 9.0, 9.0, 7.0, c);
+}
+
+/// Pages side by side (Page - Horizontal).
+pub fn icon_layout_page_horizontal(p: &egui::Painter, r: Rect, c: Color32) {
+    let (x, y) = (r.left(), r.center().y - 6.0);
+    page_box(p, x, y, 7.0, 12.0, c);
+    page_box(p, x + 9.0, y, 7.0, 12.0, c);
+}
+
+/// Pages in a grid (Page - Grid).
+pub fn icon_layout_page_grid(p: &egui::Painter, r: Rect, c: Color32) {
+    for (dx, dy) in [(0.0, 0.0), (9.0, 0.0), (0.0, 9.0), (9.0, 9.0)] {
+        page_box(p, r.left() + dx, r.top() + dy, 7.0, 7.0, c);
+    }
+}
+
+/// A screen with its stand; returns the inside of the screen.
+fn screen_frame(p: &egui::Painter, r: Rect, c: Color32) -> Rect {
+    let screen = Rect::from_min_size(Pos2::new(r.left(), r.top() + 1.0), Vec2::new(16.0, 11.0));
+    p.rect_stroke(screen, 1.5, PStroke::new(1.3, c), egui::StrokeKind::Inside);
+    let foot = r.top() + 14.5;
+    p.line_segment([Pos2::new(r.center().x, screen.bottom()), Pos2::new(r.center().x, foot)], PStroke::new(1.3, c));
+    p.line_segment([Pos2::new(r.center().x - 3.5, foot), Pos2::new(r.center().x + 3.5, foot)], PStroke::new(1.3, c));
+    screen.shrink(3.0)
+}
+
+/// Music running down the screen (Screen - Vertical).
+pub fn icon_layout_screen_vertical(p: &egui::Painter, r: Rect, c: Color32) {
+    let inner = screen_frame(p, r, c);
+    for y in [inner.top() + 0.5, inner.center().y, inner.bottom() - 0.5] {
+        p.line_segment([Pos2::new(inner.left(), y), Pos2::new(inner.right(), y)], PStroke::new(1.2, c));
+    }
+}
+
+/// Music running along the screen (Screen - Horizontal).
+pub fn icon_layout_screen_horizontal(p: &egui::Painter, r: Rect, c: Color32) {
+    let inner = screen_frame(p, r, c);
+    for x in [inner.left() + 0.5, inner.center().x, inner.right() - 0.5] {
+        p.line_segment([Pos2::new(x, inner.top()), Pos2::new(x, inner.bottom())], PStroke::new(1.2, c));
+    }
+}
+
+/// The icon for each page layout, in the order of `App::view_mode`.
+pub const LAYOUT_ICONS: [super::widgets::Icon; 5] = [
+    icon_layout_page_vertical,
+    icon_layout_page_horizontal,
+    icon_layout_page_grid,
+    icon_layout_screen_vertical,
+    icon_layout_screen_horizontal,
+];

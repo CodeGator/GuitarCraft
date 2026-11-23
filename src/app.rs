@@ -5,6 +5,9 @@ mod about;
 mod actions;
 mod addtrack;
 mod ai;
+mod aifacts;
+mod aihelp;
+mod aiplan;
 mod aipanel;
 mod batch;
 #[cfg(test)]
@@ -179,6 +182,10 @@ pub struct App {
     play_while_editing: bool,
     /// 0 page vertical, 1 page horizontal, 2 page grid, 3 screen vertical, 4 screen horizontal.
     view_mode: u8,
+    /// The split view: which of the two score views (0 top, 1 bottom) was last clicked, and how
+    /// much of the height the top one takes.
+    score_active: usize,
+    split_frac: f32,
     dir_open: bool,
     /// The Add Track window.
     at: addtrack::AddTrack,
@@ -375,6 +382,8 @@ impl App {
             kb_octave: 1,
             play_while_editing: true,
             view_mode: 0,
+            score_active: 0,
+            split_frac: 0.5,
             dir_open: false,
             at: Default::default(),
             save_hint: None,
@@ -500,6 +509,11 @@ impl App {
                     app.playing = true;
                     app.play_beat = Some((0, 3));
                     app.play_tick = Some((0, 1.6 * crate::model::QUARTER as f32));
+                }
+                "numbers" => {
+                    // The numbered lane on every track, with a tie, a grace note, a three-note chord
+                    // and a triplet in bar 2 of the first track, for checking.
+                    app.song.numbers_check();
                 }
                 "short" => {
                     // Bar 1 one beat short and bar 2 half a beat long, for checking.
@@ -1508,6 +1522,14 @@ impl App {
         if let Some(i) = self.find_open(&p) {
             self.switch_to(i);
             self.refuse("That file is already open.");
+            return;
+        }
+        // Gone since the list was made (deleted or moved while GuitarCraft was open): say so, and
+        // stop offering it.
+        if !p.exists() {
+            self.recent.retain(|x| full_path(x) != p);
+            home::save_recent(&self.recent);
+            self.status = notice::failed("That file is no longer there, so it was removed from the recent files.".to_string());
             return;
         }
         if crate::chart::is_chart_path(&p) {

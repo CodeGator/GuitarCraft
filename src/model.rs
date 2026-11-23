@@ -1714,6 +1714,44 @@ impl Song {
         map
     }
 
+    /// Bar 2 of the first track changed to show the numbered lane's extras, for checking it
+    /// against Guitar Pro 8: a tie, a grace note, a three-note chord and a triplet (the bar
+    /// keeps its length). Also turns the numbered lane on for every track.
+    pub fn numbers_check(&mut self) {
+        for t in self.tracks.iter_mut() {
+            t.show_num = true;
+        }
+        let Some(t) = self.tracks.first_mut() else { return };
+        let strings = t.strings().max(1) as u8;
+        let Some(bar) = t.bars.get_mut(1) else { return };
+        let bs = &mut bar.beats;
+        // Beat 2 repeats beat 1's note and is tied to it.
+        if let Some(first) = bs.first().and_then(|b| b.notes.first()).cloned()
+            && let Some(n) = bs.get_mut(1).and_then(|b| b.notes.first_mut())
+        {
+            n.string = first.string;
+            n.fret = first.fret;
+            n.tie = true;
+        }
+        if let Some(n) = bs.get_mut(2).and_then(|b| b.notes.first_mut()) {
+            n.grace = Some(n.fret.saturating_add(2));
+        }
+        if let Some(b) = bs.get_mut(3) {
+            let s = b.notes.first().map_or(0, |n| n.string);
+            for k in 1..=2u8 {
+                b.notes.push(Note::new((s + k) % strings, 3));
+            }
+        }
+        // Three eighths become a triplet, a beat shorter than they were, so one more eighth
+        // keeps the bar the right length.
+        for b in bs.iter_mut().skip(4).take(3) {
+            b.tuplet = 3;
+        }
+        if let Some(last) = bs.last().cloned() {
+            bs.push(Beat { tuplet: 0, ..last });
+        }
+    }
+
     /// A short original demo piece so the app opens with something to look at and hear.
     pub fn demo() -> Song {
         let mut song = Song::new_blank();

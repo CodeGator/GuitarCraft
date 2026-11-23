@@ -132,6 +132,8 @@ fn main() -> eframe::Result {
                     ":rock" => s.style = style::Stylesheet::rock(),
                     ":classic" => s.style = style::Stylesheet::classic(),
                     ":jazz" => s.style = style::Stylesheet::jazz(),
+                    // For checking the numbered lane against Guitar Pro 8.
+                    ":numbers" => s.numbers_check(),
                     _ => {}
                 }
                 Ok(s)

@@ -914,44 +914,48 @@ impl App {
     }
 
     fn view_menu(&mut self, ui: &mut Ui) {
-        for (pane, label, keys) in [
-            (Pane::Palette, "Show Editing Palette", sc(Act::ShowPalette)),
-            (Pane::Inspector, "Show Inspector", String::new()),
-            (Pane::Ai, "Show AI Assistant", String::new()),
-            (Pane::Tracks, "Show Global View", sc(Act::ShowGlobalView)),
-            (Pane::Fretboard, "Show Fretboard View", String::new()),
-            (Pane::Keyboard, "Show Keyboard View", sc(Act::KeyboardView)),
-        ] {
-            if pane == Pane::Fretboard {
-                ui.separator();
-            }
-            if check(ui, self.panel_shown(pane), label, &keys).clicked() {
-                self.toggle_panel(pane);
-            }
-        }
-        ui.menu_button("Pop Out Panel", |ui| {
-            for pane in Pane::PANELS {
-                let out = self.popped.contains(&pane);
-                if ui.selectable_label(out, pane.title()).on_hover_text("A panel in a window of its own, which can leave the main window").clicked() {
-                    if out {
-                        self.dock_panel(pane);
-                    } else {
-                        self.pop_out(pane);
-                    }
-                    ui.close();
+        // Everything about the panels in one place: which are shown, popping them out, the layout.
+        ui.menu_button("Panels", |ui| {
+            for (pane, label, keys) in [
+                (Pane::Palette, "Show Editing Palette", sc(Act::ShowPalette)),
+                (Pane::Inspector, "Show Inspector", String::new()),
+                (Pane::Ai, "Show AI Assistant", String::new()),
+                (Pane::Tracks, "Show Global View", sc(Act::ShowGlobalView)),
+                (Pane::Fretboard, "Show Fretboard View", String::new()),
+                (Pane::Keyboard, "Show Keyboard View", sc(Act::KeyboardView)),
+            ] {
+                if pane == Pane::Fretboard {
+                    ui.separator();
+                }
+                if check(ui, self.panel_shown(pane), label, &keys).clicked() {
+                    self.toggle_panel(pane);
                 }
             }
-        });
-        if ui.add_enabled(!self.popped.is_empty(), egui::Button::new("Dock All Panels")).clicked() {
-            for pane in std::mem::take(&mut self.popped) {
-                self.show_panel(pane);
+            ui.separator();
+            ui.menu_button("Pop Out Panel", |ui| {
+                for pane in Pane::PANELS {
+                    let out = self.popped.contains(&pane);
+                    if ui.selectable_label(out, pane.title()).on_hover_text("A panel in a window of its own, which can leave the main window").clicked() {
+                        if out {
+                            self.dock_panel(pane);
+                        } else {
+                            self.pop_out(pane);
+                        }
+                        ui.close();
+                    }
+                }
+            });
+            if ui.add_enabled(!self.popped.is_empty(), egui::Button::new("Dock All Panels")).clicked() {
+                for pane in std::mem::take(&mut self.popped) {
+                    self.show_panel(pane);
+                }
+                ui.close();
             }
-            ui.close();
-        }
-        if item(ui, "Reset Panel Layout", "").clicked() {
-            self.reset_panel_layout();
-            ui.close();
-        }
+            if item(ui, "Reset Panel Layout", "").clicked() {
+                self.reset_panel_layout();
+                ui.close();
+            }
+        });
         ui.separator();
         if check(ui, !self.single_track, "Multitrack", &sc(Act::Multitrack)).clicked() {
             self.single_track = !self.single_track;
@@ -968,6 +972,31 @@ impl App {
                 }
             }
         });
+        ui.menu_button("Score", |ui| {
+            for (v, l) in [
+                (0u8, "Page - Vertical"),
+                (1, "Page - Horizontal"),
+                (2, "Page - Grid"),
+                (3, "Screen - Vertical"),
+                (4, "Screen - Horizontal"),
+            ] {
+                if check(ui, self.view_mode == v, l, "").clicked() {
+                    self.view_mode = v;
+                    ui.close();
+                }
+            }
+            ui.separator();
+            // The split view needs a layout that scrolls down; the choice is kept for when one is back.
+            let split = ui
+                .add_enabled_ui(matches!(self.view_mode, 0 | 3), |ui| check(ui, self.prefs.split_score, "Split Score View", ""))
+                .inner;
+            if split.clicked() {
+                self.prefs.split_score = !self.prefs.split_score;
+                self.prefs.save();
+                ui.close();
+            }
+            split.on_disabled_hover_text("Available in the Page - Vertical and Screen - Vertical layouts");
+        });
         if check(ui, self.follow, "Follow Playback", "").clicked() {
             self.follow = !self.follow;
         }
@@ -977,19 +1006,6 @@ impl App {
         }
         if item(ui, "Zoom Out", &sc(Act::ZoomOut)).clicked() {
             self.zoom_step(-1);
-        }
-        ui.separator();
-        for (v, l) in [
-            (0u8, "Page - Vertical"),
-            (1, "Page - Horizontal"),
-            (2, "Page - Grid"),
-            (3, "Screen - Vertical"),
-            (4, "Screen - Horizontal"),
-        ] {
-            if check(ui, self.view_mode == v, l, "").clicked() {
-                self.view_mode = v;
-                ui.close();
-            }
         }
         ui.separator();
         if check(ui, self.fullscreen, "Full Screen Mode", &sc(Act::FullScreen)).clicked() {
