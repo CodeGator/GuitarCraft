@@ -961,3 +961,64 @@ fn audio_note_settings_change_the_note_at_the_cursor_or_the_selection() {
     r.app.set_note_playback(|p| p.percent = 200);
     assert_eq!(of(&r, 0).percent, 100);
 }
+
+/// Where a part of the Audio Note Settings window was drawn.
+fn audio_part(r: &Rig, label: &str, part: &str) -> Rect {
+    let id = egui::Id::new(("audio-note-setting", label));
+    let id = if part.is_empty() { id } else { id.with(part) };
+    r.ctx.read_response(id).unwrap_or_else(|| panic!("{label} {part} isn't showing")).rect
+}
+
+#[test]
+fn the_audio_note_boxes_work_with_their_arrows_and_by_typing() {
+    let mut r = on_the_demo();
+    r.app.open_audio_notes();
+    r.frames(3);
+    let of = |r: &Rig, beat: usize| r.app.song.tracks[0].bars[0].beats[beat].notes[0].playback;
+    let click = |r: &mut Rig, label: &str, part: &str| {
+        let at = audio_part(r, label, part).center();
+        r.click(at.x, at.y);
+    };
+    // The arrows step by one.
+    click(&mut r, "Duration:", "up");
+    click(&mut r, "Duration:", "up");
+    click(&mut r, "Offset:", "down");
+    click(&mut r, "Relative Velocity:", "up");
+    assert_eq!((of(&r, 0).percent, of(&r, 0).offset, of(&r, 0).db), (102, -1, 1));
+    // Typing replaces what is in the box, and Return takes it; the note's other settings stay.
+    click(&mut r, "Duration:", "text");
+    r.frame(vec![Event::Text("80".into())]);
+    r.key(Key::Enter, Modifiers::NONE);
+    r.frames(2);
+    assert_eq!((of(&r, 0).percent, of(&r, 0).offset), (80, -1));
+    // Typed digits go to the box, not into the score.
+    let notes = note_count(&r);
+    click(&mut r, "Offset:", "text");
+    type_digit(&mut r, Key::Num7, "7");
+    r.key(Key::Enter, Modifiers::NONE);
+    r.frames(2);
+    assert_eq!((of(&r, 0).offset, note_count(&r)), (7, notes));
+    // Beyond the range: the nearest end of it.
+    click(&mut r, "Duration:", "text");
+    r.frame(vec![Event::Text("5000".into())]);
+    r.key(Key::Enter, Modifiers::NONE);
+    r.frames(2);
+    assert_eq!(of(&r, 0).percent, 1200);
+    // Escape leaves the box as it was.
+    click(&mut r, "Relative Velocity:", "text");
+    r.frame(vec![Event::Text("-9".into())]);
+    r.key(Key::Escape, Modifiers::NONE);
+    r.frames(2);
+    assert_eq!(of(&r, 0).db, 1);
+    // Something typed goes to the note it was typed for, though another note is clicked.
+    click(&mut r, "Relative Velocity:", "text");
+    r.frame(vec![Event::Text("-4".into())]);
+    r.app.beat = 1;
+    r.app.string = r.app.song.tracks[0].bars[0].beats[1].notes[0].string as usize;
+    let at = Pos2::new(5.0, 890.0);
+    r.click(at.x, at.y);
+    assert_eq!((of(&r, 0).db, of(&r, 1).db), (-4, 0));
+    // Close.
+    click(&mut r, "close", "");
+    assert!(r.app.audio_notes.is_none());
+}

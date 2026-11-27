@@ -15,7 +15,7 @@ Written 2026-11-23, after releasing 0.10.0 and starting `version-0.11.0`. Read t
   Assistant that **only answers** (see "The AI features" below).
 - **Branches on GitHub:** `main`, `release`, and an old merged `version-0.8.0` that could be
   deleted.
-- **Tests:** `cargo test --release` passes in full (288 passed, 7 ignored live tests that need a
+- **Tests:** `cargo test --release` passes in full (291 passed, 7 ignored live tests that need a
   model, a key or a Claude Code sign-in). In a debug build (`cargo test`) three `dock` tests fail
   ("Dropped TexturesDelta with 1 unapplied deltas", from `epaint`); seen 2026-11-27 before any
   change that day.
@@ -95,7 +95,9 @@ another song brings its master effect changes, which then apply to the effect in
 change in GP8): `NotePlayback` on a note,
 read and written as `Duration`, `Offset` (Guitar Pro ticks, 480 to the quarter; ours are 960) and
 `RelativeVelocity`; matched to the owner's window picture and a file GP8 saved. The built-in sound
-and MIDI export use them; arpeggio notes are left alone, as GP8 says.
+and MIDI export use them; arpeggio notes are left alone, as GP8 says. The window is drawn to
+look like GP8's, from the owner's picture of it (its own title bar and number boxes with arrows;
+the boxes also take typing, Up and Down, and the mouse wheel); the owner approved it.
 
 **Tab import clean-up** (2026-11-27): the text tab importer now reads tab that is quoted with
 ">", uses typographic dashes or box lines, has spaces for dashes, or has blank lines between the
