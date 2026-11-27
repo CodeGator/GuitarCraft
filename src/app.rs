@@ -663,11 +663,13 @@ impl App {
                     app.show_home = false;
                     app.status = "The chart's BPM opens the same tempo editor as a score's.".into();
                 }
-                "about" | "about2" | "about3" => {
+                // The About window, on a given tab: about, about2 ... about4.
+                "about" | "about2" | "about3" | "about4" => {
                     app.show_about = true;
                     app.about.tab = match part.as_str() {
                         "about2" => 1,
                         "about3" => 2,
+                        "about4" => 3,
                         _ => 0,
                     };
                 }

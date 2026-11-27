@@ -15,7 +15,7 @@ Written 2026-11-27, after releasing 0.11.0 and starting `version-0.12.0`. Read t
 - **Working branch:** `version-0.12.0`, made from `main` after the release, version bumped to
   0.12.0. Not pushed to GitHub yet.
 - **Branches on GitHub:** `main` and `release`.
-- **Tests:** `cargo test --release` passes in full (293 passed, 7 ignored live tests that need a
+- **Tests:** `cargo test --release` passes in full (296 passed, 7 ignored live tests that need a
   model, a key or a Claude Code sign-in). In a debug build (`cargo test`) three `dock` tests fail
   ("Dropped TexturesDelta with 1 unapplied deltas", from `epaint`); seen 2026-11-27 before any
   change that day.
@@ -108,6 +108,13 @@ behind it; it now opens as a new song. With a song showing it adds a track, as b
 **The name's colour** (2026-11-27, owner): "Craft" is the orange of the logo's pick
 (`LOGO_ORANGE` in `panels.rs`), on the start screen and in the About window. It was blue, too much
 like Guitar Pro. Use the constant anywhere else the name is drawn in colour.
+
+**Contributors** (2026-11-27, in 0.12.0): Help > About has a Contributors tab, after the one in
+storytold's apps but only their "grab bag" of names flowing across the window (the owner's choice,
+after FilmCraft's; no statistics, sorting or name switches): `CONTRIBUTORS.md` is built into the
+app and parsed in `about.rs` (a test fails if a line isn't read). It credits the owner, the Claude
+models named in `Co-Authored-By` lines and Craft Anything. **Add a new model there when one starts
+co-authoring**, and a person only with their agreement.
 
 **Bar repeat signs** (2026-11-27): Guitar Pro's `SimileMark` is now read and written
 (`Simple`, `FirstOfDouble`, `SecondOfDouble`); before, repeated bars of a Guitar Pro file opened
