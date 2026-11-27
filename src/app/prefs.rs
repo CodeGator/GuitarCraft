@@ -150,9 +150,13 @@ pub struct Prefs {
     /// Load the Ollama model when the assistant opens and keep it in memory between questions,
     /// so the first answer doesn't wait for it to load.
     pub ollama_warm: bool,
-    /// Claude is switched on as an AI provider.
+    /// Claude Code, the person's own `claude` program, is switched on as an AI provider.
+    pub claude_code_on: bool,
+    /// The model to ask Claude Code for (empty: its own default).
+    pub claude_code_model: String,
+    /// Claude, with an API key, is switched on as an AI provider.
     pub claude_on: bool,
-    /// The Claude model to use.
+    /// The Claude model to use with the API key.
     pub claude_model: String,
     // ----- Shortcuts -----
     /// The keys the person changed, by action name (see `shortcuts::Keymap::to_saved`).
@@ -198,6 +202,8 @@ impl Default for Prefs {
             ollama_model: String::new(),
             ollama_context: super::ai::OLLAMA_CONTEXT,
             ollama_warm: true,
+            claude_code_on: false,
+            claude_code_model: super::aicode::MODEL.into(),
             claude_on: false,
             claude_model: super::ai::CLAUDE_MODEL.into(),
             shortcuts: Default::default(),
@@ -225,11 +231,15 @@ pub(super) fn write_json<T: Serialize + ?Sized>(f: Option<PathBuf>, v: &T) {
 
 impl Prefs {
     pub fn load() -> Prefs {
-        prefs_file()
-            .and_then(|f| std::fs::read(f).ok())
-            .and_then(|d| serde_json::from_slice::<Prefs>(&d).ok())
-            .map(Prefs::fixed)
-            .unwrap_or_default()
+        let read = prefs_file().and_then(|f| std::fs::read(f).ok()).and_then(|d| serde_json::from_slice::<Prefs>(&d).ok());
+        let Some(read) = read else { return Prefs::default() };
+        let had_password = super::ai::without_password(&read.ollama_url).is_some();
+        let prefs = read.fixed();
+        // A password saved by an earlier version comes out of the file now, not at the next change.
+        if had_password {
+            prefs.save();
+        }
+        prefs
     }
 
     pub fn save(&self) {
@@ -242,6 +252,9 @@ impl Prefs {
             self.default_template = 0;
         }
         self.zoom_pct = self.zoom_pct.clamp(25, 400);
+        if let Some(clean) = super::ai::without_password(&self.ollama_url) {
+            self.ollama_url = clean;
+        }
         self.ollama_context = self.ollama_context.clamp(*super::ai::OLLAMA_CONTEXT_RANGE.start(), *super::ai::OLLAMA_CONTEXT_RANGE.end());
         self.layout = self.layout.min(LAYOUTS.len() as u8 - 1);
         // The old plus/minus swap becomes the same two shortcuts (unless they were set).
@@ -311,12 +324,15 @@ pub struct PrefsDlg {
     key_note: String,
     /// AI: the last "Test connection" of each provider.
     ollama_test: super::ai::Probe,
+    claude_code_test: super::ai::Probe,
     claude_test: super::ai::Probe,
     /// AI: the Claude key being typed (never kept once saved), whether one is saved, and what
     /// happened to it last.
     key_input: String,
     key_saved: bool,
     ai_key_note: Option<(bool, String)>,
+    /// AI: a password typed in the Ollama address was taken out of it.
+    password_removed: bool,
 }
 
 /// A key the person chose that another action already uses.
@@ -403,6 +419,7 @@ fn test_row(ui: &mut Ui, probe: &super::ai::Probe) -> bool {
         match &probe.result {
             _ if probe.busy() => note(ui, "Connecting..."),
             Some(super::ai::Test::Ok(m)) => note(ui, &format!("Connected. {} model{} available.", m.len(), if m.len() == 1 { "" } else { "s" })),
+            Some(super::ai::Test::Ready(t)) => note(ui, t),
             Some(super::ai::Test::Failed(e)) => {
                 ui.label(RichText::new(e.as_str()).size(12.0).color(Color32::from_rgb(210, 90, 80)));
             }
@@ -650,6 +667,8 @@ impl App {
                 p.ollama_model = d.ollama_model;
                 p.ollama_context = d.ollama_context;
                 p.ollama_warm = d.ollama_warm;
+                p.claude_code_on = d.claude_code_on;
+                p.claude_code_model = d.claude_code_model;
                 p.claude_on = d.claude_on;
                 p.claude_model = d.claude_model;
             }
@@ -793,8 +812,9 @@ impl App {
     fn ai_tab(&mut self, ui: &mut Ui, dlg: &mut PrefsDlg) {
         let ctx = ui.ctx().clone();
         dlg.ollama_test.poll();
+        dlg.claude_code_test.poll();
         dlg.claude_test.poll();
-        if dlg.ollama_test.busy() || dlg.claude_test.busy() {
+        if dlg.ollama_test.busy() || dlg.claude_code_test.busy() || dlg.claude_test.busy() {
             ctx.request_repaint_after(std::time::Duration::from_millis(200));
         }
         let p = &mut self.prefs;
@@ -808,6 +828,13 @@ impl App {
             }
         });
         text_row(ui, "Server address:", &mut p.ollama_url);
+        if let Some(clean) = super::ai::without_password(&p.ollama_url) {
+            p.ollama_url = clean;
+            dlg.password_removed = true;
+        }
+        if dlg.password_removed {
+            ui.label(RichText::new("A user name and password can't be part of the address, so they were removed. GuitarCraft can't use a server that asks for them.").size(12.0).color(Color32::from_rgb(210, 90, 80)));
+        }
         model_row(ui, "ollama-model", &mut p.ollama_model, &dlg.ollama_test);
         row_w(ui, LABEL_W, "Context size:", |ui| {
             ui.add(egui::DragValue::new(&mut p.ollama_context).range(super::ai::OLLAMA_CONTEXT_RANGE).speed(256));
@@ -827,7 +854,31 @@ impl App {
             dlg.ollama_test.test_ollama(&ctx, &p.ollama_url);
         }
         ui.add_space(14.0);
-        heading(ui, "Claude");
+        heading(ui, "Claude Code");
+        note(ui, "Claude through the Claude Code program on this computer, signed in with your own account. No API key. What you ask is sent over the internet to Anthropic and counts against your plan.");
+        note(ui, "Claude Code also sends details of its own: your account's email address, your operating system, the date and the top folder of your system drive, where it is run.");
+        ui.add_space(6.0);
+        row_w(ui, LABEL_W, "Use Claude Code:", |ui| {
+            switch(ui, &mut p.claude_code_on);
+            if !p.claude_code_on {
+                note(ui, "Switch on to use Claude Code in the AI Assistant.");
+            }
+        });
+        row_w(ui, LABEL_W, "Model:", |ui| {
+            ui.add(egui::TextEdit::singleline(&mut p.claude_code_model).hint_text("Claude Code's default").desired_width(240.0));
+            egui::ComboBox::from_id_salt("claude-code-model").width(70.0).selected_text("Pick").show_ui(ui, |ui| {
+                for m in super::aicode::MODELS {
+                    if ui.selectable_label(p.claude_code_model == m, m).clicked() {
+                        p.claude_code_model = m.into();
+                    }
+                }
+            });
+        });
+        if test_row(ui, &dlg.claude_code_test) {
+            dlg.claude_code_test.test_claude_code(&ctx);
+        }
+        ui.add_space(14.0);
+        heading(ui, "Claude (API key)");
         note(ui, "Anthropic's AI service. Needs an API key from console.anthropic.com. What you ask is sent over the internet to Anthropic.");
         ui.add_space(6.0);
         row_w(ui, LABEL_W, "Use Claude:", |ui| {
@@ -1307,6 +1358,12 @@ mod tests {
         assert_eq!(p.layout, 4);
         assert_eq!(p.ollama_context, 2048);
         assert!(p.highlight_played_bar, "missing fields keep their defaults");
+    }
+
+    #[test]
+    fn a_saved_password_leaves_the_ollama_address() {
+        let p: Prefs = serde_json::from_str(r#"{"ollama_url": "http://me:secret@server:11434"}"#).unwrap();
+        assert_eq!(p.fixed().ollama_url, "http://server:11434");
     }
 
     #[test]

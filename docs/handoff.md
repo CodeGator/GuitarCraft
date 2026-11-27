@@ -10,12 +10,14 @@ Written 2026-11-23, after releasing 0.10.0 and starting `version-0.11.0`. Read t
   from PR #20. MSI and portable zip, unsigned. The MSI was never installed by hand; only the
   checksums were checked (they match). v0.9.0 is the one before it.
 - **Working branch:** `version-0.11.0`, made from `main` after the release, version bumped to
-  0.11.0 (one commit, not pushed yet). Nothing else is on it.
+  0.11.0 (one commit, not pushed yet). On 2026-11-27 the **Claude Code** AI provider was added
+  to it (see "The AI assistant" below).
 - **Branches on GitHub:** `main`, `release`, and an old merged `version-0.8.0` that could be
   deleted.
-- **Tests:** `cargo test --release` passes in full (235 passed, 6 ignored live tests that need a
-  model or a key). The three `dock` tests the last handoff called failing passed in this
-  session's runs; I don't know why they used to fail, so don't trust it blindly.
+- **Tests:** `cargo test --release` passes in full (245 passed, 7 ignored live tests that need a
+  model, a key or a Claude Code sign-in). In a debug build (`cargo test`) three `dock` tests fail
+  ("Dropped TexturesDelta with 1 unapplied deltas", from `epaint`); seen 2026-11-27 before any
+  change that day.
 
 ## What 0.9.0 added (older; 0.10.0 is in the next section)
 
@@ -62,7 +64,8 @@ tests and live Ollama calls.
 nothing about the provider or model ("I care about the outcome"; that is in Preferences > AI), and
 it has no checkboxes: the program decides what goes with a question. If no provider is switched
 on, it shows a warning with "Switch on Ollama" (when a model is chosen) and "AI Preferences". The
-provider is the first one switched on, Ollama before Claude; there is no choice in the panel.
+provider is the first one switched on (Ollama, Claude Code, Claude with a key); there is no
+choice in the panel.
 
 **What is sent with a question** (`ai_send`, `ai_context` in `aipanel.rs`):
 - An *order* (`aiplan::is_change_request`: "Copy the intro to the end", "please delete bars 3-4";
@@ -105,9 +108,14 @@ for an occasional failure, not a proven fix. An answer takes about 100 seconds o
 8 GB card (`qwen3:8b` does not fit it at 16K context: 20% on the CPU); the owner chose an 8K
 context.
 
-**Claude** was never asked a question: the key saved and "Test connection" worked, but answering
-needs prepaid API credits, which the owner will not buy. Do not spend time here unless that
-changes. Ollama is the path to tune.
+**Claude with an API key** was never asked a question: the key saved and "Test connection"
+worked, but answering needs prepaid API credits, which the owner will not buy. Do not spend time
+there unless that changes.
+
+**Claude Code** (`src/app/aicode.rs`, details and limits in `docs/ai-design.md` > "Claude Code")
+is how Claude answers now: the owner's own `claude` program and plan. Live answers were seen
+through `claude_code_answers_live` in about 4 seconds for two questions. Not yet tried: the panel
+by hand, and a score change card from Claude. Before a release, check Anthropic's current terms.
 
 ## Known problems and things not checked
 

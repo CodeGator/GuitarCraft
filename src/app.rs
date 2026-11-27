@@ -5,6 +5,7 @@ mod about;
 mod actions;
 mod addtrack;
 mod ai;
+mod aicode;
 mod aifacts;
 mod aihelp;
 mod aiplan;

@@ -14,16 +14,22 @@ Ollama can be kept loaded: the model is loaded when the panel shows it, and kept
 (Preferences > AI > Keep model loaded). Tested with unit tests and one live Ollama question
 (`cargo test ollama_answers_live -- --ignored`); a Claude key was accepted by "Test connection" but no Claude answer has been seen (answering needs paid API credits). This is
 the base the ideas below build on: the next step is idea 1 or 2, with the preview and apply
-steps. This document lists what the AI could be used for, picks a few to build first, and sets
+steps. On 2026-11-27 a third provider was added, **Claude Code** (`src/app/aicode.rs`): the
+person's own signed-in `claude` program, so no API key (see "Claude Code" below). This document lists what the AI could be used for, picks a few to build first, and sets
 the rules every one of them follows.
 
 ## What exists today
 
-- **Providers** (Preferences > AI): Ollama (address, model, context size `num_ctx`) and Claude
-  (API key, model). Each has an on switch. The key never goes in `preferences.json`.
-- **Plumbing:** `ai.rs` talks to the provider by running `curl` on a separate thread and
-  handing the answer back over a channel (`Probe`), so the window never freezes. The key goes to
-  `curl` on its standard input, never on the command line. Only the model-list calls exist.
+- **Providers** (Preferences > AI): Ollama (address, model, context size `num_ctx`), Claude Code
+  (model) and Claude (API key, model). Each has an on switch. The key never goes in
+  `preferences.json`.
+- **Plumbing:** `ai.rs` talks to Ollama and Claude by running `curl`, and to Claude Code by
+  running `claude`, on a separate thread, handing the answer back over a channel (`Probe`,
+  `Pending`), so the window never freezes. The address and the key go to `curl` on its standard
+  input, never on the command line. The Claude API key is the only secret GuitarCraft keeps (in
+  the system credential store); `preferences.json` is plain text, so a user name and password in
+  the Ollama address are removed (`ai::without_password`) and a server that needs them can't be
+  used.
 - **Things an AI could read or write, as plain text:** ASCII tab (`textmidi.rs`, export and
   import), chord chart text with inline chords (`[E]Let my heart be a [B]temple`, `chart.rs`),
   MusicXML, and the chord and scale tables in `theory.rs` / `chordshape.rs`.
@@ -36,15 +42,19 @@ the rules every one of them follows.
 1. **Nothing of the person's is sent until they ask.** No background calls that carry their
    music or text, no sending on open or on save. Which provider is used is set in Preferences >
    AI, and the panel shows nothing about it (the owner's choice: there is no room, and the
-   outcome is what matters). Ollama on the same computer sends nothing off it; Claude does, and
-   Preferences > AI says so. (The earlier ideas of a "Show what is sent" line and a "Goes to ..."
+   outcome is what matters). Ollama on the same computer sends nothing off it; Claude and Claude
+   Code do, and Preferences > AI says so. (The earlier ideas of a "Show what is sent" line and a "Goes to ..."
    line were dropped by the owner.)
    One exception, for Ollama only: loading the model in the background when the panel shows
    it, so the first answer is faster. That request names the model and the context size and
    carries nothing else, and Preferences > AI > Keep model loaded turns it off.
 2. **Send the least.** The selection or the current bar range by default, never the whole song
-   unless asked. File names, paths and the person's details (Preferences > Misc) are never
-   included.
+   unless asked. GuitarCraft never adds file names, paths or the person's details (Preferences >
+   Misc). An online provider needs some personal information, with no way round it: the key or
+   sign-in says who is asking, and Claude Code also adds the account's email address, the
+   operating system, the date and the folder it runs in (the top folder of the system drive, so
+   it names nobody). That is accepted when the person switches the provider on. What is sent must
+   be said in Preferences > AI, the guide, the README and the privacy policy.
 3. **The AI proposes, the person applies.** Results appear as a preview (the proposed bars
    drawn in the score in a different colour, or a list of changes) with Apply and Discard.
    Apply is one `App::edit`, so one Undo takes it back.
@@ -140,12 +150,45 @@ Ranked by how well they fit the rules above. Effort is small (days), medium or l
   for JSON tasks a tool definition the model must call, so the reply is already structured.
 - **Streaming:** not at first. Long answers (idea 3) are the first thing that would want it;
   add it for those when a one-minute wait is annoying.
-- **Which provider:** the first one switched on (Ollama before Claude). There is no choice in
-  the panel; it is set in Preferences > AI.
+- **Which provider:** the first one switched on (Ollama, then Claude Code, then Claude with a
+  key). There is no choice in the panel; it is set in Preferences > AI.
 - **Prompts live in one file** (`src/app/ai_prompts.rs`), one function per task, so they can
   be read and changed in one place and tested without a network.
 - **Cost:** for Claude, estimate the size before sending (characters over about 3.5) and ask
   first above a limit set in Preferences > AI (a new "Ask before sending more than N tokens").
+
+## Claude Code
+
+Each question runs `claude` once (`aicode.rs`):
+
+```
+claude -p --output-format json --system-prompt <ours> --tools "" --strict-mcp-config
+       --safe-mode --no-session-persistence [--model <chosen>]
+```
+
+- The question goes in on standard input, with the earlier turns written out above it, since no
+  session is saved. One JSON reply comes back; the answer is its `result`, and `is_error` marks a
+  failure (the `subtype` can still say "success").
+- No tools, MCP servers, plugins, hooks or `CLAUDE.md`. Never `--bare`: it ignores the sign-in
+  and demands an API key.
+- GuitarCraft never reads the sign-in. "Test connection" runs `claude auth status --json`, which
+  asks Claude nothing, and shows the plan or that an API key is in use, never the email address.
+  A person's `ANTHROPIC_API_KEY` is left in place, so it is what gets billed when set.
+- The program is looked for on the search path and where its installers put it. On Windows an npm
+  install's `claude.cmd` is followed to its `claude.exe` (line breaks can't pass through a
+  script), and the Claude desktop app's `claude.exe` is passed over.
+- Stop and a five minute limit end the process.
+- Variables a surrounding Claude Code session sets are removed, for when GuitarCraft is started
+  from one.
+- **Terms:** this runs the unmodified program the person installed and signed in to themselves.
+  GuitarCraft must not offer a Claude login, handle tokens or resell usage. Anthropic's terms
+  were not checked first hand when this was built; read the current ones before releasing it, and
+  again before any paid version.
+
+Checked live on 2026-11-27, Windows, Claude Code 2.1.332, a Pro plan
+(`cargo test claude_code_answers_live -- --ignored --nocapture`): two linked questions answered.
+Not checked: a score change card from Claude, the panel by hand, macOS, Linux, and a native (not
+npm) install.
 
 ## Testing
 
@@ -172,4 +215,4 @@ Ranked by how well they fit the rules above. Effort is small (days), medium or l
 - **Is a spending limit wanted in the app,** or is the size warning enough?
 - **Do the answers need to be saved** with the song (a note on the bar) or are they throwaway?
 - **Are the macOS and Linux key stores in scope** for the first release? Today only Windows
-  and macOS keep the key; elsewhere there is no way to use Claude.
+  and macOS keep the key; elsewhere Claude can only be used through Claude Code.

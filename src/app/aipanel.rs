@@ -1,4 +1,5 @@
-//! The AI Assistant panel: a conversation with Ollama or Claude, docked like the other panels.
+//! The AI Assistant panel: a conversation with Ollama or Claude (through Claude Code or an API
+//! key), docked like the other panels.
 //! Nothing is sent until the person presses Return (Shift+Return adds a line; there is no Send
 //! button). They choose whether the bars at the cursor (or the selected ones) go along as
 //! ASCII tablature. The assistant can propose changes to the score as cards under its answer
@@ -76,6 +77,9 @@ impl App {
         let mut out = vec![];
         if p.ollama_on {
             out.push((Provider::Ollama, p.ollama_model.clone()));
+        }
+        if p.claude_code_on {
+            out.push((Provider::ClaudeCode, p.claude_code_model.clone()));
         }
         if p.claude_on {
             out.push((Provider::Claude, p.claude_model.clone()));
@@ -190,7 +194,8 @@ impl App {
             panel.error = Some("No AI provider is switched on. Turn one on in Preferences > AI.".into());
             return;
         };
-        if model.trim().is_empty() {
+        // Claude Code has a default of its own; the others must be told.
+        if model.trim().is_empty() && provider != Provider::ClaudeCode {
             panel.error = Some("Choose a model in Preferences > AI first.".into());
             return;
         }
