@@ -44,8 +44,9 @@ exist under another name. Check before starting work on one, and tick items off 
       (`src/app/drumview.rs`, the kit table in `src/drums.rs`): the staff with 24 sounds, the
       list of all sounds, previous/next beat, number keys 1-9 for the sounds on a line, and the
       gear settings. The score uses the same staff positions and noteheads. Saving writes Guitar
-      Pro's own kit definition (`src/gpkit.rs`, read from a Guitar Pro 7 file). Not checked
-      against Guitar Pro 8: it opening a drum track of ours, and a drum file it saved. Not done:
+      Pro's own kit definition (`src/gpkit.rs`, read from a Guitar Pro 7 file). Checked with
+      Guitar Pro 8 (2026-11-27): it opens, plays and re-saves a drum track of ours unchanged but
+      for six bongo names. Not done:
       hand percussion far off the staff (shown mid-staff), the bow and golpe signs, and the
       stick/brush stroke types in the guide.
 - [~] **MIDI capture**: note entry from a MIDI keyboard, beat by beat; choice of MIDI input and

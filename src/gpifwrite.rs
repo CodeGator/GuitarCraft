@@ -84,6 +84,9 @@ fn pitch_parts(p: i32) -> (&'static str, &'static str, i32) {
     (s, a, p.div_euclid(12) - 1)
 }
 
+/// Guitar Pro's name for its drum kit sound.
+const DRUM_SOUND: &str = "Drums/Drums/Drumkit";
+
 /// Index of a drum sound among all the drum kit's articulations, in writing order. A number
 /// the kit doesn't have becomes the first snare.
 fn drum_articulation(p: u8) -> usize {
@@ -341,10 +344,19 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
             params.join(" ")
         );
         x.push_str("<ForcedSound>-1</ForcedSound>");
+        // A drum kit's sound is named as in a drum file Guitar Pro saved: given a name it
+        // doesn't know, Guitar Pro 8 gives the track a piano.
+        let (sound, kit_sound) = if drum {
+            (
+                DRUM_SOUND.to_string(),
+                "<RSE><SoundbankPatch>Drumkit-Master</SoundbankPatch><Pickups><OverloudPosition>0</OverloudPosition><Volumes>1 1</Volumes><Tones>1 1</Tones></Pickups></RSE>",
+            )
+        } else {
+            (format!("Midi/{label}"), "")
+        };
         let _ = write!(
             x,
-            "<Sounds><Sound><Name>{label}</Name><Label>{label}</Label><Path>Midi/{label}</Path><Role>Factory</Role><MIDI><LSB>0</LSB><MSB>{}</MSB><Program>{prog}</Program></MIDI></Sound></Sounds><MidiConnection><Port>0</Port><PrimaryChannel>{primary}</PrimaryChannel><SecondaryChannel>{secondary}</SecondaryChannel><ForeOneChannelPerString>false</ForeOneChannelPerString></MidiConnection>",
-            if drum { 128 } else { 0 }
+            "<Sounds><Sound><Name>{label}</Name><Label>{label}</Label><Path>{sound}</Path><Role>Factory</Role><MIDI><LSB>0</LSB><MSB>0</MSB><Program>{prog}</Program></MIDI>{kit_sound}</Sound></Sounds><MidiConnection><Port>0</Port><PrimaryChannel>{primary}</PrimaryChannel><SecondaryChannel>{secondary}</SecondaryChannel><ForeOneChannelPerString>false</ForeOneChannelPerString></MidiConnection>"
         );
         let state = if t.solo {
             "Solo"
@@ -438,7 +450,7 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
         let _ = writeln!(
             x,
             "</Staves><Automations><Automation><Type>Sound</Type><Linear>false</Linear><Bar>0</Bar><Position>0</Position><Visible>true</Visible><Value>{}</Value></Automation></Automations></Track>",
-            cdata(&format!("Midi/{label};{label};Factory"))
+            cdata(&format!("{sound};{label};Factory"))
         );
     }
     x.push_str("</Tracks>\n");
@@ -1629,6 +1641,24 @@ mod tests {
         assert_eq!(t.bars.iter().map(|b| b.simile).collect::<Vec<_>>(), vec![0, 0, 2, 2, 1]);
         let played: Vec<u8> = (0..5).map(|i| t.pitch(&t.played_bar(i).beats[0].notes[0])).collect();
         assert_eq!(played, vec![36, 38, 36, 38, 38]);
+    }
+
+    #[test]
+    fn a_drum_track_names_guitar_pros_drum_kit_sound() {
+        let mut song = Song::new_blank();
+        song.tracks = vec![Track::of_instrument(Instrument::Drums, "Drums"), Track::of_instrument(Instrument::Piano, "Piano")];
+        song.normalize();
+        let xml = gpif_xml(&song);
+        let (drums, piano) = xml.split_once("</Track>").expect("two tracks");
+        assert!(drums.contains("<Path>Drums/Drums/Drumkit</Path>"));
+        assert!(drums.contains("<MSB>0</MSB><Program>0</Program>"));
+        assert!(drums.contains("<SoundbankPatch>Drumkit-Master</SoundbankPatch>"));
+        // The sound set at bar 1 is the same one.
+        assert!(drums.contains("<![CDATA[Drums/Drums/Drumkit;Drum Kit;Factory]]>"));
+        assert!(!piano.contains("Drumkit"));
+        let back = crate::gpif::parse_gpif(&xml).expect("reads back");
+        assert_eq!(back.tracks[0].instrument, Instrument::Drums);
+        assert_eq!(back.tracks[1].instrument, Instrument::Piano);
     }
 
     /// The demo song saved by Guitar Pro 8 opens as the demo song, and GuitarCraft's part

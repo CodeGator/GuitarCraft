@@ -28,20 +28,40 @@ where many drum notes are written in the score to match Guitar Pro. Drum notes k
 sound numbers (91 = rim shot) and play and export to MIDI and GP5 as the sound Guitar Pro gives
 them (`Track::sound`). `src/gpkit.rs` is Guitar Pro's kit definition, which `.gp` and `.gpx`
 saving now writes; it was read from a drum file of the owner's saved by **Guitar Pro 7** (revision
-12019). That file is **copyrighted: never copy it or its music into the repo**. A copy saved by us
-has the same kit definition and the same sounds on the same beats. Still unchecked: our file
-opened in Guitar Pro 8, and a drum file saved by Guitar Pro 8 (its picture has "Tinkle Bell",
-which the GP7 kit lacks; the GP7 kit has an orchestral snare, 121, instead). Our drum notes are
-written without the `String` and `Fret` properties Guitar Pro writes. Sounds Guitar Pro writes far
-off the staff (much of the hand percussion) show as a cross mid-staff. Picture check:
+12019). That file is **copyrighted: never copy it or its music into the repo**.
+
+**Checked with Guitar Pro 8 (2026-11-27):** a file of ours with all 95 sounds and one- and
+two-bar repeats opened and played there; the copy GP8 saved (revision 13008) kept every note,
+text, section, repeat sign and the kit definition, renaming only the six bongo articulations
+("Hand (hit)" became "Bongo high (hit)" and so on), and GuitarCraft reads that copy the same. GP8
+writes `String` and `Fret` on drum notes; it doesn't need them from us. The owner heard that the
+two don't sound exactly alike but generally play the same: ours are synthesized, and timbales,
+agogo, whistles, guiro, cuica, castanets, surdo and the other sounds without a voice in
+`synth.rs` share one plain noise. Not seen: a drum track created in GP8 itself (its picture has
+"Tinkle Bell", which this kit lacks; it has an orchestral snare, 121, instead). Sounds Guitar Pro
+writes far off the staff (much of the hand percussion) show as a cross mid-staff. Picture check:
 `--show band,drums`.
+
+**Drum sound fixed (2026-11-27):** we wrote the kit's sound as "Midi/Drum Kit", which GP8 replaced
+with an Acoustic Piano when it saved our file. It is now `Drums/Drums/Drumkit` with MSB 0 and the
+`Drumkit-Master` patch, as in the GP7 file. Checked: the copy GP8 saved, with the track on its own
+sound engine (RSE), kept the drum kit sound.
+
+**Saving loses what we don't understand (found 2026-11-27, to be planned).** We rebuild a `.gp`
+file from our own model, so opening a Guitar Pro file and saving it drops or resets: GP's sound
+engine and effects (we write MIDI), bars per line (`ScoreSystemsLayout`, `SystemsLayout`), page
+header and footer text, most of the binary stylesheet (398 of 591 settings in one song; 6 fonts
+changed), mixer automation, the pickup bar (`Anacrusis`), the key's flats preference
+(`TransposeAs`), `MultiVoice`, extra score views and stylesheets, and `Preferences.json`.
+Proposed, not started: keep what the opened file had and write it back, replacing only what was
+changed; the care is in tracks and bars being added, removed or moved.
 
 **Bar repeat signs** (2026-11-27): Guitar Pro's `SimileMark` is now read and written
 (`Simple`, `FirstOfDouble`, `SecondOfDouble`); before, repeated bars of a Guitar Pro file opened
 as rests. `Track::played_bar` gives the notes a sign stands for (playback, MIDI, GP5, MusicXML and
 text export). A two-bar repeat shows a sign in each of its bars (Guitar Pro draws one across the
-bar line). Notes typed into a bar with a repeat sign stay hidden under it. Only `Simple` has been
-seen in a real file.
+bar line). Notes typed into a bar with a repeat sign stay hidden under it. Guitar Pro 8 keeps all
+three marks as we write them.
 
 ## What 0.9.0 added (older; 0.10.0 is in the next section)
 
@@ -174,10 +194,11 @@ question in the panel. Before a release, check Anthropic's current terms.
 1. **Hear from the owner** about Suggest Chords in real use.
 2. **Teach the tab importer simple clean-up** (quoting, blank lines inside a system, typed dashes,
    spaces for dashes): a trial showed plain code does it better than AI (`docs/ai-design.md`).
-3. **Still missing from Guitar Pro 8** (see the gap list): Audio Note Settings (Shift+F),
+3. **Keep a Guitar Pro file's other settings when saving** (see "Drumkit view" above).
+4. **Still missing from Guitar Pro 8** (see the gap list): Audio Note Settings (Shift+F),
    instrument change automation, Design mode, and importing TablEdit and Power Tab.
    File password protection was decided against.
-4. **Release 0.11.0** when the owner says: pull request `version-0.11.0` into `main` (see "How we
+5. **Release 0.11.0** when the owner says: pull request `version-0.11.0` into `main` (see "How we
    work here"). Update the README screenshots first if wanted.
 
 ## How we work here
