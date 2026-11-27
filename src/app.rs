@@ -16,6 +16,7 @@ mod flows;
 mod automation;
 mod bottom;
 mod chartstyle;
+mod chartsuggest;
 mod chartui;
 mod chartxpose;
 mod chordscales;
@@ -600,6 +601,22 @@ impl App {
                     app.show_home = false;
                     app.status =
                         "Three columns: lines flow down each column, then on to the next.".into();
+                }
+                "chartsuggest" => {
+                    // Suggest Chords on the first verse with a made-up answer (nothing is asked).
+                    let mut st = chartui::ChartState::new(crate::chart::ChordChart::sample());
+                    st.sel = 1;
+                    app.prefs.claude_code_on = true;
+                    app.chart = Some(st);
+                    app.show_home = false;
+                    app.open_suggest_chords();
+                    if let Some(st) = &mut app.chart {
+                        let words = st.doc.sections.get(st.sel).map(|s| chartsuggest::words_of(&s.text)).unwrap_or_default();
+                        if let Some(d) = st.suggest.as_mut() {
+                            d.style = "simple folk".into();
+                            d.reply = Some(words.lines().map(|l| format!("[A]{l}")).collect::<Vec<_>>().join("\n"));
+                        }
+                    }
                 }
                 "chartdiagrams" => {
                     let mut st = chartui::ChartState::new(crate::chart::ChordChart::sample());

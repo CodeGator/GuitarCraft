@@ -206,7 +206,7 @@ pub(super) fn guide_sections() -> Vec<(String, String)> {
     GUIDE.iter().map(|(t, b)| (t.to_string(), super::shortcuts::fill_keys(b))).collect()
 }
 
-const GUIDE: [(&str, &str); 15] = [
+const GUIDE: [(&str, &str); 16] = [
     (
         "The main screen",
         "The toolbar is at the top: start screen, the three panel buttons (palette, tracks, settings), zoom, undo/redo, the transport buttons and the display that shows the track, bar, time signature, time and tempo. The editing palette is on the left, the score in the middle, the Song/Track/Bar/Beat settings on the right and the tracks list with the mixer and bar overview at the bottom.",
@@ -262,6 +262,10 @@ const GUIDE: [(&str, &str); 15] = [
     (
         "Views",
         "View \u{25B8} Score \u{25B8} Page - Vertical, Page - Horizontal, Page - Grid, Screen - Vertical and Screen - Horizontal change how the music is laid out; the layout button next to Zoom in the toolbar does the same. Score \u{25B8} Split Score View, in the two vertical layouts, shows the score in two views one above the other, each scrolling on its own, with a bar between them to drag; the view you last clicked follows the cursor and playback. Ctrl + mouse wheel, Zoom In ({ZoomIn}) and Zoom Out ({ZoomOut}) zoom. View \u{25B8} Panels shows or hides the palette ({ShowPalette}), tracks list ({ShowGlobalView}), settings, fretboard, keyboard ({KeyboardView}) and AI Assistant, and pops a panel out into a window of its own. Full screen ({FullScreen}) and Multitrack ({Multitrack}), which switches between all tracks and one track, are in the View menu too.",
+    ),
+    (
+        "Suggest chords for a chord chart",
+        "In a chord chart, select a section that has words and press Suggest Chords in the Section panel, or choose Section \u{25B8} Suggest Chords. Type a style if you like, such as simple folk or jazzy, and press Suggest. The section as it is shows beside the suggestion: Use These puts the new chords on your words in place of the old ones (one Undo takes them back), Try Again asks for another, and Cancel changes nothing. Your words and lines of bars stay as they are. It needs Claude Code or Claude switched on in Preferences \u{25B8} AI; only that section's words, the key and your style are sent, over the internet to Anthropic.",
     ),
     (
         "The AI assistant",

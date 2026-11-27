@@ -54,6 +54,8 @@ Not planned for now: the original's recorded sound banks and effects, the pedalb
 
 Transpose (Ctrl+T, or the ♭ and ♯ buttons) moves the whole chart or a single section into another key, with sharps or flats. The tempo, key and time use the same editors as a score. Charts have their own stylesheet (F7), with Standard and Stage styles, and they print and export like scores. They are saved as `.gcx` files. There is a sample in `samples/`.
 
+**Suggest Chords** (the Section panel, or the Section menu) asks Claude for chords to put on a section's words, in the chart's key and in a style you can describe. The section as it is shows beside the suggestion, and nothing changes until you press Use These; one Undo takes it back, and your words stay exactly as you wrote them. It needs Claude Code or a Claude API key switched on in Preferences > AI. Only that section's words, the key and the style are sent (Claude Code adds the details listed under AI Assistant below).
+
 ### Import, export and batch conversion
 
 **File > Import** and **File > Export** are laid out like Guitar Pro 8's. Import takes MIDI, MusicXML (`.musicxml`, `.xml` and compressed `.mxl`) and ASCII tab. Export writes GPX (Guitar Pro 6), GP5, MIDI, ASCII tab, MusicXML, PDF, SVG, PNG and an audio recording (WAV). The GPX files are laid out as Guitar Pro 8 lays them out, and it opens them. (TablEdit and Power Tab are in the menu but greyed out, because their file formats aren't publicly described.) These menus work on scores; chord charts export to PDF and PNG.

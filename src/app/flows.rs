@@ -288,6 +288,45 @@ fn a_score_opened_after_a_chord_chart_is_fully_editable() {
 }
 
 #[test]
+fn suggested_chords_are_used_only_when_accepted_and_one_undo_takes_them_back() {
+    let mut r = Rig::new();
+    r.app.request(Pending::NewChart);
+    r.frames(3);
+    // With no Claude provider switched on there is nothing to open.
+    r.app.prefs.claude_code_on = false;
+    r.app.prefs.claude_on = false;
+    r.app.prefs.ollama_on = true;
+    let st = r.app.chart.as_mut().unwrap();
+    st.sel = 0;
+    st.doc.sections[0].kind = crate::chart::Kind::Verse;
+    st.doc.sections[0].text = "[G]Out along the river".into();
+    r.frames(2);
+    r.app.open_suggest_chords();
+    assert!(r.app.chart.as_ref().unwrap().suggest.is_none(), "Ollama isn't asked for chords");
+    r.app.prefs.claude_code_on = true;
+    r.app.open_suggest_chords();
+    let text = |r: &Rig| r.app.chart.as_ref().unwrap().doc.sections[0].text.clone();
+    let dlg = r.app.chart.as_mut().unwrap().suggest.as_mut().expect("the window opens");
+    dlg.reply = Some("[C]Out along the [D]river".into());
+    r.frames(3);
+    assert_eq!(text(&r), "[G]Out along the river", "showing a suggestion changes nothing");
+    let steps = r.app.chart.as_ref().unwrap().undo.len();
+    r.app.chart.as_mut().unwrap().suggest.as_mut().unwrap().accept = true;
+    r.frames(3);
+    assert_eq!(text(&r), "[C]Out along the [D]river");
+    assert!(r.app.chart.as_ref().unwrap().suggest.is_none(), "the window closes");
+    assert!(r.app.dirty);
+    assert_eq!(r.app.chart.as_ref().unwrap().undo.len(), steps + 1, "one undo step");
+    r.key(Key::Z, Modifiers::COMMAND);
+    assert_eq!(text(&r), "[G]Out along the river");
+    // Escape closes it without a change.
+    r.app.open_suggest_chords();
+    r.frames(2);
+    r.key(Key::Escape, Modifiers::NONE);
+    assert!(r.app.chart.as_ref().unwrap().suggest.is_none());
+}
+
+#[test]
 fn closing_the_add_track_window_with_cancel_leaves_the_other_tabs_editable() {
     let mut r = Rig::new();
     r.app.request(Pending::Demo);

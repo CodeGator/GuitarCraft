@@ -190,6 +190,38 @@ Checked live on 2026-11-27, Windows, Claude Code 2.1.332, a Pro plan
 Not checked: a score change card from Claude, the panel by hand, macOS, Linux, and a native (not
 npm) install.
 
+## Suggest Chords
+
+Built 2026-11-27 (`src/app/chartsuggest.rs`), the first AI feature that is a button for one task
+and not a request typed into the panel. In a chord chart: the Section panel's button or Section >
+Suggest Chords.
+
+- Sent: the section's lyric lines without chords, the chart's key and an optional style. Nothing
+  else of the chart.
+- Claude only (Claude Code first, then the API key); Ollama is never asked, even when it is on.
+- The reply's words are never used. `merge` checks that every lyric line kept its letters, that
+  every chord is a chord name and that there is at least one, then puts the chords on the
+  person's own lines. Bar lines, blank lines and lines of chords alone are left as they are.
+- A window shows Now beside Suggested. Use These is one undo step; Cancel, Escape and closing
+  stop a question on its way.
+
+**Why only chords, and only Claude** (a trial on 2026-11-27, one run of each):
+
+| Chords for four short lyrics | Result |
+|---|---|
+| Claude Code, `sonnet` | words kept and chords placed in all four, about 2 s each; the owner judged them usable ("I suppose") |
+| Ollama `qwen3.5:4b`, thinking on | 2 of 4 answered, 44 to 98 s |
+| Ollama `qwen3.5:4b`, thinking off | words garbled in 2 of 4, about 3 s |
+
+**Tidying pasted tab was tried and not built.** Four damaged copies of `Morning Walk` tab (75
+beats), counted by GuitarCraft's importer: a few lines of plain clean-up code read 75 beats in
+three of them (the code was written knowing the damage), Claude 75, 54, 69 and 75, the local
+model at most 67. Claude's errors imported without complaint. Ragged columns were the one case
+where only Claude helped (69 against 40). Better to teach the importer those clean-up rules.
+
+Ollama note: GuitarCraft leaves a model's thinking on, and `qwen3.5:4b` then sometimes answered
+nothing in the trial, so the panel may show "The model sent an empty answer." with it.
+
 ## Testing
 
 - A **fake provider** (a function from request to canned reply) behind the same `ask`, used by

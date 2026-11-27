@@ -72,7 +72,7 @@ impl AiPanel {
 
 impl App {
     /// The providers that are switched on in Preferences > AI, each with its model.
-    fn ai_providers(&self) -> Vec<(Provider, String)> {
+    pub(super) fn ai_providers(&self) -> Vec<(Provider, String)> {
         let p = &self.prefs;
         let mut out = vec![];
         if p.ollama_on {
