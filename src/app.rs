@@ -179,7 +179,7 @@ pub struct App {
     home_tab: usize,
     home_sel: usize,
     home_search: String,
-    preview: Option<(String, Song)>,
+    preview: Option<(String, home::Preview)>,
     kb_octave: i32,
     play_while_editing: bool,
     /// 0 page vertical, 1 page horizontal, 2 page grid, 3 screen vertical, 4 screen horizontal.
