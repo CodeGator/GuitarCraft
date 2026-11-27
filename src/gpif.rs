@@ -91,9 +91,7 @@ pub fn import_gpx(data: &[u8]) -> Result<Song, String> {
         .ok_or_else(|| "No score was found inside this .gpx file.".to_string())?;
     let xml = String::from_utf8_lossy(&file).to_string();
     let mut song = parse_gpif(&xml)?;
-    for t in &mut song.tracks {
-        t.kept = None;
-    }
+    song.forget_kept();
     Ok(song)
 }
 
@@ -381,6 +379,8 @@ struct TrackInfo {
     kit: Vec<Option<u8>>,
     /// For a keyboard, voice or orchestral track, the open strings of each staff, lowest first.
     tunings: Vec<Vec<u8>>,
+    /// The track's changes over time, to be put on its bars once they are read.
+    changes: crate::gpkeep::TrackChanges,
 }
 
 /// The open strings of each staff of a track, lowest first.
@@ -663,13 +663,15 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
                 tr.grand_staff = staves > 1 && tr.kind() == InstrumentType::Keyboard;
             }
             let bars = child(root, "MasterBars").map_or(0, |m| m.children().filter(|c| c.has_tag_name("MasterBar")).count());
-            tr.kept = Some(std::sync::Arc::new(crate::gpkeep::read_track(t, xml, &tr, bars)));
+            let (kept, changes) = crate::gpkeep::read_track(t, xml, &tr, bars);
+            tr.kept = Some(std::sync::Arc::new(kept));
             infos.push(TrackInfo {
                 keep,
                 staff_offset,
                 chords,
                 kit: if drum { kit_sounds(t) } else { vec![] },
                 tunings: if pitched.is_some() { staff_strings(t) } else { vec![] },
+                changes,
             });
             tracks.push(tr);
             staff_offset += staves;
@@ -805,6 +807,7 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
                     .get(info.staff_offset)
                     .and_then(|id| bars_idx.get(id))
                 {
+                    crate::gpkeep::read_bar(*bn, xml, 0, &mut bar);
                     // The sign for "repeat the previous bar" (or the previous two).
                     bar.simile = match text(child(*bn, "SimileMark")).as_str() {
                         "Simple" => 1,
@@ -834,6 +837,7 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
                         .get(info.staff_offset + 1)
                         .and_then(|id| bars_idx.get(id))
                 {
+                    crate::gpkeep::read_bar(*bn, xml, 1, &mut bar);
                     let lower = info.tunings.get(1).map(Vec::as_slice).unwrap_or_default();
                     for vid in text(child(*bn, "Voices")).split_whitespace().take(VOICES) {
                         if let Some(vn) = voices_idx.get(vid) {
@@ -856,7 +860,11 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
             }
             tracks[ti].bars.push(bar);
         }
+        crate::gpkeep::read_master_bar(*m, xml, &mut mb);
         master.push(mb);
+    }
+    for (track, info) in tracks.iter_mut().zip(&mut infos) {
+        crate::gpkeep::place_changes(&mut track.bars, std::mem::take(&mut info.changes));
     }
     if let Some(&(_, t)) = tempos.iter().find(|(b, _)| *b == 0) {
         song.tempo = t;

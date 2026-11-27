@@ -1,7 +1,8 @@
 # Keeping a Guitar Pro file's own settings: design
 
-Status: 2026-11-27. The owner agreed the plan (see "Decisions"). **Steps 0, 1, 2 and 4 are built**
-(`src/gpkeep.rs`; step 4 was done before step 3; the owner checked it in Guitar Pro 8). The owner checked steps 1 and 2 in Guitar
+Status: 2026-11-27. The owner agreed the plan (see "Decisions"). **Steps 0 to 4 are built**
+(`src/gpkeep.rs`; step 4 was done before step 3). The owner checked steps 1 to 4 in Guitar Pro 8,
+which completes the plan. The owner checked steps 1 and 2 in Guitar
 Pro 8 (after step 2, saved copies sound the same and differ in layout).
 
 ## The problem
@@ -68,12 +69,12 @@ block also records what our model held when the file was read.
 | `Preferences.json`, `meta.json`, `MultiVoice`, an empty title | Song | Always (the title while unchanged) | |
 | Stylesheet entries | Song | Setting by setting: the original value, unless ours differs from what it was on opening | Our value |
 | Header and footer text | Song | Our header and footer settings are unchanged | Ours |
-| Master effects | Song | Always; their changes over time while the number of bars is unchanged (step 3 ties them to bars) | The effects without the changes |
+| Master effects | Song | Always; their changes over time are on the master bars | |
 | Pickup bar | Master bar (`pickup`) | It is still the first bar | Off |
 | Sound engine, sounds, effects, `UseOneChannelPerString`, MIDI channels | Track | The instrument is unchanged | Ours (MIDI) |
 | Instrument set, notation, transposition, tuning of an instrument without strings | Track | The instrument is unchanged (a drum kit: while it has every sound used) | Ours |
 | Mixer strip numbers | Track | Number by number: volume, pan and equalizer only if changed | Ours |
-| Mixer, effect and sound automations | Track until step 3, then bar (they name a bar) | Until step 3: while the number of bars is unchanged. A sound set at the start always stays | Dropped |
+| Mixer, effect and sound automations | Bar, or master bar for master effects (they name a bar) | They move with their bar and go when it is deleted. A change at the very start of the song (first bar, first position) stays at the start, until a bar's own change comes to that place. A moved mixer control loses its changes; a change to a sound the track doesn't have is left out | Dropped |
 | Flats or sharps choice | Master bar | The key is unchanged | Ours |
 | Bar and beat settings | Bar, beat | The object exists; stem directions only while its notes are unchanged | Left out |
 | Bars per line | Song and track | The number of bars is unchanged | Ours |
@@ -100,7 +101,7 @@ Guitar Pro 8.
 | 0 | **A round-trip test** that saves each fixture unchanged and lists every difference, with a list of accepted ones (`ACCEPTED` in `gpkeep.rs`). No change in behaviour. The list shrinks with each step. **Built** | Small |
 | 1 | **Whole-file settings:** preferences, stylesheet merge, header and footer, master effects, pickup bar, `MultiVoice`, an empty title. **Built** | Medium |
 | 2 | **Track settings:** sound engine, sounds, effects, mixer strip, instrument set, transposition. Nothing about the instrument is kept from files earlier versions of GuitarCraft wrote (sounds named `Midi/...`). **Built** | Medium |
-| 3 | **Settings tied to bars:** automations, flats choice, bar `XProperties` | Medium |
+| 3 | **Settings tied to bars:** automations, flats choice, bar `XProperties`. **Built** | Medium |
 | 4 | **Layout:** bars per line, zoom, score views. **Built** | Medium |
 | 5 | **Per-beat settings** (pickup volume and tone, stem directions). **Not wanted** (owner) | Small gain |
 

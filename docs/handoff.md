@@ -10,12 +10,12 @@ Written 2026-11-23, after releasing 0.10.0 and starting `version-0.11.0`. Read t
   from PR #20. MSI and portable zip, unsigned. The MSI was never installed by hand; only the
   checksums were checked (they match). v0.9.0 is the one before it.
 - **Working branch:** `version-0.11.0`, made from `main` after the release, version bumped to
-  0.11.0. Pushed to GitHub on 2026-11-27 (up to the left hand fix). On 2026-11-27 it gained: the **Claude Code** AI provider,
+  0.11.0. Pushed to GitHub on 2026-11-27 (up to step 4 of keeping a file's settings). On 2026-11-27 it gained: the **Claude Code** AI provider,
   passwords kept out of the Ollama address, **Suggest Chords** in chord charts, and an AI
   Assistant that **only answers** (see "The AI features" below).
 - **Branches on GitHub:** `main`, `release`, and an old merged `version-0.8.0` that could be
   deleted.
-- **Tests:** `cargo test --release` passes in full (276 passed, 7 ignored live tests that need a
+- **Tests:** `cargo test --release` passes in full (281 passed, 7 ignored live tests that need a
   model, a key or a Claude Code sign-in). In a debug build (`cargo test`) three `dock` tests fail
   ("Dropped TexturesDelta with 1 unapplied deltas", from `epaint`); seen 2026-11-27 before any
   change that day.
@@ -47,13 +47,11 @@ with an Acoustic Piano when it saved our file. It is now `Drums/Drums/Drumkit` w
 `Drumkit-Master` patch, as in the GP7 file. Checked: the copy GP8 saved, with the track on its own
 sound engine (RSE), kept the drum kit sound.
 
-**Saving a Guitar Pro file keeps more of it (2026-11-27; plan and decisions in
+**Saving a Guitar Pro file keeps its settings (2026-11-27; plan and decisions in
 `docs/gp-keep-design.md`).** We rebuild a `.gp` file from our own model, so what the model doesn't
-hold used to be lost. Steps 0 to 2 are built (`src/gpkeep.rs`); what each keeps is in the plan.
-The owner checked step 1 in GP8 ("looks good"); step 2 is below. Still lost or reset: the flats
-choice, automations once bars are added or removed (step 3 ties them to bars), and per-beat
-settings (not wanted). The exact list is `ACCEPTED` in
-`gpkeep.rs`; its test fails on any new loss.
+hold used to be lost. The plan is complete (`src/gpkeep.rs`), each step checked by the owner in
+GP8. Only per-beat settings are still lost, by the owner's choice; the exact list is `ACCEPTED` in
+`gpkeep.rs`, and its test fails on any new loss.
 
 **Keyboards, voices and orchestra (fixed 2026-11-27; the owner opened our new files in GP8 and
 GP8's own file in GuitarCraft: "looks good").** GP8
@@ -85,6 +83,13 @@ are in the plan; adding a bar or hiding, renaming or moving a track gives our ow
 GuitarCraft doesn't show these: its own line breaks and zoom are unchanged. We still write our
 own version number (12025) above content from newer files. Left: step 3 (flats choice, bar settings,
 automations tied to bars).
+
+**Step 3, settings tied to bars (2026-11-27; the owner checked it in GP8: "looks good").** Mixer,
+sound and master effect changes are kept on the bar they name, so they move, copy and go with it
+(those at the very start of the song stay at the start, by the owner's choice);
+the flats choice stays with its key and a bar's `XProperties` with the bar. A change of volume or
+pan made here drops that control's changes over time. Edge not handled: a master bar pasted from
+another song brings its master effect changes, which then apply to the effect in the same place.
 
 **Bar repeat signs** (2026-11-27): Guitar Pro's `SimileMark` is now read and written
 (`Simple`, `FirstOfDouble`, `SecondOfDouble`); before, repeated bars of a Guitar Pro file opened
@@ -224,11 +229,10 @@ question in the panel. Before a release, check Anthropic's current terms.
 1. **Hear from the owner** about Suggest Chords in real use.
 2. **Teach the tab importer simple clean-up** (quoting, blank lines inside a system, typed dashes,
    spaces for dashes): a trial showed plain code does it better than AI (`docs/ai-design.md`).
-3. **Keep a Guitar Pro file's other settings when saving** (`docs/gp-keep-design.md`).
-4. **Still missing from Guitar Pro 8** (see the gap list): Audio Note Settings (Shift+F),
+3. **Still missing from Guitar Pro 8** (see the gap list): Audio Note Settings (Shift+F),
    instrument change automation, Design mode, and importing TablEdit and Power Tab.
    File password protection was decided against.
-5. **Release 0.11.0** when the owner says: pull request `version-0.11.0` into `main` (see "How we
+4. **Release 0.11.0** when the owner says: pull request `version-0.11.0` into `main` (see "How we
    work here"). Update the README screenshots first if wanted.
 
 ## How we work here

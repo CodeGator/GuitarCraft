@@ -396,6 +396,10 @@ pub struct Bar {
     /// A repeat sign standing for the previous bar (1) or two bars (2).
     #[serde(default)]
     pub simile: u8,
+    /// What the bar holds in the Guitar Pro file it was read from that the app doesn't use, to be
+    /// written back (see `gpkeep.rs`). It moves with the bar.
+    #[serde(skip)]
+    pub kept: Option<std::sync::Arc<crate::gpkeep::KeptBar>>,
 }
 
 impl Bar {
@@ -404,6 +408,7 @@ impl Bar {
             beats,
             simile: 0,
             voices: vec![],
+            kept: None,
         }
     }
     pub fn empty() -> Bar {
@@ -619,6 +624,10 @@ pub struct MasterBar {
     /// A pickup bar, which may be short. Read from Guitar Pro files and written back while it is
     /// the first bar.
     pub pickup: bool,
+    /// What the bar holds in the Guitar Pro file it was read from that the app doesn't use, to be
+    /// written back (see `gpkeep.rs`). It moves with the bar.
+    #[serde(skip)]
+    pub kept: Option<std::sync::Arc<crate::gpkeep::KeptMasterBar>>,
 }
 
 impl Default for MasterBar {
@@ -641,6 +650,7 @@ impl Default for MasterBar {
             direction_jump: 0,
             free_time: false,
             pickup: false,
+            kept: None,
         }
     }
 }
@@ -1396,6 +1406,20 @@ impl Song {
         self.master.len()
     }
 
+    /// Drops everything kept from a Guitar Pro file, for writing another format.
+    pub fn forget_kept(&mut self) {
+        self.kept = None;
+        for bar in &mut self.master {
+            bar.kept = None;
+        }
+        for track in &mut self.tracks {
+            track.kept = None;
+            for bar in &mut track.bars {
+                bar.kept = None;
+            }
+        }
+    }
+
     /// Nothing at all in bar `i` of track `ti`: no notes, no repeat sign for a previous bar, and
     /// no chord name, text or lyric on its rests.
     pub fn bar_blank(&self, ti: usize, i: usize) -> bool {
@@ -1903,6 +1927,7 @@ impl Song {
                     Bar {
                         voices: vec![],
                         simile: 0,
+                        kept: None,
                         beats: vec![Beat {
                             dur: Dur::Whole,
                             notes: vec![n(s, f)],
@@ -1913,6 +1938,7 @@ impl Song {
                     Bar {
                         voices: vec![],
                         simile: 0,
+                        kept: None,
                         beats: vec![
                             Beat {
                                 dur: Dur::Half,
@@ -1930,6 +1956,7 @@ impl Song {
                     Bar {
                         voices: vec![],
                         simile: 0,
+                        kept: None,
                         beats: vec![
                             q(vec![n(s, f)]),
                             e8(vec![n(s, f)]),

@@ -355,7 +355,7 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
     }
     x.push_str("</Automations>");
     if let Some(effects) = kept.and_then(|k| k.master_effects(song)) {
-        x.push_str(effects);
+        x.push_str(&effects);
     }
     x.push_str("</MasterTrack>\n<Tracks>\n");
 
@@ -576,7 +576,7 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
             x.push_str("</Properties></Staff>");
         }
         let automations = match kept.and_then(|k| k.automations(t)) {
-            Some(element) => element.to_string(),
+            Some(element) => element,
             None if kept.and_then(|k| k.sounds(t)).is_some() => String::new(),
             None => format!(
                 "<Automations><Automation><Type>Sound</Type><Linear>false</Linear><Bar>0</Bar><Position>0</Position><Visible>true</Visible><Value>{}</Value></Automation></Automations>",
@@ -715,23 +715,26 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
                     );
                     vids.push(vid.to_string());
                 }
+                let settings = bar.kept.as_deref().and_then(|k| k.settings((low == Some(true)) as usize)).unwrap_or("");
                 let id = ids.nbars;
                 ids.nbars += 1;
                 let _ = writeln!(
                     ids.bars,
-                    "<Bar id=\"{id}\"><Clef>{clef}</Clef>{simile}<Voices>{}</Voices></Bar>",
+                    "<Bar id=\"{id}\"><Clef>{clef}</Clef>{simile}<Voices>{}</Voices>{settings}</Bar>",
                     vids.join(" ")
                 );
                 bar_ids.push(id.to_string());
             }
         }
         // The bar's settings shared by all tracks.
+        let spelling = mb.kept.as_deref().and_then(|k| k.transpose_as(mb)).map(String::from).unwrap_or_else(|| {
+            format!("<TransposeAs>{}</TransposeAs>", if mb.key < 0 { "Flats" } else { "Sharps" })
+        });
         let _ = write!(
             master,
-            "<MasterBar><Key><AccidentalCount>{}</AccidentalCount><Mode>{}</Mode><TransposeAs>{}</TransposeAs></Key><Time>{}/{}</Time>",
+            "<MasterBar><Key><AccidentalCount>{}</AccidentalCount><Mode>{}</Mode>{spelling}</Key><Time>{}/{}</Time>",
             mb.key,
             if mb.key_minor { "Minor" } else { "Major" },
-            if mb.key < 0 { "Flats" } else { "Sharps" },
             mb.num,
             mb.den
         );
