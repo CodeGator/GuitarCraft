@@ -49,9 +49,6 @@ pub fn import_gp(data: &[u8]) -> Result<Song, String> {
     if let Some(x) = crate::extras::from_xml(&xml) {
         crate::extras::apply(&mut song, &x);
     }
-    // What the app doesn't use is kept for saving (after the style is settled).
-    let kept = crate::gpkeep::read(&mut zip, &xml, &mut song);
-    song.kept = Some(std::sync::Arc::new(kept));
     // Which staves each track shows (notation, tablature).
     let mut part = vec![];
     if let Ok(mut f) = zip.by_name("Content/PartConfiguration") {
@@ -76,6 +73,9 @@ pub fn import_gp(data: &[u8]) -> Result<Song, String> {
             }
         }
     }
+    // What the app doesn't use is kept for saving (once the song is as it was read).
+    let kept = crate::gpkeep::read(&mut zip, &xml, &mut song);
+    song.kept = Some(std::sync::Arc::new(kept));
     Ok(song)
 }
 

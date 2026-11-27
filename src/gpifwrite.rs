@@ -305,10 +305,14 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
         Some(element) => element.to_string(),
         None => format!("<{tag}>{}</{tag}>", cdata("")),
     };
+    let bars_per_line = kept
+        .and_then(|k| k.bars_per_line(song))
+        .unwrap_or("<ScoreSystemsDefaultLayout>4</ScoreSystemsDefaultLayout><ScoreSystemsLayout>4</ScoreSystemsLayout>");
+    let zoom = kept.and_then(|k| k.zoom()).unwrap_or("<ScoreZoomPolicy>Value</ScoreZoomPolicy><ScoreZoom>1</ScoreZoom>");
     let multi_voice = kept.and_then(|k| k.multi_voice()).unwrap_or("<MultiVoice>0</MultiVoice>");
     let _ = writeln!(
         x,
-        "<Score><Title>{}</Title><SubTitle>{}</SubTitle><Artist>{}</Artist><Album>{}</Album><Words>{}</Words><Music>{}</Music><WordsAndMusic>{}</WordsAndMusic><Copyright>{}</Copyright><Tabber>{}</Tabber><Instructions>{}</Instructions><Notices>{}</Notices>{}{}{}{}<ScoreSystemsDefaultLayout>4</ScoreSystemsDefaultLayout><ScoreSystemsLayout>4</ScoreSystemsLayout><ScoreZoomPolicy>Value</ScoreZoomPolicy><ScoreZoom>1</ScoreZoom>{multi_voice}</Score>",
+        "<Score><Title>{}</Title><SubTitle>{}</SubTitle><Artist>{}</Artist><Album>{}</Album><Words>{}</Words><Music>{}</Music><WordsAndMusic>{}</WordsAndMusic><Copyright>{}</Copyright><Tabber>{}</Tabber><Instructions>{}</Instructions><Notices>{}</Notices>{}{}{}{}{bars_per_line}{zoom}{multi_voice}</Score>",
         cdata(kept.map_or(song.title.as_str(), |k| k.title(song))),
         cdata(&song.subtitle),
         cdata(&song.artist),
@@ -366,9 +370,12 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
         // What was read with the track goes back in its place (see `gpkeep.rs`).
         let kept = t.kept.as_deref();
         let one_channel = kept.and_then(|k| k.one_channel(t)).unwrap_or("");
+        let track_lines = kept
+            .and_then(|k| k.bars_per_line(t))
+            .unwrap_or("<SystemsDefautLayout>3</SystemsDefautLayout><SystemsLayout>1</SystemsLayout>");
         let _ = write!(
             x,
-            "<Track id=\"{k}\"><Name>{}</Name><ShortName>{}</ShortName><Color>{} {} {}</Color><SystemsDefautLayout>3</SystemsDefautLayout><SystemsLayout>1</SystemsLayout><PalmMute>{}</PalmMute><AutoAccentuation>{}</AutoAccentuation>{}{}<PlayingStyle>{}</PlayingStyle>{one_channel}<IconId>{}</IconId>",
+            "<Track id=\"{k}\"><Name>{}</Name><ShortName>{}</ShortName><Color>{} {} {}</Color>{track_lines}<PalmMute>{}</PalmMute><AutoAccentuation>{}</AutoAccentuation>{}{}<PlayingStyle>{}</PlayingStyle>{one_channel}<IconId>{}</IconId>",
             cdata(&t.name),
             cdata(&t.short_name),
             t.color[0],
@@ -832,7 +839,9 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
         x.push_str("</Rhythm>\n");
     }
     x.push_str("</Rhythms>\n");
-    if o.views {
+    if let Some(element) = song.kept.as_deref().and_then(|k| k.views_element(song)) {
+        x.push_str(element);
+    } else if o.views {
         x.push_str("<ScoreViews>");
         for k in 0..=song.tracks.len() {
             let _ = write!(x, "<ScoreView id=\"{k}\"/>");
@@ -1259,16 +1268,23 @@ pub fn export_gp_with(song: &Song, o: GpOptions) -> Result<Vec<u8>, String> {
         z.write_all(b"7.0").map_err(|e| e.to_string())?;
         z.start_file("Content/score.gpif", opt).map_err(e)?;
         z.write_all(xml.as_bytes()).map_err(|e| e.to_string())?;
-        z.start_file("Content/PartConfiguration", opt).map_err(e)?;
-        z.write_all(&part_configuration(song))
-            .map_err(|e| e.to_string())?;
+        // Views kept from the file that was opened, if they still describe the song.
+        let views = song.kept.as_deref().and_then(|k| k.view_files(song));
+        let has = |name: &str| views.as_ref().is_some_and(|v| v.iter().any(|f| f.0 == name));
+        if !has("Content/PartConfiguration") {
+            z.start_file("Content/PartConfiguration", opt).map_err(e)?;
+            z.write_all(&part_configuration(song))
+                .map_err(|e| e.to_string())?;
+        }
         // The stylesheet and the layout settings Guitar Pro's own files carry.
         z.start_file("Content/BinaryStylesheet", opt).map_err(e)?;
         let kept = song.kept.as_deref();
         let stylesheet = kept.and_then(|k| k.stylesheet(song)).unwrap_or_else(|| crate::gpstyle::write(&song.style));
         z.write_all(&stylesheet).map_err(|e| e.to_string())?;
-        z.start_file("Content/LayoutConfiguration", opt).map_err(e)?;
-        z.write_all(&LAYOUT_CONFIGURATION).map_err(|e| e.to_string())?;
+        if !has("Content/LayoutConfiguration") {
+            z.start_file("Content/LayoutConfiguration", opt).map_err(e)?;
+            z.write_all(&LAYOUT_CONFIGURATION).map_err(|e| e.to_string())?;
+        }
         for (name, data) in kept.map(|k| k.files.as_slice()).unwrap_or_default() {
             z.start_file(name.as_str(), opt).map_err(e)?;
             z.write_all(data).map_err(|e| e.to_string())?;
@@ -1292,7 +1308,13 @@ pub fn export_gp_with(song: &Song, o: GpOptions) -> Result<Vec<u8>, String> {
             shown = (0..song.tracks.len()).collect();
         }
         let full: Vec<(usize, usize)> = shown.iter().flat_map(|&k| staves_of(k)).collect();
-        if !o.views {
+        if let Some(views) = &views {
+            for &(name, data) in views {
+                z.start_file(name, opt).map_err(e)?;
+                z.write_all(data).map_err(|e| e.to_string())?;
+            }
+        }
+        if views.is_some() || !o.views {
             z.finish().map_err(e)?;
             return Ok(buf.into_inner());
         }

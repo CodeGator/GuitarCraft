@@ -51,8 +51,8 @@ sound engine (RSE), kept the drum kit sound.
 `docs/gp-keep-design.md`).** We rebuild a `.gp` file from our own model, so what the model doesn't
 hold used to be lost. Steps 0 to 2 are built (`src/gpkeep.rs`); what each keeps is in the plan.
 The owner checked step 1 in GP8 ("looks good"); step 2 is below. Still lost or reset: the flats
-choice, automations once bars are added or removed (step 3 ties them to bars), bars per line and
-score views (step 4), and per-beat settings (not wanted). The exact list is `ACCEPTED` in
+choice, automations once bars are added or removed (step 3 ties them to bars), and per-beat
+settings (not wanted). The exact list is `ACCEPTED` in
 `gpkeep.rs`; its test fails on any new loss.
 
 **Keyboards, voices and orchestra (fixed 2026-11-27; the owner opened our new files in GP8 and
@@ -78,6 +78,13 @@ its file had (`KeptTrack` in `gpkeep.rs`): sound engine, sounds and effects, MID
 instrument set and notation, transposition, the tuning under a keyboard or orchestral staff, and
 the mixer strip, where only a control moved here is changed. All but the mixer go while the
 track has another instrument.
+
+**Step 4, layout and views (2026-11-27; the owner checked it in GP8: "looks good").** Bars per line,
+zoom, score views and view stylesheets, and the layout and part configuration are kept (the rules
+are in the plan; adding a bar or hiding, renaming or moving a track gives our own views).
+GuitarCraft doesn't show these: its own line breaks and zoom are unchanged. We still write our
+own version number (12025) above content from newer files. Left: step 3 (flats choice, bar settings,
+automations tied to bars).
 
 **Bar repeat signs** (2026-11-27): Guitar Pro's `SimileMark` is now read and written
 (`Simple`, `FirstOfDouble`, `SecondOfDouble`); before, repeated bars of a Guitar Pro file opened

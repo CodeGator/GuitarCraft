@@ -1,9 +1,9 @@
 //! What a .gp file holds that this app doesn't use, kept so it can be written back when the song
 //! is saved. The design and its rules are in `docs/gp-keep-design.md`.
 //!
-//! Built so far: the settings of the file as a whole, and each track's. A kept setting is
-//! written back until the thing it depends on changes, so what the song held when it was read is
-//! recorded beside it.
+//! Built so far: the settings of the file as a whole, each track's, and the layout and views. A
+//! kept setting is written back until the thing it depends on changes, so what the song held when
+//! it was read is recorded beside it.
 
 use crate::gpstyle::{self, Raw, V};
 use crate::model::{Instrument, Song, Track};
@@ -13,6 +13,42 @@ use std::io::Read;
 
 /// Archive entries written back as they were.
 const FILES: [&str; 2] = ["Content/Preferences.json", "meta.json"];
+
+/// Archive entries that make up the score's views: which staves each shows and how its bars are
+/// laid out.
+fn of_the_views(name: &str) -> bool {
+    !name.ends_with('/')
+        && (name.starts_with("Content/ScoreViews/")
+            || name.starts_with("Content/Stylesheets/")
+            || matches!(name, "Content/LayoutConfiguration" | "Content/PartConfiguration"))
+}
+
+/// The newer stylesheet of the whole score, which repeats settings of the other one.
+const SCORE_STYLE: &str = "Content/Stylesheets/score.gpss";
+
+/// What the views depend on: the number of bars, and each track in order with what it shows.
+#[derive(Debug, PartialEq, Default)]
+struct Shape {
+    bars: usize,
+    tracks: Vec<(String, Instrument, [bool; 5])>,
+}
+
+fn shape(song: &Song) -> Shape {
+    let track = |t: &Track| {
+        let shows = [t.visible, t.multirest, t.show_std, t.show_tab, t.grand()];
+        (t.name.clone(), t.instrument, shows)
+    };
+    Shape { bars: song.bar_count(), tracks: song.tracks.iter().map(track).collect() }
+}
+
+/// The views of the file.
+#[derive(Debug, PartialEq, Default)]
+struct Views {
+    /// <ScoreViews> in the score (empty if the file had none).
+    element: String,
+    files: Vec<(String, Vec<u8>)>,
+    opened: Shape,
+}
 
 /// The page header and footer texts, elements of <Score>.
 const PAGE_TEXTS: [&str; 4] = ["FirstPageHeader", "FirstPageFooter", "PageHeader", "PageFooter"];
@@ -34,6 +70,11 @@ pub struct KeptSong {
     opened_bars: usize,
     /// The file had no title: the song was given a name to show, which isn't written back.
     untitled: Option<String>,
+    /// How many bars Guitar Pro puts on each line: elements of <Score>.
+    bars_per_line: Option<String>,
+    /// The zoom, elements of <Score>.
+    zoom: Option<String>,
+    views: Views,
 }
 
 fn headers(st: &Stylesheet) -> [&Vec<HeaderItem>; 4] {
@@ -49,8 +90,14 @@ fn text(n: Node) -> String {
     n.children().filter(|c| c.is_text()).filter_map(|c| c.text()).collect::<String>().trim().to_string()
 }
 
-/// Reads what is to be kept from a .gp archive. `song` is the song as read from it. Also marks
-/// a pickup bar on the song itself, so that it stays with its bar.
+/// The named children of `parent` as written, one after another.
+fn elements(xml: &str, parent: Node, tags: &[&str]) -> String {
+    tags.iter().filter_map(|tag| child(parent, tag)).map(|n| &xml[n.range()]).collect()
+}
+
+/// Reads what is to be kept from a .gp archive. `song` is the song as read from it, with all it
+/// takes from the archive already set. Also marks a pickup bar on the song itself, so that it
+/// stays with its bar.
 pub fn read<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>, xml: &str, song: &mut Song) -> KeptSong {
     let mut kept = KeptSong {
         opened_style: gpstyle::entries(&song.style),
@@ -58,6 +105,8 @@ pub fn read<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>, xml: &str, so
         opened_bars: song.bar_count(),
         ..KeptSong::default()
     };
+    let names: Vec<String> = zip.file_names().filter(|n| of_the_views(n)).map(String::from).collect();
+    kept.views.opened = shape(song);
     let mut entry = |name: &str| {
         let mut data = vec![];
         zip.by_name(name).ok()?.read_to_end(&mut data).ok()?;
@@ -68,6 +117,12 @@ pub fn read<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>, xml: &str, so
             kept.files.push((name.to_string(), data));
         }
     }
+    for name in names {
+        if let Some(data) = entry(&name) {
+            kept.views.files.push((name, data));
+        }
+    }
+    kept.views.files.sort();
     if let Some(raw) = entry("Content/BinaryStylesheet").and_then(|d| gpstyle::raw(&d)) {
         kept.stylesheet = raw;
     }
@@ -84,7 +139,11 @@ pub fn read<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>, xml: &str, so
             }
         }
         kept.multi_voice = child(score, "MultiVoice").map(source);
+        let lines = elements(xml, score, &["ScoreSystemsDefaultLayout", "ScoreSystemsLayout"]);
+        kept.bars_per_line = (!lines.is_empty()).then_some(lines);
+        kept.zoom = Some(elements(xml, score, &["ScoreZoomPolicy", "ScoreZoom"]));
     }
+    kept.views.element = elements(xml, root, &["ScoreViews"]);
     if let Some(master) = child(root, "MasterTrack") {
         if child(master, "Anacrusis").is_some()
             && let Some(first) = song.master.first_mut()
@@ -117,6 +176,36 @@ impl KeptSong {
     pub fn page_text(&self, tag: &str, song: &Song) -> Option<&str> {
         let same = headers(&song.style).iter().zip(&self.opened_headers).all(|(now, then)| *now == then);
         same.then(|| self.page_texts.iter().find(|t| t.0 == tag).map(|t| t.1.as_str())).flatten()
+    }
+
+    /// How many bars go on each line, while the song has as many bars as it did.
+    pub fn bars_per_line(&self, song: &Song) -> Option<&str> {
+        self.bars_per_line.as_deref().filter(|_| song.bar_count() == self.opened_bars)
+    }
+
+    pub fn zoom(&self) -> Option<&str> {
+        self.zoom.as_deref()
+    }
+
+    /// Whether the file's views still describe the song: the same bars, and the same tracks in
+    /// the same order showing the same staves.
+    fn views_fit(&self, song: &Song) -> bool {
+        !self.views.files.is_empty() && shape(song) == self.views.opened
+    }
+
+    /// <ScoreViews> to write in the score; None when the app's own views are to be written.
+    pub fn views_element(&self, song: &Song) -> Option<&str> {
+        self.views_fit(song).then_some(&self.views.element)
+    }
+
+    /// The archive entries of the views, while they fit. The score's newer stylesheet is left
+    /// out once a style setting has changed, as it would repeat the old one.
+    pub fn view_files(&self, song: &Song) -> Option<Vec<(&str, &[u8])>> {
+        let restyled = || gpstyle::entries(&song.style) != self.opened_style;
+        self.views_fit(song).then(|| {
+            let files = self.views.files.iter().filter(|(name, _)| name != SCORE_STYLE || !restyled());
+            files.map(|(name, data)| (name.as_str(), data.as_slice())).collect()
+        })
     }
 
     pub fn multi_voice(&self) -> Option<&str> {
@@ -172,6 +261,8 @@ pub struct KeptTrack {
     /// The changes of sound: all of them, and only those at the start.
     automations: Option<(String, String)>,
     mixer: Option<Mixer>,
+    /// How many bars Guitar Pro puts on each line when the track is shown alone.
+    bars_per_line: Option<String>,
 }
 
 /// The element's text with the elements `cut` picks removed.
@@ -221,6 +312,7 @@ pub fn read_track(node: Node, xml: &str, track: &Track, bars: usize) -> KeptTrac
         one_channel: theirs("UseOneChannelPerString"),
         automations,
         mixer,
+        bars_per_line: Some(elements(xml, node, &["SystemsDefautLayout", "SystemsLayout"])).filter(|e| !e.is_empty()),
     }
 }
 
@@ -292,6 +384,11 @@ impl KeptTrack {
         self.one_channel.as_deref().filter(|_| self.fits(track))
     }
 
+    /// How many bars go on each line, while the track has as many bars as it did.
+    pub fn bars_per_line(&self, track: &Track) -> Option<&str> {
+        self.bars_per_line.as_deref().filter(|_| track.bars.len() == self.opened_bars)
+    }
+
     /// The mixer as read, except for the controls moved since. Its changes over time go once
     /// bars have been added or removed.
     pub fn mixer(&self, track: &Track) -> Option<String> {
@@ -341,16 +438,6 @@ mod tests {
         "lost Tracks/Track/Staves/Staff/Properties/Property[Tuning]",
         // Step 3, settings tied to bars.
         "changed MasterBars/MasterBar/Key/TransposeAs",
-        // Step 4, layout and views.
-        "changed Score/ScoreSystemsLayout",
-        "changed Tracks/Track/SystemsLayout",
-        "changed file Content/LayoutConfiguration",
-        "changed file Content/PartConfiguration",
-        "lost ScoreViews",
-        "lost file Content/ScoreViews/N.gpsv",
-        "lost file Content/Stylesheets/score.gpss",
-        "lost file Content/Stylesheets/scoreviewN.gpss",
-        "changed Score/ScoreZoom",
         // Step 5, per-beat settings: not planned.
         "lost Beats/Beat/ConcertPitchStemOrientation",
         "lost Beats/Beat/TransposedPitchStemOrientation",
@@ -651,6 +738,62 @@ mod tests {
         assert!(xml.contains("<Chromatic>-2</Chromatic>"));
         // The file's note: it sounds G and is written A.
         assert!(xml.contains("<Property name=\"ConcertPitch\"><Pitch><Step>G</Step><Accidental></Accidental><Octave>6</Octave></Pitch></Property><Property name=\"TransposedPitch\"><Pitch><Step>A</Step>"));
+    }
+
+    /// The names of a saved file's entries, and its score.
+    fn saved(song: &Song) -> (Vec<String>, String) {
+        let data = crate::gpifwrite::export_gp(song).unwrap();
+        let zip = zip::ZipArchive::new(std::io::Cursor::new(&data[..])).unwrap();
+        let mut names: Vec<String> = zip.file_names().map(String::from).collect();
+        names.sort();
+        (names, String::from_utf8(entry(&data, "Content/score.gpif").unwrap()).unwrap())
+    }
+
+    #[test]
+    fn bars_per_line_stay_while_the_number_of_bars_does() {
+        let (_, mut song) = opened();
+        let lines = "<ScoreSystemsLayout>4 4 4</ScoreSystemsLayout>";
+        song.tracks[0].bars[0].beats[0].dotted = true;
+        assert!(saved(&song).1.contains(lines), "an edit within a bar leaves them");
+        song.master.push(MasterBar::default());
+        song.normalize();
+        let xml = saved(&song).1;
+        assert!(!xml.contains(lines) && xml.contains("<ScoreSystemsLayout>4</ScoreSystemsLayout>"));
+    }
+
+    #[test]
+    fn the_views_stay_while_the_tracks_and_bars_do() {
+        let (_, song) = opened();
+        let (names, xml) = saved(&song);
+        assert!(names.contains(&SCORE_STYLE.to_string()) && names.contains(&"Content/ScoreViews/2.gpsv".to_string()), "{names:?}");
+        assert!(xml.contains("<ScoreViews>"));
+        // Showing other staves, hiding, renaming or reordering tracks: our own views.
+        let edits: [fn(&mut Song); 4] = [
+            |s| s.tracks[0].visible = false,
+            |s| s.tracks[1].show_tab = !s.tracks[1].show_tab,
+            |s| s.tracks[0].name = "Other".into(),
+            |s| s.tracks.swap(0, 1),
+        ];
+        for edit in edits {
+            let mut changed = song.clone();
+            edit(&mut changed);
+            let names = saved(&changed).0;
+            assert!(!names.iter().any(|n| n.starts_with("Content/Stylesheets/")), "{names:?}");
+            assert!(names.contains(&"Content/PartConfiguration".to_string()));
+        }
+        // Another page size: the views stay, the newer stylesheet that repeats the old size goes.
+        let mut restyled = song.clone();
+        restyled.style.page_w = 148.0;
+        let names = saved(&restyled).0;
+        assert!(!names.contains(&SCORE_STYLE.to_string()) && names.contains(&"Content/ScoreViews/2.gpsv".to_string()));
+    }
+
+    #[test]
+    fn the_zoom_of_the_file_stays() {
+        let mut song = crate::gpif::import_gp(&crate::fixture("gp8/Instruments.gp")).unwrap();
+        song.master.push(MasterBar::default());
+        song.normalize();
+        assert!(saved(&song).1.contains("<ScoreZoom>1.5</ScoreZoom>"));
     }
 
     #[test]

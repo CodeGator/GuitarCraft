@@ -1,7 +1,7 @@
 # Keeping a Guitar Pro file's own settings: design
 
-Status: 2026-11-27. The owner agreed the plan (see "Decisions"). **Steps 0, 1 and 2 are built**
-(`src/gpkeep.rs`). The owner checked steps 1 and 2 in Guitar
+Status: 2026-11-27. The owner agreed the plan (see "Decisions"). **Steps 0, 1, 2 and 4 are built**
+(`src/gpkeep.rs`; step 4 was done before step 3; the owner checked it in Guitar Pro 8). The owner checked steps 1 and 2 in Guitar
 Pro 8 (after step 2, saved copies sound the same and differ in layout).
 
 ## The problem
@@ -77,7 +77,8 @@ block also records what our model held when the file was read.
 | Flats or sharps choice | Master bar | The key is unchanged | Ours |
 | Bar and beat settings | Bar, beat | The object exists; stem directions only while its notes are unchanged | Left out |
 | Bars per line | Song and track | The number of bars is unchanged | Ours |
-| Score views and view stylesheets | Song | The same tracks in the same order, with the same ones shown | Ours |
+| Zoom | Song | Always | |
+| Score views, view stylesheets, layout and part configuration | Song | The same number of bars, and the same tracks in the same order with the same names, instruments and staves shown; the score's own newer stylesheet also needs unchanged style settings | Ours |
 
 Special cases:
 
@@ -100,7 +101,7 @@ Guitar Pro 8.
 | 1 | **Whole-file settings:** preferences, stylesheet merge, header and footer, master effects, pickup bar, `MultiVoice`, an empty title. **Built** | Medium |
 | 2 | **Track settings:** sound engine, sounds, effects, mixer strip, instrument set, transposition. Nothing about the instrument is kept from files earlier versions of GuitarCraft wrote (sounds named `Midi/...`). **Built** | Medium |
 | 3 | **Settings tied to bars:** automations, flats choice, bar `XProperties` | Medium |
-| 4 | **Layout:** bars per line, score views | Medium |
+| 4 | **Layout:** bars per line, zoom, score views. **Built** | Medium |
 | 5 | **Per-beat settings** (pickup volume and tone, stem directions). **Not wanted** (owner) | Small gain |
 
 Steps 1 and 2 recover most of what a person would notice.
