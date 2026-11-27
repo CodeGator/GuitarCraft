@@ -306,6 +306,16 @@ impl App {
         else {
             return;
         };
+        self.import_ascii_file(p);
+    }
+
+    /// Adds a text tab to the song as a new track. With no song showing (the start screen, or a
+    /// chord chart) it opens as a song of its own, as the other imports do.
+    pub(super) fn import_ascii_file(&mut self, p: std::path::PathBuf) {
+        if self.show_home || self.chart.is_some() {
+            self.open_path(p);
+            return;
+        }
         let text = match std::fs::read(&p) {
             Ok(d) => String::from_utf8_lossy(&d).to_string(),
             Err(e) => {

@@ -243,24 +243,116 @@ fn label_pitch(label: &str) -> Option<i32> {
     Some((pc + 12) % 12)
 }
 
-/// Reads plain-text tablature. Returns a track and the bars it fills.
-pub fn import_ascii(text: &str) -> Result<Track, String> {
-    let lines: Vec<&str> = text.lines().collect();
-    let mut blocks: Vec<Vec<&str>> = vec![];
-    let mut cur: Vec<&str> = vec![];
-    for l in &lines {
-        if is_tab_line(l) {
-            cur.push(l);
-        } else {
-            if (4..=8).contains(&cur.len()) {
-                blocks.push(std::mem::take(&mut cur));
-            }
-            cur.clear();
+// Tab copied from mail, forums and word processors arrives damaged in a few ordinary ways:
+// quoted with ">", its dashes turned into typographic ones, spaces typed where dashes belong, and
+// blank lines let in between the strings. These are put right before it is read.
+
+/// A line with quoting marks, tabs and look-alike characters put right. `em` is what a long dash
+/// stands for: word processors make one of two typed hyphens, or of one.
+fn plain_line(line: &str, em: &str) -> String {
+    let mut text = line.trim_end();
+    // Quoted mail and forum text: "> e|---" and ">> e|---".
+    while let Some(rest) = text.trim_start().strip_prefix('>') {
+        text = rest;
+    }
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        match c {
+            '\u{2014}' | '\u{2015}' => out.push_str(em),
+            '\u{2010}'..='\u{2013}' | '\u{2212}' | '\u{2500}' | '\u{2501}' | '\u{FE58}' | '\u{FE63}' | '\u{FF0D}' => out.push('-'),
+            '\u{2502}' | '\u{2503}' | '\u{00A6}' | '\u{FF5C}' => out.push('|'),
+            '\u{00A0}' | '\t' => out.push(' '),
+            _ => out.push(c),
         }
     }
-    if (4..=8).contains(&cur.len()) {
-        blocks.push(cur);
+    dashes_for_spaces(&out).unwrap_or(out)
+}
+
+/// A string's line typed with spaces where the dashes belong, as "e|   3    5  |", with the
+/// dashes put in. None for anything else: it takes a string's name (or nothing), bar lines at
+/// both ends and only tab signs between them.
+fn dashes_for_spaces(line: &str) -> Option<String> {
+    let t = line.trim();
+    let open = t.find('|')?;
+    let (label, body) = t.split_at(open);
+    let label = label.trim();
+    let named = label.is_empty() || (label.len() <= 2 && label_pitch(label).is_some());
+    let signs = |c: char| c.is_ascii_digit() || " -|hpbrs/\\~xXtWLg<>().^=".contains(c);
+    if !named || body.len() < 6 || !body.ends_with('|') || !body.contains(' ') || !body.chars().all(signs) {
+        return None;
     }
+    Some(format!("{label}{}", body.replace(' ', "-")))
+}
+
+/// A line of nothing but dashes, with no string name or bar line: a rule between parts.
+fn is_rule(line: &str) -> bool {
+    line.trim().chars().all(|c| c == '-')
+}
+
+/// The lines of each system of tab: the strings of one line of music. Blank lines within a system
+/// are passed over; any other text ends it.
+fn tab_systems(lines: &[String]) -> Vec<Vec<usize>> {
+    const STRINGS: std::ops::RangeInclusive<usize> = 4..=8;
+    let mut systems = vec![];
+    // Runs of tab lines with nothing but blank lines between them.
+    let mut runs: Vec<Vec<usize>> = vec![];
+    let mut run: Vec<usize> = vec![];
+    for (i, line) in lines.iter().map(String::as_str).chain([".end"]).enumerate() {
+        if i < lines.len() && is_tab_line(line) {
+            run.push(i);
+            continue;
+        }
+        if !run.is_empty() {
+            let rules = run.iter().all(|&k| is_rule(&lines[k]));
+            let taken = std::mem::take(&mut run);
+            if !rules {
+                runs.push(taken);
+            }
+        }
+        if i < lines.len() && line.trim().is_empty() {
+            continue;
+        }
+        // The end of a stretch of tab.
+        let group = std::mem::take(&mut runs);
+        if group.iter().all(|r| STRINGS.contains(&r.len())) {
+            systems.extend(group);
+        } else {
+            // Blank lines came between the strings, or systems with nothing between them.
+            let all: Vec<usize> = group.concat();
+            let each = match all.len() {
+                n if n % 6 == 0 => 6,
+                n if n % 4 == 0 => 4,
+                n if STRINGS.contains(&n) => n,
+                _ => 6,
+            };
+            systems.extend(all.chunks(each).filter(|c| STRINGS.contains(&c.len())).map(<[_]>::to_vec));
+        }
+    }
+    systems
+}
+
+/// The systems of tab in a text, each as its lines, with the ordinary damage put right.
+fn tab_blocks(text: &str) -> Vec<Vec<String>> {
+    let read = |em: &str| text.lines().map(|l| plain_line(l, em)).collect::<Vec<_>>();
+    let (one, two) = (read("-"), read("--"));
+    // How much the lines of a system differ in length: the right reading of a long dash lines
+    // them up.
+    let ragged = |lines: &[String], system: &[usize]| {
+        let lengths = || system.iter().map(|&i| lines[i].trim().len());
+        lengths().max().unwrap_or(0) - lengths().min().unwrap_or(0)
+    };
+    tab_systems(&one)
+        .into_iter()
+        .map(|system| {
+            let lines = if ragged(&two, &system) < ragged(&one, &system) { &two } else { &one };
+            system.iter().map(|&i| lines[i].clone()).collect()
+        })
+        .collect()
+}
+
+/// Reads plain-text tablature. Returns a track and the bars it fills.
+pub fn import_ascii(text: &str) -> Result<Track, String> {
+    let blocks = tab_blocks(text);
     if blocks.is_empty() {
         return Err("No tablature was found in this text file.".into());
     }
@@ -772,6 +864,69 @@ pub fn import_midi(data: &[u8], title: &str) -> Result<Song, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The demo song's guitar part as text tab, and what the importer reads from it: the
+    /// number of beats, and every beat's notes.
+    fn demo_tab() -> (String, Vec<Vec<(u8, u8)>>) {
+        let text = export_ascii(&Song::demo(), 0);
+        let read = notes_of(&text);
+        (text, read)
+    }
+
+    fn notes_of(text: &str) -> Vec<Vec<(u8, u8)>> {
+        let track = import_ascii(text).expect("tab");
+        track.bars.iter().flat_map(|b| &b.beats).map(|b| b.notes.iter().map(|n| (n.string, n.fret)).collect()).collect()
+    }
+
+    /// Applies `damage` to every line of tab (those with bar lines).
+    fn damaged(text: &str, damage: impl Fn(&str) -> String) -> String {
+        text.lines().map(|l| if l.contains('|') { damage(l) } else { l.to_string() }).collect::<Vec<_>>().join("\n")
+    }
+
+    #[test]
+    fn tab_damaged_in_the_ordinary_ways_reads_as_the_clean_tab_does() {
+        let (text, clean) = demo_tab();
+        assert!(clean.len() > 40, "{} beats", clean.len());
+        let quoted = text.lines().map(|l| format!("> {l}")).collect::<Vec<_>>().join("\n");
+        let twice = text.lines().map(|l| format!(">> {l}")).collect::<Vec<_>>().join("\n");
+        let spaced = damaged(&text, |l| l.replace('-', " "));
+        let blank = damaged(&text, |l| format!("{l}\n"));
+        // A word processor's dashes: each hyphen a dash, or each pair of them one long dash.
+        let short = damaged(&text, |l| l.replace('-', "\u{2013}"));
+        let long = damaged(&text, |l| l.replace("--", "\u{2014}"));
+        let boxed = damaged(&text, |l| l.replace('-', "\u{2500}").replace('|', "\u{2502}"));
+        for (name, bad) in [("quoted", quoted), ("quoted twice", twice), ("spaces", spaced), ("blank lines", blank), ("short dashes", short), ("long dashes", long), ("box drawing", boxed)] {
+            assert_eq!(notes_of(&bad), clean, "{name}");
+        }
+        // All of it at once.
+        let all = damaged(&text, |l| format!("> {}\n>", l.replace('-', " ")));
+        assert_eq!(notes_of(&all), clean, "everything");
+    }
+
+    #[test]
+    fn systems_are_told_apart_whatever_stands_between_them() {
+        let system = |names: &[&str]| names.iter().map(|n| format!("{n}|--0--2--|--3--0--|")).collect::<Vec<_>>().join("\n");
+        let guitar = system(&["e", "B", "G", "D", "A", "E"]);
+        let bass = system(&["G", "D", "A", "E"]);
+        let bars = |text: String| import_ascii(&text).map(|t| (t.tuning.len(), t.bars.len()));
+        assert_eq!(bars(format!("{guitar}\n\n{guitar}")), Ok((6, 4)));
+        assert_eq!(bars(format!("{guitar}\n{guitar}")), Ok((6, 4)), "nothing between them");
+        assert_eq!(bars(format!("{bass}\n\n{bass}")), Ok((4, 4)), "two bass systems, not eight strings");
+        // A rule of dashes above a system is not a string of it.
+        assert_eq!(bars(format!("Intro\n----------\n\n{guitar}")), Ok((6, 2)));
+        // A blank line part of the way down.
+        let (top, bottom) = guitar.split_at(guitar.match_indices('\n').nth(3).unwrap().0);
+        assert_eq!(bars(format!("{top}\n{bottom}")), Ok((6, 2)));
+    }
+
+    #[test]
+    fn text_that_is_not_tab_is_left_alone() {
+        for text in ["| G  | C  | D  | G  |\n| Em | C  | D  | G  |", "> Thanks for the tab!\n> It sounds great.", "e.g. | one | two |"] {
+            assert!(import_ascii(text).is_err(), "{text}");
+        }
+        assert_eq!(dashes_for_spaces("e|  3   5  |").as_deref(), Some("e|--3---5--|"));
+        assert_eq!(dashes_for_spaces("Verse |  3  |"), None);
+    }
 
     #[test]
     fn ascii_round_trip() {

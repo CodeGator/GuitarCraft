@@ -887,3 +887,33 @@ fn the_view_key_opens_the_view_that_suits_the_track() {
     r.key(Key::F6, Modifiers::COMMAND);
     assert!(r.app.panel_shown(Pane::Keyboard) && !r.app.panel_shown(Pane::Drums));
 }
+
+#[test]
+fn importing_text_tab_shows_it_whether_or_not_a_song_is_open() {
+    let file = std::env::temp_dir().join(format!("gc-tab-{}.txt", std::process::id()));
+    std::fs::write(&file, "e|--0--3--|
+B|--------|
+G|--------|
+D|--------|
+A|--------|
+E|--------|
+").unwrap();
+    // From the start screen: the tab opens as a song, on screen.
+    let mut r = Rig::new();
+    assert!(r.app.show_home);
+    r.app.import_ascii_file(file.clone());
+    r.frames(2);
+    assert!(!r.app.show_home, "the imported tab is showing");
+    assert_eq!((r.app.song.tracks.len(), note_count(&r)), (1, 2));
+    // With a song showing: another track of it.
+    let mut r = Rig::new();
+    r.app.show_home = false;
+    r.app.song = Song::demo();
+    r.frames(2);
+    let tracks = r.app.song.tracks.len();
+    r.app.import_ascii_file(file.clone());
+    r.frames(2);
+    assert_eq!(r.app.song.tracks.len(), tracks + 1);
+    assert_eq!(r.app.track, tracks, "the new track is chosen");
+    let _ = std::fs::remove_file(&file);
+}

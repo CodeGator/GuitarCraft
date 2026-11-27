@@ -231,7 +231,9 @@ Suggest Chords.
 beats), counted by GuitarCraft's importer: a few lines of plain clean-up code read 75 beats in
 three of them (the code was written knowing the damage), Claude 75, 54, 69 and 75, the local
 model at most 67. Claude's errors imported without complaint. Ragged columns were the one case
-where only Claude helped (69 against 40). Better to teach the importer those clean-up rules.
+where only Claude helped (69 against 40). Better to teach the importer those clean-up rules. (Done 2026-11-27 in `textmidi.rs`: quoting,
+typographic dashes, spaces for dashes and blank lines inside a system. Ragged columns are not
+handled.)
 
 Ollama note: GuitarCraft leaves a model's thinking on, and `qwen3.5:4b` then sometimes answered
 nothing in the trial, so the panel may show "The model sent an empty answer." with it.
