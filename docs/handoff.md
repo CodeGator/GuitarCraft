@@ -242,7 +242,8 @@ question in the panel. Before a release, check Anthropic's current terms.
   in `src/app/tools.rs`), not in the README. The owner first asked to delete the guide (the app is
   too young), then kept it because the AI Assistant answers from it: **keep it up to date** when a
   feature changes. It was brought up to date for 0.11.0 on 2026-11-27. The README must still say what the AI sends (see
-  `docs/ai-design.md`). The README's three pictures were retaken the same day.
+  `docs/ai-design.md`). The owner wants the Chords & Scales pictures in the README: the first rewrite dropped them, and
+  they were retaken and put back on 2026-11-27.
 - The GP8 guide doesn't state the Windows shortcuts for the Action list and Expression text; we
   use Ctrl+Alt+E and Ctrl+Shift+E by analogy with its Mac ones.
 
