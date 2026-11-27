@@ -45,7 +45,7 @@ A few options help with checking and converting:
 
 On Windows, GuitarCraft is a windowed app, so a terminal doesn't wait for it: its messages appear after the prompt returns. To wait for a run and get its exit code, use `Start-Process -Wait` in PowerShell or `start /wait` in cmd.
 
-The readme's pictures are in `docs/readme/`, made with `--screenshot`: `editing.png` (no `--show`), `drums.png` (`--show band,drums,single`) and `chart.png` (`--show chart`).
+The readme's pictures are in `docs/readme/`, made with `--screenshot`: `editing.png` (no `--show`), `drums.png` (`--show band,drums,single`), `chart.png` (`--show chart`), and `scales.png`, `arpeggios.png`, `chords.png` and `identify.png` (`--show` with the same name), cropped to the Chords & Scales window.
 
 ## Releasing
 
