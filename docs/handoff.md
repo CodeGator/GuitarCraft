@@ -1,20 +1,20 @@
 # Handoff
 
-Written 2026-11-27, after releasing 0.11.0 and starting `version-0.12.0`. Read this first, then
+Written 2026-11-27, after releasing 0.12.0 and starting `version-0.13.0`. Read this first, then
 `docs/gp8-feature-gaps.md` (what is left to build) and
 `docs/ai-design.md` (the AI rules and ideas).
 
 ## Where things stand
 
-- **Released:** v0.11.0, published 2026-11-27 (https://github.com/CodeGator/GuitarCraft/releases/tag/v0.11.0),
-  from PR #21. MSI and portable zip, unsigned. The MSI was never installed by hand; only the
-  checksums were checked (they match). v0.10.0 is the one before it. 0.11.0 brought the drumkit
-  view, Audio Note Settings, Guitar Pro files keeping more through saving, the **Claude Code** AI
+- **Released:** v0.12.0, published 2026-11-27 (https://github.com/CodeGator/GuitarCraft/releases/tag/v0.12.0),
+  from PR #23: the Contributors tab, shaded buttons in Chords & Scales and the README's pictures of
+  that tool. MSI and portable zip, unsigned. The MSI was never installed by hand; only the
+  checksums were checked (they match). v0.11.0, published the same day, brought the drumkit view,
+  Audio Note Settings, Guitar Pro files keeping more through saving, the **Claude Code** AI
   provider, **Suggest Chords** in chord charts and an AI Assistant that **only answers** (see "The
   AI features" below).
-- **Working branch:** `version-0.12.0`, made from `main` after the release, version bumped to
-  0.12.0. Pushed to GitHub on 2026-11-27 with the Contributors tab, the Chords & Scales button
-  shading and the README's Chords & Scales pictures (those pictures are also on `main`, PR #22).
+- **Working branch:** `version-0.13.0`, made from `main` after the release, version bumped to
+  0.13.0. Not pushed to GitHub yet.
 - **Branches on GitHub:** `main` and `release`.
 - **Tests:** `cargo test --release` passes in full (296 passed, 7 ignored live tests that need a
   model, a key or a Claude Code sign-in). In a debug build (`cargo test`) three `dock` tests fail
@@ -263,7 +263,7 @@ question in the panel. Before a release, check Anthropic's current terms.
 
 ## How we work here
 
-- **Never commit or push to `main`.** Work on the version branch (`version-0.12.0` now). When it is
+- **Never commit or push to `main`.** Work on the version branch (`version-0.13.0` now). When it is
   ready: pull request into `main` with a merge commit, then
   `git push origin origin/main:release` (check it fast-forwards), wait about 3 minutes for the
   workflow to draft the release, check the checksums, publish it. Then delete the merged branch
