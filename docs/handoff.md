@@ -13,7 +13,8 @@ Written 2026-11-27, after releasing 0.11.0 and starting `version-0.12.0`. Read t
   provider, **Suggest Chords** in chord charts and an AI Assistant that **only answers** (see "The
   AI features" below).
 - **Working branch:** `version-0.12.0`, made from `main` after the release, version bumped to
-  0.12.0. Not pushed to GitHub yet.
+  0.12.0. Pushed to GitHub on 2026-11-27 with the Contributors tab, the Chords & Scales button
+  shading and the README's Chords & Scales pictures (those pictures are also on `main`, PR #22).
 - **Branches on GitHub:** `main` and `release`.
 - **Tests:** `cargo test --release` passes in full (296 passed, 7 ignored live tests that need a
   model, a key or a Claude Code sign-in). In a debug build (`cargo test`) three `dock` tests fail
