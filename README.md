@@ -34,6 +34,15 @@ Not there yet: importing TablEdit and Power Tab files. Not planned for now: Guit
 
 ![A chord chart open for editing, with its sections and playing order beside the printed page](docs/readme/chart.png)
 
+**Chords and scales: browse scales, arpeggios and chords, or name the notes you click**
+
+<p align="center">
+<img src="docs/readme/scales.png" alt="Scales: the notes of C major over the whole fretboard" width="49%">
+<img src="docs/readme/arpeggios.png" alt="Arpeggios: the notes of a D minor arpeggio over the whole fretboard" width="49%">
+<img src="docs/readme/chords.png" alt="Chords: E sus4 on the fretboard, with fingerings to choose from" width="49%">
+<img src="docs/readme/identify.png" alt="Identify: three clicked notes named F sharp sus4, with other names and matching scales" width="49%">
+</p>
+
 ## Install
 
 Download the installer or the portable zip from the [Releases page](https://github.com/CodeGator/GuitarCraft/releases). The installer isn't signed yet, so Windows may warn that the publisher is unknown: choose **More info → Run anyway**.
