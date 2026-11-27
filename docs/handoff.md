@@ -14,12 +14,14 @@ Written 2026-11-27, after releasing 0.12.0 and starting `version-0.13.0`. Read t
   provider, **Suggest Chords** in chord charts and an AI Assistant that **only answers** (see "The
   AI features" below).
 - **Working branch:** `version-0.13.0`, made from `main` after the release, version bumped to
-  0.13.0. Not pushed to GitHub yet.
-- **Branches on GitHub:** `main` and `release`.
+  0.13.0. Pushed to GitHub on 2026-11-27. No 0.13.0 work yet beyond the version bump and this
+  handoff.
+- **Branches on GitHub:** `main`, `release` and `version-0.13.0`.
 - **Tests:** `cargo test --release` passes in full (296 passed, 7 ignored live tests that need a
-  model, a key or a Claude Code sign-in). In a debug build (`cargo test`) three `dock` tests fail
-  ("Dropped TexturesDelta with 1 unapplied deltas", from `epaint`); seen 2026-11-27 before any
-  change that day.
+  model, a key or a Claude Code sign-in; `cargo test --release --workspace` adds the 9 of `xtask`).
+  In a debug build (`cargo test`) three `dock` tests fail ("Dropped TexturesDelta with 1
+  unapplied deltas", from `epaint`); seen 2026-11-27 before any change that day. `cargo clippy`
+  gives 11 style warnings.
 
 ## Drumkit view (2026-11-27, in 0.11.0)
 
@@ -47,6 +49,8 @@ writes far off the staff (much of the hand percussion) show as a cross mid-staff
 with an Acoustic Piano when it saved our file. It is now `Drums/Drums/Drumkit` with MSB 0 and the
 `Drumkit-Master` patch, as in the GP7 file. Checked: the copy GP8 saved, with the track on its own
 sound engine (RSE), kept the drum kit sound.
+
+## Other work of 2026-11-27 (released in 0.11.0 unless it says otherwise)
 
 **Saving a Guitar Pro file keeps its settings (2026-11-27; plan and decisions in
 `docs/gp-keep-design.md`).** We rebuild a `.gp` file from our own model, so what the model doesn't
@@ -82,8 +86,7 @@ track has another instrument.
 zoom, score views and view stylesheets, and the layout and part configuration are kept (the rules
 are in the plan; adding a bar or hiding, renaming or moving a track gives our own views).
 GuitarCraft doesn't show these: its own line breaks and zoom are unchanged. We still write our
-own version number (12025) above content from newer files. Left: step 3 (flats choice, bar settings,
-automations tied to bars).
+own version number (12025) above content from newer files.
 
 **Step 3, settings tied to bars (2026-11-27; the owner checked it in GP8: "looks good").** Mixer,
 sound and master effect changes are kept on the bar they name, so they move, copy and go with it
@@ -245,13 +248,6 @@ question in the panel. Before a release, check Anthropic's current terms.
   of the staff, or a second example (other pitches), before changing the rule.
 - **MIDI:** input has never been tried with a real keyboard; one slide is silent because it
   shares a channel with another note (see `docs/midi-design.md`); real-time recording isn't built.
-- **README** (2026-11-27, the owner's wish, as in Dunbrec's): only a brief, high-level overview.
-  Technical details go in `docs/development.md` and how to use things in the user guide (`GUIDE`
-  in `src/app/tools.rs`), not in the README. The owner first asked to delete the guide (the app is
-  too young), then kept it because the AI Assistant answers from it: **keep it up to date** when a
-  feature changes. It was brought up to date for 0.11.0 on 2026-11-27. The README must still say what the AI sends (see
-  `docs/ai-design.md`). The owner wants the Chords & Scales pictures in the README: the first rewrite dropped them, and
-  they were retaken and put back on 2026-11-27.
 - The GP8 guide doesn't state the Windows shortcuts for the Action list and Expression text; we
   use Ctrl+Alt+E and Ctrl+Shift+E by analogy with its Mac ones.
 
@@ -270,6 +266,18 @@ question in the panel. Before a release, check Anthropic's current terms.
   locally and on GitHub, make the next `version-X.Y.0` branch from `main` and bump it with
   `cargo xtask version set`. Details in `docs/releasing.md`.
 - **Don't commit or push unless asked**; the person says "commit that" or "push to github".
+- **When asking the owner to try something, start the app for them**, normally (no file on the
+  command line) unless they ask, and say which app and which file to use. Don't ask them to repeat
+  a check they have done.
+- **Tests make no sound** and open no microphone (`audio.rs`, `tuner.rs`, with a test): keep it so.
+- **README** (the owner's wish, 2026-11-27, as in Dunbrec's): only a brief, high-level overview.
+  Technical details go in `docs/development.md` and how to use things in the user guide, not in the
+  README. It must still say what the AI sends (`docs/ai-design.md`). The owner wants the Chords &
+  Scales pictures in it. Ask before dropping pictures or other things they may want. GitHub shows
+  `main`'s README; a change wanted there before a release goes by a pull request of its own.
+- **The user guide** (`GUIDE` in `src/app/tools.rs`, Help > User Guide): the owner first asked to
+  delete it (the app is too young), then kept it because the AI Assistant answers from it. **Keep it
+  up to date** when a feature changes; it was last brought up to date for 0.11.0.
 - **Keep the AI panel simple.** The owner dislikes controls they have to reason about and anything
   that spends room on setup details. Decide in code; put settings in Preferences.
 - **Don't edit files in `%APPDATA%\GuitarCraft` by hand** without the person's say-so (the tool
