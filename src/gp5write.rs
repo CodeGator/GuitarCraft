@@ -348,7 +348,8 @@ pub fn export_gp5(song: &Song) -> Vec<u8> {
     // Bars: two voices per track.
     for bi in 0..nbars {
         for (ti, t) in song.tracks.iter().enumerate() {
-            let bar = &t.bars[bi];
+            // A repeat sign for a previous bar is written out as the notes it repeats.
+            let bar = t.played_bar(bi);
             for v in 0..2 {
                 let beats = bar.voice(v);
                 let used = v == 0 || bar.voice_used(v);
@@ -506,12 +507,12 @@ fn write_beat(w: &mut W, t: &Track, beat: &Beat, tempo: Option<u32>) {
     }
     w.u8(sflags);
     for (_, n) in &placed {
-        write_note(w, beat, n);
+        write_note(w, beat, n, t.instrument == Instrument::Drums);
     }
     w.i16(0);
 }
 
-fn write_note(w: &mut W, beat: &Beat, n: &Note) {
+fn write_note(w: &mut W, beat: &Beat, n: &Note, drum: bool) {
     let fx = n.bend > 0
         || n.hammer
         || n.let_ring
@@ -554,7 +555,9 @@ fn write_note(w: &mut W, beat: &Beat, n: &Note) {
         .unwrap_or(4) as i8
         + 1;
     w.i8(dynv);
-    w.i8(n.fret.min(127) as i8);
+    // Drum sounds above Guitar Pro 5's range are written as their General MIDI sound.
+    let fret = if drum && !(27..=87).contains(&n.fret) { drum_sound(n.fret) } else { n.fret };
+    w.i8(fret.min(127) as i8);
     w.u8(0);
     if !fx {
         return;
@@ -754,5 +757,20 @@ mod tests {
             .collect();
         assert_eq!(d, vec![36, 42]);
         assert!(!back.tracks[2].has_tab());
+    }
+
+    #[test]
+    fn drum_sounds_guitar_pro_5_lacks_are_written_as_general_midi() {
+        let mut song = Song::new_blank();
+        let mut drums = Track::of_instrument(Instrument::Drums, "Drums");
+        // A rim shot, a half-open hi-hat and a ride edge Guitar Pro 5 has.
+        let notes = vec![Note::new(0, 91), Note::new(1, 92), Note::new(2, 59)];
+        drums.bars = vec![Bar::new(vec![Beat { notes, ..Beat::rest(Dur::Whole) }])];
+        song.master = vec![MasterBar::default()];
+        song.tracks = vec![drums];
+        let back = crate::gpimport::import(&export_gp5(&song)).expect("reads back");
+        let mut read: Vec<u8> = back.tracks[0].bars[0].beats[0].notes.iter().map(|n| back.tracks[0].pitch(n)).collect();
+        read.sort();
+        assert_eq!(read, vec![38, 46, 59]);
     }
 }

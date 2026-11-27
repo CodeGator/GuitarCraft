@@ -28,6 +28,7 @@ mod chordedit;
 mod chordlib;
 mod clipmenu;
 mod cursor;
+mod drumview;
 mod home;
 mod icons;
 mod keys;
@@ -492,6 +493,14 @@ impl App {
                 "keyboard" => app.show_panel(dock::Pane::Keyboard),
                 "ai" => app.show_panel(dock::Pane::Ai),
                 "fretboard" => app.show_panel(dock::Pane::Fretboard),
+                // The drumkit view, on the song's first drum track.
+                "drums" => {
+                    if let Some(t) = app.song.tracks.iter().position(|t| t.kind() == InstrumentType::Drums) {
+                        app.track = t;
+                        app.clamp_cursor();
+                    }
+                    app.show_panel(dock::Pane::Drums);
+                }
                 // A panel in a window of its own, for checking pop-out: --show popout.
                 "popout" => app.pop_out(dock::Pane::Palette),
                 "track" => app.inspector = InspectorTab::Track,
@@ -987,7 +996,7 @@ impl App {
             self.midi.preview_note(
                 crate::midi::channel_for(self.track, drums),
                 t.instrument.midi_program(),
-                t.pitch(n),
+                t.sound(n),
                 (0.8 * t.volume.max(0.3) * 127.0) as u8,
                 600,
             );
@@ -1136,12 +1145,12 @@ impl App {
             self.std_cursor = Some(self.staff_pos_of(&placed));
         }
         self.preview(&n);
-        self.status = format!(
-            "String {}, fret {} ({})",
-            string + 1,
-            fret,
-            note_name_oct(self.tr().pitch(&n))
-        );
+        let pitch = self.tr().pitch(&n);
+        self.status = if self.on_drum_track() {
+            format!("{} (MIDI {pitch})", drum_name(pitch))
+        } else {
+            format!("String {}, fret {} ({})", string + 1, fret, note_name_oct(pitch))
+        };
     }
 
     fn type_digit(&mut self, d: u8, now: f64) {

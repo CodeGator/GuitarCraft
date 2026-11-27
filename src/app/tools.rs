@@ -174,6 +174,14 @@ pub fn commands() -> Vec<(&'static str, Cmd)> {
         ("keyboard: Show or hide the keyboard", |a| {
             a.toggle_panel(super::dock::Pane::Keyboard)
         }),
+        ("drumkit: Show or hide the drumkit view", |a| {
+            let pane = super::dock::Pane::Drums;
+            if a.has_drum_track() || a.panel_shown(pane) {
+                a.toggle_panel(pane);
+            } else {
+                a.refuse("Add a drum track to use the drumkit view.");
+            }
+        }),
         ("loop: Loop playback", |a| a.looping = !a.looping),
         ("metronome: Metronome", |a| a.metronome = !a.metronome),
         ("count-in: Count-in", |a| a.count_in = !a.count_in),
@@ -206,7 +214,7 @@ pub(super) fn guide_sections() -> Vec<(String, String)> {
     GUIDE.iter().map(|(t, b)| (t.to_string(), super::shortcuts::fill_keys(b))).collect()
 }
 
-const GUIDE: [(&str, &str); 16] = [
+const GUIDE: [(&str, &str); 17] = [
     (
         "The main screen",
         "The toolbar is at the top: start screen, the three panel buttons (palette, tracks, settings), zoom, undo/redo, the transport buttons and the display that shows the track, bar, time signature, time and tempo. The editing palette is on the left, the score in the middle, the Song/Track/Bar/Beat settings on the right and the tracks list with the mixer and bar overview at the bottom.",
@@ -217,7 +225,11 @@ const GUIDE: [(&str, &str); 16] = [
     ),
     (
         "Writing notes",
-        "Put the cursor on a string and type the fret number (type two digits quickly for frets above 9). Shorter ({Shorter}) and longer ({Longer}) change the note's length; Rest ({Rest}) makes a rest and Dotted ({Dotted}) dots it. Moving right past the last beat adds a new beat with the same length, and a new bar when the bar is full. The fretboard and keyboard views (View menu) also add notes when clicked.",
+        "Put the cursor on a string and type the fret number (type two digits quickly for frets above 9). Shorter ({Shorter}) and longer ({Longer}) change the note's length; Rest ({Rest}) makes a rest and Dotted ({Dotted}) dots it. Moving right past the last beat adds a new beat with the same length, and a new bar when the bar is full. The fretboard, keyboard and drumkit views (View menu) also add notes when clicked.",
+    ),
+    (
+        "Drums",
+        "View \u{25B8} Panels \u{25B8} Show Drumkit View, or the drum button in the toolbar, is there when the song has a drum track; with the cursor on that track {KeyboardView} opens it too. The staff at the top shows the kit and the list below it every percussion sound by its MIDI number. Click a sound to put it on the cursor's beat, click it again to take it off, and use < and > to move to the previous or next beat. In the score, move the cursor up and down to a line and press 1 to 9 to choose among the sounds written there; the view shows those numbers in boxes. The gear button chooses what the view shows, which names are written, which notes are marked and the text size.",
     ),
     (
         "Effects and symbols",

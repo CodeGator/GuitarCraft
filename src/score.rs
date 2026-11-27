@@ -4,7 +4,7 @@
 mod draw;
 pub use draw::{
     draw_diagram, key_positions, note_staff_pos, roman, staff_pos_name, staff_pos_pitch,
-    written_alter, written_name,
+    written_alter, written_name, drum_note,
 };
 
 use crate::model::*;

@@ -39,7 +39,15 @@ exist under another name. Check before starting work on one, and tick items off 
       failing those, text above the beat; chord and key both show for "G maj". The guide gives no
       preset list and its Windows shortcuts aren't stated (we use Ctrl+Alt+E and Ctrl+Shift+E by
       analogy with the Mac ones). Not tried by hand in the running app. Not done: clefs.
-- [ ] **Drum view** instrument view (fretboard and keyboard views already exist).
+- [x] **Drum view** (View > Panels > Show Drumkit View, the drum toolbar button, or Ctrl+F6 on a
+      drum track): added 2026-11-27 from the owner's picture of Guitar Pro 8 and its online guide
+      (`src/app/drumview.rs`, the kit table in `src/drums.rs`): the staff with 24 sounds, the
+      list of all sounds, previous/next beat, number keys 1-9 for the sounds on a line, and the
+      gear settings. The score uses the same staff positions and noteheads. Saving writes Guitar
+      Pro's own kit definition (`src/gpkit.rs`, read from a Guitar Pro 7 file). Not checked
+      against Guitar Pro 8: it opening a drum track of ours, and a drum file it saved. Not done:
+      hand percussion far off the staff (shown mid-staff), the bow and golpe signs, and the
+      stick/brush stroke types in the guide.
 - [~] **MIDI capture**: note entry from a MIDI keyboard, beat by beat; choice of MIDI input and
       output devices. Started 2026-11-22, plan in `midi-design.md`: output devices, MIDI
       playback, bends and chords on playback work (tried by hand with Morning Walk.gp); slides

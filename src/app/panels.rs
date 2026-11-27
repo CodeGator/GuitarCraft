@@ -187,10 +187,14 @@ impl App {
             });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.add_space(4.0);
+                let on_drums = self.on_drum_track();
+                let tip = |label: &str, here: bool| {
+                    if here { super::shortcuts::tip(label, super::shortcuts::Act::KeyboardView) } else { label.to_string() }
+                };
                 if icon_toggle(
                     ui,
                     self.panel_shown(Pane::Keyboard),
-                    &super::shortcuts::tip("Keyboard view", super::shortcuts::Act::KeyboardView),
+                    &tip("Keyboard view", !on_drums),
                     icon_keyboard,
                 )
                 .clicked()
@@ -200,6 +204,12 @@ impl App {
                 if icon_toggle(ui, self.panel_shown(Pane::Fretboard), "Fretboard view", icon_fretboard).clicked()
                 {
                     self.toggle_panel(Pane::Fretboard);
+                }
+                // Only for songs with drums.
+                if (self.has_drum_track() || self.panel_shown(Pane::Drums))
+                    && icon_toggle(ui, self.panel_shown(Pane::Drums), &tip("Drumkit view", on_drums), icon_drum).clicked()
+                {
+                    self.toggle_panel(Pane::Drums);
                 }
                 egui::ComboBox::from_id_salt("notation")
                     .width(96.0)
@@ -386,13 +396,26 @@ impl App {
         if !self.playing
             && let Some(name) = self.cursor_note_name()
         {
-            p.text(
-                nr.center(),
-                Align2::CENTER_CENTER,
-                name,
-                FontId::proportional(19.0),
-                Color32::from_gray(170),
-            );
+            // A long name (a drum sound) goes on two lines, as small as it needs to fit.
+            let mut size = 19.0f32;
+            let text = if p.layout_no_wrap(name.clone(), FontId::proportional(size), Color32::WHITE).size().x > nr.width() - 8.0 {
+                size = 13.0;
+                name.replacen(" (", "\n(", 1)
+            } else {
+                name
+            };
+            let grey = Color32::from_gray(170);
+            let lay = |size: f32| {
+                let mut job = egui::text::LayoutJob::simple(text.clone(), FontId::proportional(size), grey, f32::INFINITY);
+                job.halign = egui::Align::Center;
+                p.layout_job(job)
+            };
+            let mut galley = lay(size);
+            while galley.size().x > nr.width() - 6.0 && size > 9.0 {
+                size -= 0.5;
+                galley = lay(size);
+            }
+            p.galley(Pos2::new(nr.center().x, nr.center().y - galley.size().y * 0.5), galley, grey);
         }
     }
 

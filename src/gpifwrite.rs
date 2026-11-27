@@ -4,6 +4,8 @@
 //! Everything is stored the standard way, including each track's volume, pan,
 //! mute and solo, so Guitar Pro and this app read the same file.
 
+use crate::drums::drum;
+use crate::gpkit::{KIT, NOTATION, NOTATION_SOUNDS};
 use crate::model::*;
 use std::fmt::Write as _;
 use std::io::Write as _;
@@ -82,34 +84,43 @@ fn pitch_parts(p: i32) -> (&'static str, &'static str, i32) {
     (s, a, p.div_euclid(12) - 1)
 }
 
-/// Drum kit elements written for drum tracks: (name, midi numbers).
-const DRUMS: [(&str, &[u8]); 12] = [
-    ("Kick Drum", &[35, 36]),
-    ("Snare", &[37, 38, 39, 40]),
-    ("Hi-Hat", &[42, 44, 46]),
-    ("Low Floor Tom", &[41]),
-    ("High Floor Tom", &[43]),
-    ("Low Tom", &[45]),
-    ("Mid Tom", &[47]),
-    ("High Tom", &[48, 50]),
-    ("Crash", &[49, 57, 55]),
-    ("Ride", &[51, 53, 59]),
-    ("China", &[52]),
-    ("Percussion", &[54, 56]),
-];
-
-/// Index of a drum sound among all the drum kit's articulations, in writing order.
+/// Index of a drum sound among all the drum kit's articulations, in writing order. A number
+/// the kit doesn't have becomes the first snare.
 fn drum_articulation(p: u8) -> usize {
-    let mut k = 0;
-    for (_, ms) in DRUMS {
-        for &m in ms {
-            if m == p {
-                return k;
-            }
-            k += 1;
+    KIT.iter().flat_map(|e| e.articulations).position(|a| a.midi == p).unwrap_or(0)
+}
+
+/// A drum track's instrument set and notation, as Guitar Pro writes them.
+fn write_drum_kit(x: &mut String) {
+    x.push_str("<InstrumentSet><Name>Drums</Name><Type>drumKit</Type><LineCount>5</LineCount><Elements>");
+    for e in KIT {
+        let _ = write!(x, "<Element><Name>{}</Name><Type>{}</Type><SoundbankName>{}</SoundbankName><Articulations>", e.name, e.kind, e.soundbank);
+        for a in e.articulations {
+            // Every sound of the kit is in the table of sounds.
+            let (line, output) = drum(a.midi).map(|d| (8 - d.pos as i32, d.gm)).unwrap_or((3, a.midi));
+            let _ = write!(
+                x,
+                "<Articulation><Name>{}</Name><StaffLine>{line}</StaffLine><Noteheads>{}</Noteheads><TechniquePlacement>{}</TechniquePlacement><TechniqueSymbol>{}</TechniqueSymbol><InputMidiNumbers>{}</InputMidiNumbers><OutputRSESound>{}</OutputRSESound><OutputMidiNumber>{output}</OutputMidiNumber></Articulation>",
+                a.name, a.heads, a.place, a.symbol, a.midi, a.rse
+            );
         }
+        x.push_str("</Articulations></Element>");
     }
-    k - 1
+    x.push_str("</Elements></InstrumentSet>");
+    let _ = write!(x, "<NotationPatch><Name>{NOTATION}</Name><LineCount>5</LineCount><Elements>");
+    for (element, sounds) in NOTATION_SOUNDS {
+        let _ = write!(x, "<Element><Name>{element}</Name><Articulations>");
+        for &m in *sounds {
+            if let Some(e) = KIT.iter().find(|e| e.name == *element)
+                && let Some(a) = e.articulations.iter().find(|a| a.midi == m)
+                && let Some(d) = drum(m)
+            {
+                let _ = write!(x, "<Articulation><Name>{}</Name><StaffLine>{}</StaffLine></Articulation>", a.name, 8 - d.pos as i32);
+            }
+        }
+        x.push_str("</Articulations></Element>");
+    }
+    x.push_str("</Elements></NotationPatch>");
 }
 
 struct Ids {
@@ -289,37 +300,16 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
             crate::app::trackicons::icon_of(t)
         );
         // The instrument: its family and how notes are shown.
-        let _ = write!(
-            x,
-            "<InstrumentSet><Name>{label}</Name><Type>{ty}</Type><LineCount>5</LineCount><Elements>"
-        );
         if drum {
-            for (name, ms) in DRUMS {
-                let _ = write!(
-                    x,
-                    "<Element><Name>{name}</Name><Type>{}</Type><SoundbankName/><Articulations>",
-                    name.to_lowercase().replace(' ', "")
-                );
-                for &m in ms {
-                    let (line, cross) = drum_staff_pos(m);
-                    let head = if cross {
-                        "noteheadXBlack noteheadXHalf noteheadXWhole"
-                    } else {
-                        "noteheadBlack noteheadHalf noteheadWhole"
-                    };
-                    let _ = write!(
-                        x,
-                        "<Articulation><Name>{}</Name><StaffLine>{}</StaffLine><Noteheads>{head}</Noteheads><TechniquePlacement>outside</TechniquePlacement><TechniqueSymbol></TechniqueSymbol><InputMidiNumbers>{m}</InputMidiNumbers><OutputRSESound/><OutputMidiNumber>{m}</OutputMidiNumber></Articulation>",
-                        drum_name(m),
-                        8 - line
-                    );
-                }
-                x.push_str("</Articulations></Element>");
-            }
+            write_drum_kit(&mut x);
         } else {
+            let _ = write!(
+                x,
+                "<InstrumentSet><Name>{label}</Name><Type>{ty}</Type><LineCount>5</LineCount><Elements>"
+            );
             x.push_str("<Element><Name>Pitched</Name><Type>pitched</Type><SoundbankName/><Articulations><Articulation><Name/><StaffLine>0</StaffLine><Noteheads>noteheadBlack noteheadHalf noteheadWhole</Noteheads><TechniquePlacement>outside</TechniquePlacement><TechniqueSymbol></TechniqueSymbol><InputMidiNumbers/><OutputRSESound/><OutputMidiNumber>0</OutputMidiNumber></Articulation></Articulations></Element>");
+            x.push_str("</Elements></InstrumentSet>");
         }
-        x.push_str("</Elements></InstrumentSet>");
         let _ = write!(
             x,
             "<Transpose><Chromatic>0</Chromatic><Octave>{}</Octave></Transpose>",
@@ -485,9 +475,21 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
             };
             for (low, clef) in staves {
                 let bar = &t.bars[bi];
+                // A repeat sign: two-bar repeats come in pairs, a first and a second.
+                let paired = || t.bars[..bi].iter().rev().take_while(|b| b.simile == 2).count() % 2 == 1;
+                let simile = match bar.simile {
+                    0 => "",
+                    1 => "<SimileMark>Simple</SimileMark>",
+                    _ if paired() => "<SimileMark>SecondOfDouble</SimileMark>",
+                    _ => "<SimileMark>FirstOfDouble</SimileMark>",
+                };
+                // Guitar Pro writes no voices under a repeat sign. Anything hidden under one
+                // here is still written, so that it isn't lost.
+                let bare = bar.simile != 0
+                    && (0..VOICES).all(|v| bar.voice(v).iter().all(|b| b.is_rest() && b.chord.is_none() && b.text.is_none() && b.lyric.is_none()));
                 let mut vids = vec![];
                 for v in 0..VOICES {
-                    if v > 0 && !bar.voice_used(v) {
+                    if bare || (v > 0 && !bar.voice_used(v)) {
                         vids.push("-1".to_string());
                         continue;
                     }
@@ -562,7 +564,7 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
                 ids.nbars += 1;
                 let _ = writeln!(
                     ids.bars,
-                    "<Bar id=\"{id}\"><Clef>{clef}</Clef><Voices>{}</Voices></Bar>",
+                    "<Bar id=\"{id}\"><Clef>{clef}</Clef>{simile}<Voices>{}</Voices></Bar>",
                     vids.join(" ")
                 );
                 bar_ids.push(id.to_string());
@@ -1569,6 +1571,64 @@ mod tests {
             pitches(&back.tracks[2], &back.tracks[2].bars[0].beats[0]),
             vec![36, 42]
         );
+    }
+
+    #[test]
+    fn every_drum_sound_has_its_own_articulation_and_comes_back() {
+        let all: Vec<u8> = crate::drums::SOUNDS.iter().map(|d| d.midi).collect();
+        let places: std::collections::BTreeSet<usize> = all.iter().map(|&p| drum_articulation(p)).collect();
+        assert_eq!(places.len(), all.len(), "no two sounds share an articulation");
+        assert_eq!(KIT.iter().map(|e| e.articulations.len()).sum::<usize>(), all.len());
+        assert!(NOTATION_SOUNDS.iter().flat_map(|n| n.1).all(|m| crate::drums::STAFF_KIT.contains(m)));
+        // Guitar Pro's order: the snare first, then the hi-hat.
+        assert_eq!((drum_articulation(38), drum_articulation(42), drum_articulation(36)), (0, 3, 8));
+        let mut song = Song::new_blank();
+        let mut drums = Track::of_instrument(Instrument::Drums, "Drums");
+        drums.bars = all.iter().map(|&p| Bar::new(vec![Beat { notes: vec![Note::new(0, p)], ..Beat::rest(Dur::Whole) }])).collect();
+        song.master = vec![MasterBar::default(); all.len()];
+        song.tracks = vec![drums];
+        let back = crate::gpif::parse_gpif(&gpif_xml(&song)).expect("reads back");
+        let read: Vec<u8> = back.tracks[0].bars.iter().map(|b| back.tracks[0].pitch(&b.beats[0].notes[0])).collect();
+        assert_eq!(read, all);
+    }
+
+    #[test]
+    fn a_drum_note_is_read_by_its_place_in_the_kit() {
+        let mut song = Song::new_blank();
+        let mut drums = Track::of_instrument(Instrument::Drums, "Drums");
+        drums.bars = vec![Bar::new(vec![Beat { notes: vec![Note::new(0, 91)], ..Beat::rest(Dur::Whole) }])];
+        song.master = vec![MasterBar::default()];
+        song.tracks = vec![drums];
+        // A file may give the sound it plays (a snare) as the note's MIDI number.
+        let xml = gpif_xml(&song).replace("<Number>91</Number>", "<Number>38</Number>");
+        let back = crate::gpif::parse_gpif(&xml).expect("reads back");
+        assert_eq!(back.tracks[0].pitch(&back.tracks[0].bars[0].beats[0].notes[0]), 91);
+    }
+
+    #[test]
+    fn bar_repeat_signs_are_kept_the_guitar_pro_way() {
+        let mut song = Song::new_blank();
+        let mut drums = Track::of_instrument(Instrument::Drums, "Drums");
+        let hit = |p: u8| Bar::new(vec![Beat { notes: vec![Note::new(0, p)], ..Beat::rest(Dur::Whole) }]);
+        let sign = |n: u8| {
+            let mut b = Bar::new(vec![Beat::rest(Dur::Whole)]);
+            b.simile = n;
+            b
+        };
+        // Kick, snare, a two-bar repeat of both, then the last bar again.
+        drums.bars = vec![hit(36), hit(38), sign(2), sign(2), sign(1)];
+        song.master = vec![MasterBar::default(); 5];
+        song.tracks = vec![drums];
+        let xml = gpif_xml(&song);
+        for mark in ["Simple", "FirstOfDouble", "SecondOfDouble"] {
+            assert_eq!(xml.matches(&format!("<SimileMark>{mark}</SimileMark><Voices>-1 -1 -1 -1</Voices>")).count(), 1, "{mark}");
+        }
+        // The score part alone says it all, as in a file Guitar Pro saved.
+        let back = crate::gpif::parse_gpif(&xml).expect("reads back");
+        let t = &back.tracks[0];
+        assert_eq!(t.bars.iter().map(|b| b.simile).collect::<Vec<_>>(), vec![0, 0, 2, 2, 1]);
+        let played: Vec<u8> = (0..5).map(|i| t.pitch(&t.played_bar(i).beats[0].notes[0])).collect();
+        assert_eq!(played, vec![36, 38, 36, 38, 38]);
     }
 
     /// The demo song saved by Guitar Pro 8 opens as the demo song, and GuitarCraft's part

@@ -922,12 +922,16 @@ impl App {
                 (Pane::Ai, "Show AI Assistant", String::new()),
                 (Pane::Tracks, "Show Global View", sc(Act::ShowGlobalView)),
                 (Pane::Fretboard, "Show Fretboard View", String::new()),
-                (Pane::Keyboard, "Show Keyboard View", sc(Act::KeyboardView)),
+                (Pane::Keyboard, "Show Keyboard View", if self.on_drum_track() { String::new() } else { sc(Act::KeyboardView) }),
+                (Pane::Drums, "Show Drumkit View", if self.on_drum_track() { sc(Act::KeyboardView) } else { String::new() }),
             ] {
                 if pane == Pane::Fretboard {
                     ui.separator();
                 }
-                if check(ui, self.panel_shown(pane), label, &keys).clicked() {
+                // The drumkit view needs a drum track; an open one can always be closed.
+                let usable = pane != Pane::Drums || self.has_drum_track() || self.panel_shown(pane);
+                let item = ui.add_enabled_ui(usable, |ui| check(ui, self.panel_shown(pane), label, &keys)).inner;
+                if item.on_disabled_hover_text("Add a drum track to use this view").clicked() {
                     self.toggle_panel(pane);
                 }
             }

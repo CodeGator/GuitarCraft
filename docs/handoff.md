@@ -20,6 +20,29 @@ Written 2026-11-23, after releasing 0.10.0 and starting `version-0.11.0`. Read t
   ("Dropped TexturesDelta with 1 unapplied deltas", from `epaint`); seen 2026-11-27 before any
   change that day.
 
+## Drumkit view (2026-11-27, in 0.11.0)
+
+Built from the owner's picture of Guitar Pro 8 (`src/app/drumview.rs`; names, numbers, staff
+positions and noteheads in `src/drums.rs`). The owner called it good for now (2026-11-27). It changed
+where many drum notes are written in the score to match Guitar Pro. Drum notes keep Guitar Pro's
+sound numbers (91 = rim shot) and play and export to MIDI and GP5 as the sound Guitar Pro gives
+them (`Track::sound`). `src/gpkit.rs` is Guitar Pro's kit definition, which `.gp` and `.gpx`
+saving now writes; it was read from a drum file of the owner's saved by **Guitar Pro 7** (revision
+12019). That file is **copyrighted: never copy it or its music into the repo**. A copy saved by us
+has the same kit definition and the same sounds on the same beats. Still unchecked: our file
+opened in Guitar Pro 8, and a drum file saved by Guitar Pro 8 (its picture has "Tinkle Bell",
+which the GP7 kit lacks; the GP7 kit has an orchestral snare, 121, instead). Our drum notes are
+written without the `String` and `Fret` properties Guitar Pro writes. Sounds Guitar Pro writes far
+off the staff (much of the hand percussion) show as a cross mid-staff. Picture check:
+`--show band,drums`.
+
+**Bar repeat signs** (2026-11-27): Guitar Pro's `SimileMark` is now read and written
+(`Simple`, `FirstOfDouble`, `SecondOfDouble`); before, repeated bars of a Guitar Pro file opened
+as rests. `Track::played_bar` gives the notes a sign stands for (playback, MIDI, GP5, MusicXML and
+text export). A two-bar repeat shows a sign in each of its bars (Guitar Pro draws one across the
+bar line). Notes typed into a bar with a repeat sign stay hidden under it. Only `Simple` has been
+seen in a real file.
+
 ## What 0.9.0 added (older; 0.10.0 is in the next section)
 
 - Dockable and floating panels, and Preferences > AI (Ollama and Claude settings, key in the
@@ -152,7 +175,7 @@ question in the panel. Before a release, check Anthropic's current terms.
 2. **Teach the tab importer simple clean-up** (quoting, blank lines inside a system, typed dashes,
    spaces for dashes): a trial showed plain code does it better than AI (`docs/ai-design.md`).
 3. **Still missing from Guitar Pro 8** (see the gap list): Audio Note Settings (Shift+F),
-   instrument change automation, Drum view, Design mode, and importing TablEdit and Power Tab.
+   instrument change automation, Design mode, and importing TablEdit and Power Tab.
    File password protection was decided against.
 4. **Release 0.11.0** when the owner says: pull request `version-0.11.0` into `main` (see "How we
    work here"). Update the README screenshots first if wanted.

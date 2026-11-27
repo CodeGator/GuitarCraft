@@ -799,3 +799,91 @@ fn pop_out_from_the_tab_menu() {
     }
     assert!(r.app.popped.contains(&Pane::Palette), "popped: {:?}", r.app.popped);
 }
+
+/// The pitches on the cursor's beat, lowest first.
+fn beat_pitches(r: &Rig) -> Vec<u8> {
+    let mut p: Vec<u8> = r.app.cur_beat().notes.iter().map(|n| r.app.tr().pitch(n)).collect();
+    p.sort();
+    p
+}
+
+/// A band song with the cursor on an empty first beat of its drum track.
+fn on_the_drums() -> Rig {
+    let mut r = Rig::new();
+    r.app.show_home = false;
+    r.app.song = super::home::band_song();
+    r.app.track = 4;
+    r.app.bar = 0;
+    r.app.beat = 0;
+    r.app.song.tracks[4].bars[0].beats[0].notes.clear();
+    r.frames(3);
+    r
+}
+
+#[test]
+fn clicking_the_drumkit_view_adds_and_removes_a_sound() {
+    use super::dock::Pane;
+    let mut r = on_the_drums();
+    r.app.show_panel(Pane::Drums);
+    r.frames(3);
+    let node = r.app.dock.find_tab(&Pane::Drums).expect("open").node;
+    let pane = r.app.dock.main_surface()[node].rect().expect("drawn");
+    // The ninth column of the staff is the second kick (36), after the side strip and clef.
+    let (x, y) = (pane.left() + 56.0 + 70.0 + 8.5 * 28.0, pane.top() + 22.0 + 170.0);
+    r.click(x, y);
+    assert_eq!(beat_pitches(&r), vec![36]);
+    assert_eq!(r.app.status, "Kick (hit) (MIDI 36)");
+    // The first column, a snare, joins it.
+    r.click(pane.left() + 56.0 + 70.0 + 0.5 * 28.0, y);
+    assert_eq!(beat_pitches(&r), vec![36, 38]);
+    r.click(x, y);
+    assert_eq!(beat_pitches(&r), vec![38]);
+    r.app.do_undo();
+    assert_eq!(beat_pitches(&r), vec![36, 38]);
+}
+
+#[test]
+fn number_keys_choose_among_the_drum_sounds_of_a_line() {
+    let mut r = on_the_drums();
+    assert!(r.app.std_cursor.is_some(), "drums are edited in the notation");
+    // The top line: 1 ride edge, 2 ride middle, 3 ride bell, 4 cowbell.
+    r.app.std_cursor = Some(8);
+    type_digit(&mut r, Key::Num2, "2");
+    assert_eq!(beat_pitches(&r), vec![51]);
+    // Another key changes the way the same line is played.
+    type_digit(&mut r, Key::Num3, "3");
+    assert_eq!(beat_pitches(&r), vec![53]);
+    type_digit(&mut r, Key::Num9, "9");
+    assert_eq!(beat_pitches(&r), vec![53]);
+    assert_eq!(r.app.status, "Keys 1 to 4 choose the sounds on this line.");
+    // Another line adds a sound.
+    r.app.std_cursor = Some(5);
+    type_digit(&mut r, Key::Num3, "3");
+    assert_eq!(beat_pitches(&r), vec![53, 91]);
+}
+
+#[test]
+fn a_beat_holds_eight_drum_sounds() {
+    let mut r = on_the_drums();
+    for sound in [35, 36, 38, 42, 45, 47, 48, 49] {
+        r.app.toggle_drum(sound);
+    }
+    assert_eq!(beat_pitches(&r).len(), 8);
+    r.app.toggle_drum(51);
+    assert_eq!(beat_pitches(&r).len(), 8);
+    assert_eq!(r.app.status, "A beat holds at most 8 drum sounds.");
+}
+
+#[test]
+fn the_view_key_opens_the_view_that_suits_the_track() {
+    use super::dock::Pane;
+    let mut r = on_the_drums();
+    r.key(Key::F6, Modifiers::COMMAND);
+    assert!(r.app.panel_shown(Pane::Drums) && !r.app.panel_shown(Pane::Keyboard));
+    r.key(Key::F6, Modifiers::COMMAND);
+    assert!(!r.app.panel_shown(Pane::Drums));
+    r.app.track = 1;
+    r.frames(2);
+    r.key(Key::F6, Modifiers::COMMAND);
+    assert!(r.app.panel_shown(Pane::Keyboard) && !r.app.panel_shown(Pane::Drums));
+}

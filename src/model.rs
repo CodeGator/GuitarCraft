@@ -921,73 +921,7 @@ pub const PLAYING_STYLES: [(&str, &str); 5] = [
     ("Bass Slap", "BassSlap"),
 ];
 
-/// Name of a General MIDI drum sound, from the manual's drum map.
-pub fn drum_name(p: u8) -> &'static str {
-    match p {
-        35 | 36 => "Bass Drum",
-        37 => "Side Stick",
-        38 | 40 => "Snare",
-        39 => "Hand Clap",
-        41 | 43 => "Floor Tom",
-        42 => "Hi-hat (closed)",
-        44 => "Hi-hat (pedal)",
-        45 | 47 => "Mid Tom",
-        46 => "Hi-hat (open)",
-        48 | 50 => "High Tom",
-        49 | 57 => "Crash",
-        51 | 59 => "Ride",
-        52 => "China",
-        53 => "Ride Bell",
-        54 => "Tambourine",
-        55 => "Splash",
-        56 => "Cowbell",
-        _ => "Percussion",
-    }
-}
-
-/// Where a drum sound sits on the percussion staff (0 = bottom line) and whether it has a cross head.
-pub fn drum_staff_pos(p: u8) -> (i32, bool) {
-    match p {
-        35 | 36 => (1, false),
-        37 => (5, true),
-        38 | 40 => (5, false),
-        39 => (5, true),
-        41 => (2, false),
-        43 => (3, false),
-        42 | 46 => (9, true),
-        44 => (-1, true),
-        45 => (4, false),
-        47 => (6, false),
-        48 => (7, false),
-        50 => (8, false),
-        49 | 57 => (10, true),
-        51 | 59 => (8, true),
-        52 => (11, true),
-        53 => (8, true),
-        54 => (9, true),
-        55 => (11, true),
-        56 => (10, false),
-        _ => (4, true),
-    }
-}
-
-/// The drum sound for a line or space of the percussion staff.
-pub fn drum_at_pos(pos: i32) -> u8 {
-    match pos {
-        ..=-1 => 44,
-        0 | 1 => 36,
-        2 => 41,
-        3 => 43,
-        4 => 45,
-        5 => 38,
-        6 => 47,
-        7 => 48,
-        8 => 51,
-        9 => 42,
-        10 => 49,
-        _ => 52,
-    }
-}
+pub use crate::drums::{drum_at_pos, drum_name, drum_sign, drum_sound, drum_staff_pos, DrumHead, DrumSign};
 
 /// Standard guitar tuning, highest string first: E4 B3 G3 D3 A2 E2 (MIDI note numbers).
 pub const STANDARD_GUITAR: [u8; 6] = [64, 59, 55, 50, 45, 40];
@@ -1263,6 +1197,24 @@ impl Track {
     pub fn pitch(&self, n: &Note) -> u8 {
         let base = self.tuning.get(n.string as usize).copied().unwrap_or(40);
         (base as u32 + n.fret as u32 + self.capo_at(n.string as usize) as u32).min(127) as u8
+    }
+    /// The MIDI note that sounds: the pitch, except on drums, where another way of playing an
+    /// instrument plays as its General MIDI sound.
+    pub fn sound(&self, n: &Note) -> u8 {
+        let p = self.pitch(n);
+        if self.instrument == Instrument::Drums { drum_sound(p) } else { p }
+    }
+    /// The bar whose notes bar `bi` plays: itself, or the one its repeat sign stands for (and
+    /// so on back, through a run of repeat signs).
+    pub fn played_bar(&self, bi: usize) -> &Bar {
+        let mut b = bi;
+        loop {
+            match self.bars[b].simile {
+                1 if b >= 1 => b -= 1,
+                2 if b >= 2 => b -= 2,
+                _ => return &self.bars[b],
+            }
+        }
     }
     /// The capo on a string: the full capo, or the partial capo where it is higher and covers the string.
     pub fn capo_at(&self, s: usize) -> u8 {

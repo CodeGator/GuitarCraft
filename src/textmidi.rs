@@ -86,7 +86,7 @@ pub fn export_ascii(song: &Song, ti: usize) -> String {
             .map(|s| format!("{:<2}|", note_name(tr.tuning[s])))
             .collect();
         for bi in chunk_start..(chunk_start + per_line).min(song.bar_count()) {
-            for beat in &tr.bars[bi].beats {
+            for beat in &tr.played_bar(bi).beats {
                 let cells: Vec<String> = (0..n)
                     .map(|s| match beat.note_on(s as u8) {
                         Some(nn) if nn.tie => "L".to_string(),

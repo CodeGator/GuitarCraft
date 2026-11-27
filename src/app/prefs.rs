@@ -101,6 +101,8 @@ pub struct Prefs {
     pub layout: u8,
     /// Show the score in two views one above the other (only in the vertical layouts).
     pub split_score: bool,
+    /// What the drumkit view shows (its gear button).
+    pub drum_view: super::drumview::DrumViewPrefs,
     /// Reopen the files that were open when GuitarCraft was last closed.
     pub reopen_last: bool,
     pub update_check: UpdateCheck,
@@ -175,6 +177,7 @@ impl Default for Prefs {
             copy_diagrams: true,
             layout: 0,
             split_score: false,
+            drum_view: Default::default(),
             reopen_last: false,
             update_check: UpdateCheck::Never,
             last_update_check: 0,

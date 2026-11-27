@@ -377,7 +377,7 @@ pub const ACTIONS: &[Action] = &[
     a(ShowGlobalView, "Tracks (global view)", G::View, Score, &[key(Key::F8)]),
     a(SongInspector, "Song settings", G::View, Score, &[key(Key::F5)]),
     a(TrackInspector, "Track settings", G::View, Score, &[key(Key::F6)]),
-    a(KeyboardView, "Keyboard view", G::View, Score, &[ctrl(Key::F6)]),
+    a(KeyboardView, "Keyboard or drumkit view", G::View, Score, &[ctrl(Key::F6)]),
     a(Multitrack, "Multitrack", G::View, Score, &[key(Key::F3)]),
     a(Stylesheet, "Stylesheet", G::View, Global, &[key(Key::F7)]),
     a(ZoomIn, "Zoom in", G::View, Global, &[ctrl(Key::Plus)]).also(&[ctrl(Key::Equals)]),

@@ -370,6 +370,19 @@ struct TrackInfo {
     keep: bool,
     staff_offset: usize,
     chords: HashMap<String, String>,
+    /// A drum track's sounds in the order of its kit's articulations; empty for other tracks.
+    kit: Vec<Option<u8>>,
+}
+
+/// The sound number of every articulation of a track's instrument set, in order.
+fn kit_sounds(track: Node) -> Vec<Option<u8>> {
+    let first = |a: Node, tag: &str| text(child(a, tag)).split_whitespace().next().and_then(|x| x.parse::<u8>().ok());
+    child(track, "InstrumentSet")
+        .into_iter()
+        .flat_map(|s| s.descendants())
+        .filter(|a| a.has_tag_name("Articulation"))
+        .map(|a| first(a, "InputMidiNumbers").or_else(|| first(a, "OutputMidiNumber")))
+        .collect()
 }
 
 pub fn parse_gpif(xml: &str) -> Result<Song, String> {
@@ -624,6 +637,7 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
                 keep,
                 staff_offset,
                 chords,
+                kit: if drum { kit_sounds(t) } else { vec![] },
             });
             tracks.push(tr);
             staff_offset += staves;
@@ -736,6 +750,12 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
                     .get(info.staff_offset)
                     .and_then(|id| bars_idx.get(id))
                 {
+                    // The sign for "repeat the previous bar" (or the previous two).
+                    bar.simile = match text(child(*bn, "SimileMark")).as_str() {
+                        "Simple" => 1,
+                        "FirstOfDouble" | "SecondOfDouble" => 2,
+                        _ => 0,
+                    };
                     let voice_ids: Vec<String> = text(child(*bn, "Voices"))
                         .split_whitespace()
                         .take(VOICES)
@@ -758,6 +778,7 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
                                         nstr,
                                         &info.chords,
                                         virt,
+                                        &info.kit,
                                     )
                                     .notes;
                                     continue;
@@ -769,6 +790,7 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
                                     nstr,
                                     &info.chords,
                                     virt,
+                                    &info.kit,
                                 );
                                 for g in grace.drain(..) {
                                     let target = if virt {
@@ -806,7 +828,7 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
                             .filter_map(|bid| beats_idx.get(bid))
                             .filter(|bt| child(**bt, "GraceNotes").is_none())
                             .map(|bt| {
-                                read_beat(*bt, &rhythms_idx, &notes_idx, nstr, &info.chords, virt)
+                                read_beat(*bt, &rhythms_idx, &notes_idx, nstr, &info.chords, virt, &info.kit)
                             })
                             .collect();
                         let same = beats.len() == bar.beats.len()
@@ -873,6 +895,7 @@ fn read_beat(
     nstr: usize,
     chords: &HashMap<String, String>,
     virt: bool,
+    kit: &[Option<u8>],
 ) -> Beat {
     let mut beat = Beat::rest(Dur::Quarter);
     if let Some(r) = child(bt, "Rhythm")
@@ -1010,10 +1033,11 @@ fn read_beat(
         let p = props(*nn);
         let mut n = if virt {
             // Instruments without strings: the note's pitch, on the next free virtual string.
-            let pitch = p
-                .get("Midi")
-                .map(|x| text(child(*x, "Number")))
-                .and_then(|x| x.parse::<i32>().ok())
+            let articulation = text(child(*nn, "InstrumentArticulation")).parse::<usize>().ok();
+            let pitch = articulation
+                .and_then(|i| kit.get(i).copied().flatten())
+                .map(i32::from)
+                .or_else(|| p.get("Midi").map(|x| text(child(*x, "Number"))).and_then(|x| x.parse::<i32>().ok()))
                 .or_else(|| {
                     let cp = p.get("ConcertPitch").or_else(|| p.get("TransposedPitch"))?;
                     let pt = child(*cp, "Pitch")?;

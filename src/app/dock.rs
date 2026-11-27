@@ -25,6 +25,8 @@ pub enum Pane {
     Tracks,
     Fretboard,
     Keyboard,
+    /// The drumkit view.
+    Drums,
     /// Questions for Ollama or Claude.
     Ai,
     /// A pane an older build had. Layouts that name one still load; the tab is dropped.
@@ -34,7 +36,7 @@ pub enum Pane {
 
 impl Pane {
     /// The panels the View menu and the toolbar switch on and off.
-    pub const PANELS: [Pane; 6] = [Pane::Palette, Pane::Inspector, Pane::Ai, Pane::Tracks, Pane::Fretboard, Pane::Keyboard];
+    pub const PANELS: [Pane; 7] = [Pane::Palette, Pane::Inspector, Pane::Ai, Pane::Tracks, Pane::Fretboard, Pane::Keyboard, Pane::Drums];
 
     pub fn title(self) -> &'static str {
         match self {
@@ -44,6 +46,7 @@ impl Pane {
             Pane::Tracks => "Tracks",
             Pane::Fretboard => "Fretboard",
             Pane::Keyboard => "Keyboard",
+            Pane::Drums => "Drumkit",
             Pane::Ai => "AI Assistant",
             Pane::Retired => "",
         }
@@ -57,6 +60,7 @@ impl Pane {
             Pane::Tracks => [820.0, 260.0],
             Pane::Fretboard => [900.0, 190.0],
             Pane::Keyboard => [900.0, 150.0],
+            Pane::Drums => [1160.0, 520.0],
             Pane::Ai => [380.0, 620.0],
             Pane::Score | Pane::Retired => [800.0, 600.0],
         }
@@ -90,6 +94,9 @@ const INSPECTOR_SHARE: f32 = 0.19;
 const AI_SHARE: f32 = 0.26;
 /// Share of the height the tracks panel starts with.
 const TRACKS_SHARE: f32 = 0.24;
+
+/// Share of the height the drumkit view starts with: a staff and a long list.
+const DRUMS_SHARE: f32 = 0.42;
 
 /// The arrangement GuitarCraft starts with, and what View > Reset Panel Layout returns to: the
 /// score in the middle, the palette on the left, the inspector on the right and the tracks along
@@ -145,6 +152,10 @@ pub fn open(dock: &mut DockState<Pane>, pane: Pane) {
             if !join(dock, &[Pane::Fretboard, Pane::Keyboard], pane) {
                 dock.main_surface_mut().split_below(NodeIndex::root(), 1.0 - TRACKS_SHARE, vec![pane]);
             }
+        }
+        // Across the bottom, with a place of its own: it is much taller than the other views.
+        Pane::Drums => {
+            dock.main_surface_mut().split_below(NodeIndex::root(), 1.0 - DRUMS_SHARE, vec![pane]);
         }
         // On the right, as another tab of the inspector's group when that is there.
         Pane::Ai => {

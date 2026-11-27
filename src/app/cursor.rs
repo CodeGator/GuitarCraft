@@ -89,6 +89,11 @@ impl App {
     pub(super) fn std_digit(&mut self, d: u8) {
         let Some(pos) = self.std_cursor else { return };
         let track = self.tr().clone();
+        // On drums, keys 1 to 9 choose among the sounds written on the line.
+        if track.clef() == Clef::Percussion && d > 0 {
+            self.drum_digit(pos, d);
+            return;
+        }
         // Without strings, any digit just puts the note in.
         let d = if track.has_strings() { d } else { 0 };
         let existing = self.note_at_std();
@@ -154,6 +159,23 @@ impl App {
             self.undo.pop();
         }
         self.string = string;
+        self.std_cursor = Some(pos);
+    }
+
+    fn drum_digit(&mut self, pos: i32, d: u8) {
+        let line = crate::drums::drums_on_line(pos);
+        let Some(&sound) = line.get(d as usize - 1) else {
+            self.refuse(match line.len() {
+                0 => "There are no drum sounds on this line.".to_string(),
+                1 => "This line has one drum sound: press 1.".to_string(),
+                n => format!("Keys 1 to {n} choose the sounds on this line."),
+            });
+            return;
+        };
+        if !self.cur_beat().notes.iter().any(|n| self.tr().pitch(n) == sound) {
+            let replace = self.note_at_std().map(|n| n.string);
+            self.put_drum(sound, replace);
+        }
         self.std_cursor = Some(pos);
     }
 
