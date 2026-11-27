@@ -412,6 +412,15 @@ impl App {
                     self.print_song();
                 }
                 ui.separator();
+                if item(ui, true, "Stylesheet...", &sc(Act::Stylesheet)) {
+                    self.open_chart_style(0);
+                    ui.close();
+                }
+                if item(ui, true, "Preferences...", &sc(Act::Prefs)) {
+                    self.open_prefs();
+                    ui.close();
+                }
+                ui.separator();
                 if item(ui, true, "Quit", &sc(Act::Quit)) {
                     ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
                     ui.close();
@@ -425,11 +434,6 @@ impl App {
                 }
                 if item(ui, can_redo, "Redo", &sc(Act::Redo)) {
                     self.chart_redo();
-                    ui.close();
-                }
-                ui.separator();
-                if item(ui, true, "Preferences...", &sc(Act::Prefs)) {
-                    self.open_prefs();
                     ui.close();
                 }
                 ui.separator();
@@ -485,10 +489,6 @@ impl App {
                     if let Some(st) = &mut self.chart {
                         st.diagrams_open = true;
                     }
-                    ui.close();
-                }
-                if item(ui, true, "Stylesheet...", &sc(Act::Stylesheet)) {
-                    self.open_chart_style(0);
                     ui.close();
                 }
                 if let Some(st) = &mut self.chart {
