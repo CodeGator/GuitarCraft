@@ -136,6 +136,10 @@ pub fn pack(files: &[(&str, Vec<u8>)]) -> Vec<u8> {
 
 /// The files a .gpx file holds, as Guitar Pro 8 writes them.
 pub fn files(song: &Song) -> Vec<(&'static str, Vec<u8>)> {
+    // Settings kept from a .gp file are for that format; a .gpx file is the older one.
+    let mut older = song.clone();
+    older.forget_kept();
+    let song = &older;
     let xml = crate::gpifwrite::gpif_xml_with(song, crate::gpifwrite::GpOptions::safe(song));
     let misc = format!(
         "<MISC>\t<TracksView>\t\t<PreferredTrackCount>{}</PreferredTrackCount>\t</TracksView></MISC>",

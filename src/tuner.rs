@@ -86,6 +86,9 @@ pub fn input_device_names() -> Vec<String> {
 impl Tuner {
     /// Starts listening on the named input (None: the system's default input).
     pub fn start(name: Option<&str>) -> Result<Tuner, String> {
+        if cfg!(test) {
+            return Err("Tests don't use the microphone.".into());
+        }
         let host = cpal::default_host();
         let chosen = name.and_then(|n| {
             host.input_devices().ok()?.find(|d| d.name().map(|x| x == n).unwrap_or(false))

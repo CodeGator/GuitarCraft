@@ -139,37 +139,87 @@ pub fn entries(st: &Stylesheet) -> Vec<(String, V)> {
     v
 }
 
-/// The whole "BinaryStylesheet" file.
-pub fn write(st: &Stylesheet) -> Vec<u8> {
-    let e = entries(st);
-    let mut out = (e.len() as i32).to_be_bytes().to_vec();
-    for (k, v) in &e {
-        let kb = k.as_bytes();
+/// One setting as it is stored: its name, type byte and the bytes of its value (a text's
+/// includes its length), so that settings this app doesn't know can be written back.
+#[derive(Clone, PartialEq, Debug)]
+pub struct Raw {
+    pub key: String,
+    pub kind: u8,
+    pub value: Vec<u8>,
+}
+
+fn encode(key: &str, v: &V) -> Raw {
+    let (kind, value) = match v {
+        V::B(b) => (0, vec![*b as u8]),
+        V::I(i) => (1, i.to_be_bytes().to_vec()),
+        V::F(f) => (2, f.to_be_bytes().to_vec()),
+        V::S(s) => {
+            let sb = s.as_bytes();
+            let n = sb.len().min(i16::MAX as usize);
+            let mut value = (n as i16).to_be_bytes().to_vec();
+            value.extend_from_slice(&sb[..n]);
+            (3, value)
+        }
+    };
+    Raw { key: key.to_string(), kind, value }
+}
+
+fn pack(settings: &[Raw]) -> Vec<u8> {
+    let mut out = (settings.len() as i32).to_be_bytes().to_vec();
+    for r in settings {
+        let kb = r.key.as_bytes();
         out.push(kb.len().min(255) as u8);
         out.extend_from_slice(&kb[..kb.len().min(255)]);
-        match v {
-            V::B(b) => {
-                out.push(0);
-                out.push(*b as u8);
-            }
-            V::I(i) => {
-                out.push(1);
-                out.extend_from_slice(&i.to_be_bytes());
-            }
-            V::F(f) => {
-                out.push(2);
-                out.extend_from_slice(&f.to_be_bytes());
-            }
-            V::S(s) => {
-                let sb = s.as_bytes();
-                let n = sb.len().min(i16::MAX as usize);
-                out.push(3);
-                out.extend_from_slice(&(n as i16).to_be_bytes());
-                out.extend_from_slice(&sb[..n]);
-            }
-        }
+        out.push(r.kind);
+        out.extend_from_slice(&r.value);
     }
     out
+}
+
+/// Every setting of a "BinaryStylesheet" file as stored, in order. None if any can't be read.
+pub fn raw(d: &[u8]) -> Option<Vec<Raw>> {
+    let n = i32::from_be_bytes(d.get(..4)?.try_into().ok()?).max(0) as usize;
+    let mut i = 4;
+    let mut out = vec![];
+    for _ in 0..n {
+        let l = *d.get(i)? as usize;
+        let key = std::str::from_utf8(d.get(i + 1..i + 1 + l)?).ok()?.to_string();
+        i += 1 + l;
+        let kind = *d.get(i)?;
+        i += 1;
+        let len = match kind {
+            0 => 1,
+            1 | 2 | 7 => 4,
+            3 => 2 + i16::from_be_bytes(d.get(i..i + 2)?.try_into().ok()?).max(0) as usize,
+            4 | 5 => 8,
+            6 => 16,
+            _ => return None,
+        };
+        out.push(Raw { key, kind, value: d.get(i..i + len)?.to_vec() });
+        i += len;
+    }
+    Some(out)
+}
+
+/// The whole "BinaryStylesheet" file.
+pub fn write(st: &Stylesheet) -> Vec<u8> {
+    pack(&entries(st).iter().map(|(k, v)| encode(k, v)).collect::<Vec<_>>())
+}
+
+/// A stylesheet read from a file, written back with only the settings that have changed since:
+/// those whose value now differs from `opened`, this app's settings when the file was read.
+pub fn write_over(original: &[Raw], opened: &[(String, V)], now: &Stylesheet) -> Vec<u8> {
+    let opened: HashMap<&str, &V> = opened.iter().map(|(k, v)| (k.as_str(), v)).collect();
+    let mut changed: Vec<Raw> = entries(now).iter().filter(|(k, v)| opened.get(k.as_str()) != Some(&v)).map(|(k, v)| encode(k, v)).collect();
+    let mut out: Vec<Raw> = original
+        .iter()
+        .map(|r| match changed.iter().position(|c| c.key == r.key) {
+            Some(i) => changed.remove(i),
+            None => r.clone(),
+        })
+        .collect();
+    out.append(&mut changed);
+    pack(&out)
 }
 
 /// Reads every setting of a "BinaryStylesheet" file (colours and sizes are skipped).

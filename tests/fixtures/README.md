@@ -21,6 +21,7 @@ Pro stores that change.
 | `Morning Walk - golpe.gp` | Golpe (finger and thumb) | `gpifwrite::golpe_written_like_guitar_pro` |
 | `Morning Walk - pick scrape.gp` | Pick scrape up and down | `gpifwrite::pick_scrape_written_like_guitar_pro` |
 | `Morning Walk - fingering.gp` | Left- and right-hand fingering | `gpifwrite::fingering_written_like_guitar_pro` |
+| `Morning Walk - audio note settings.gp` | Audio Note Settings on the first five notes of the guitar: duration 50%; offset 5 ticks; velocity +6 dB; -6 dB; duration 200% with +3 dB | `gpifwrite::audio_note_settings_read_and_written_like_guitar_pro` |
 | `Morning Walk - timer.gp` | A timer at the start of the song | `gpifwrite::timer_written_like_guitar_pro` |
 | `Morning Walk - bar repeats.gp` | A bar repeated on its own (repeat signs with a count) | `gpifwrite::single_bar_repeat_like_guitar_pro` |
 | `Morning Walk - track eq default.gp` | Track EQ on, every knob at its default | `gpifwrite::track_equalizer_read_and_written_like_guitar_pro` |
@@ -28,6 +29,8 @@ Pro stores that change.
 | `Morning Walk - track eq min.gp` | Track EQ on, every knob fully left | same |
 | `Morning Walk - track eq code A.gp` | Each knob at left, default or right; with code B, each knob gets a different pair, which shows which number is which knob | same |
 | `Morning Walk - track eq code B.gp` | See code A | same |
+| `Drum check.gp` | A drum test file made by GuitarCraft (every drum sound, one- and two-bar repeats), saved by Guitar Pro 8 with the track on its own sound engine (RSE) | `gpkeep` |
+| `Instruments.gp` | Made in Guitar Pro 8: one track each of piano, voice, violin, synth, electric piano, organ, choir, cello, strings, trumpet, saxophone and flute, with a few notes | `gpkeep`, `gpifwrite::reads_the_instruments_guitar_pro_saved` |
 | `Morning Walk - GP8.gpx` | The demo song saved as `.gpx`: the model for GuitarCraft's `.gpx` export (file layout and file list) | `guitarcraft --gpx-tests` |
 
 ## What these files showed

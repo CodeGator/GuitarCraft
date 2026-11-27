@@ -161,7 +161,9 @@ pub fn draw_bar_content(p: &Painter, c: &BarCtx) {
     };
     let dk = st.chords_in_score_size / 9.0;
     let mut prev_dyn: Option<Dynamic> = if c.bi > 0 {
-        track.bars[c.bi - 1]
+        // After a repeat sign, what was last played is in the bar it repeats.
+        track
+            .played_bar(c.bi - 1)
             .voice(c.voice)
             .iter()
             .rev()
@@ -642,6 +644,79 @@ pub fn notehead(p: &Painter, c: Pos2, z: f32, filled: bool, ink: Color32) {
     }
 }
 
+/// The head of a drum note. Heads with a filled shape are hollow on half and whole notes.
+pub fn drum_head(p: &Painter, c: Pos2, z: f32, head: DrumHead, filled: bool, ink: Color32) {
+    let at = |x: f32, y: f32| c + Vec2::new(x, y) * z;
+    let line = |a: (f32, f32), b: (f32, f32), w: f32| {
+        p.line_segment([at(a.0, a.1), at(b.0, b.1)], PStroke::new(w * z, ink));
+    };
+    let cross = |r: f32, w: f32| {
+        line((-r, -r), (r, r), w);
+        line((-r, r), (r, -r), w);
+    };
+    match head {
+        DrumHead::Normal => notehead(p, c, z, filled, ink),
+        DrumHead::Cross => cross(3.5, 1.3),
+        DrumHead::Diamond => {
+            p.add(Shape::closed_line(vec![at(-4.0, 0.0), at(0.0, -3.8), at(4.0, 0.0), at(0.0, 3.8)], PStroke::new(1.2 * z, ink)));
+        }
+        DrumHead::CircleSlash => {
+            p.circle_stroke(c, 4.0 * z, PStroke::new(1.1 * z, ink));
+            line((-2.8, 2.8), (2.8, -2.8), 1.1);
+        }
+        DrumHead::CircleCross => {
+            p.circle_stroke(c, 4.0 * z, PStroke::new(1.1 * z, ink));
+            cross(2.8, 1.0);
+        }
+        DrumHead::HeavyCross => cross(3.6, 2.4),
+        DrumHead::Slashed => {
+            notehead(p, c, z, filled, ink);
+            line((-5.5, 5.0), (5.5, -5.0), 1.1);
+        }
+        DrumHead::China => {
+            cross(3.4, 2.4);
+            line((-4.6, -3.6), (0.0, -7.0), 1.4);
+            line((0.0, -7.0), (4.6, -3.6), 1.4);
+        }
+        DrumHead::Triangle => {
+            let pts = vec![at(0.0, -4.6), at(4.8, 3.4), at(-4.8, 3.4)];
+            if filled {
+                p.add(Shape::convex_polygon(pts, ink, PStroke::NONE));
+            } else {
+                p.add(Shape::closed_line(pts, PStroke::new(1.3 * z, ink)));
+            }
+        }
+    }
+}
+
+/// A drum sound's head with the sign that goes with it.
+pub fn drum_note(p: &Painter, c: Pos2, z: f32, sound: u8, head: DrumHead, filled: bool, ink: Color32) {
+    drum_head(p, c, z, head, filled, ink);
+    let at = |x: f32, y: f32| c + Vec2::new(x, y) * z;
+    let s = PStroke::new(0.9 * z, ink);
+    match drum_sign(sound) {
+        None => {}
+        Some(DrumSign::Edge) => {
+            p.line_segment([at(-5.0, -6.5), at(0.5, -6.5)], s);
+            p.line_segment([at(0.5, -6.5), at(5.0, -11.0)], s);
+            p.circle_filled(at(-2.2, -6.5), 1.1 * z, ink);
+        }
+        Some(DrumSign::Choke) => {
+            p.circle_filled(at(0.0, -7.5), 1.4 * z, ink);
+        }
+        Some(DrumSign::Muted) => {
+            for side in [-1.0, 1.0] {
+                p.add(QuadraticBezierShape::from_points_stroke(
+                    [at(side * 5.5, -5.0), at(side * 8.5, 0.0), at(side * 5.5, 5.0)],
+                    false,
+                    Color32::TRANSPARENT,
+                    s,
+                ));
+            }
+        }
+    }
+}
+
 pub fn repeat_dots(p: &Painter, g: &Geom, y0: f32, x: f32, z: f32, ink: Color32) {
     for (st, _) in g.std_staves() {
         p.circle_filled(Pos2::new(x, y0 + st + 1.5 * g.ls), 1.7 * z, ink);
@@ -1034,7 +1109,8 @@ fn draw_std_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32, groups
     let mut shifted = false;
     for (ps, sharp, n) in &sorted {
         let sharp: &i8 = sharp;
-        let cross = n.dead || (perc && drum_staff_pos(track.pitch(n)).1);
+        let drum = perc.then(|| drum_staff_pos(track.pitch(n)).1);
+        let cross = n.dead;
         minp = minp.min(*ps);
         maxp = maxp.max(*ps);
         let lx = [x - 7.0 * z, x + 7.0 * z];
@@ -1083,6 +1159,8 @@ fn draw_std_beat(p: &Painter, c: &BarCtx, beat: &Beat, bj: usize, x: f32, groups
                 ],
                 s,
             );
+        } else if let Some(head) = drum {
+            drum_note(p, cpos, z, track.pitch(n), head, filled, c.ink);
         } else if n.harmonic {
             let d = 4.0 * z;
             p.add(Shape::closed_line(

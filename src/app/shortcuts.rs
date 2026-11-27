@@ -140,7 +140,7 @@ acts! {
     Shorter, Longer, Dotted, DoubleDotted, Triplet, Rest, TieNote, TieBeat, GraceBefore,
     GraceOnBeat, Ghost, DeadNote, Accent, HeavyAccent, Staccato, SemitoneUp, SemitoneDown,
     OctaveUp, OctaveDown, NoteStringUp, NoteStringDown, MoveOnStaffUp, MoveOnStaffDown,
-    SpellFlats, SpellAuto, SpellSharps, CycleSpelling, Chord, Text, Fermata,
+    SpellFlats, SpellAuto, SpellSharps, CycleSpelling, Chord, Text, Fermata, AudioNoteSettings,
     // Effects
     Hammer, Legato, Slide, Bend, Vibrato, WhammyVibrato, WideWhammyVibrato, TremoloBar,
     Trill, TremoloPicking, PalmMuteNote, PalmMuteBeat, LetRing, NaturalHarmonic,
@@ -301,6 +301,7 @@ pub const ACTIONS: &[Action] = &[
     a(Chord, "Chord", G::Notes, Score, &[key(Key::A)]),
     a(Text, "Text", G::Notes, Score, &[key(Key::T)]),
     a(Fermata, "Fermata", G::Notes, Score, &[key(Key::F)]),
+    a(AudioNoteSettings, "Audio note settings", G::Notes, Score, &[shift(Key::F)]),
     // ----- Effects -----
     a(Hammer, "Hammer-on / pull-off", G::Effects, Score, &[key(Key::H)]),
     a(Legato, "Legato", G::Effects, Score, &[shift(Key::H)]),
@@ -377,7 +378,7 @@ pub const ACTIONS: &[Action] = &[
     a(ShowGlobalView, "Tracks (global view)", G::View, Score, &[key(Key::F8)]),
     a(SongInspector, "Song settings", G::View, Score, &[key(Key::F5)]),
     a(TrackInspector, "Track settings", G::View, Score, &[key(Key::F6)]),
-    a(KeyboardView, "Keyboard view", G::View, Score, &[ctrl(Key::F6)]),
+    a(KeyboardView, "Keyboard or drumkit view", G::View, Score, &[ctrl(Key::F6)]),
     a(Multitrack, "Multitrack", G::View, Score, &[key(Key::F3)]),
     a(Stylesheet, "Stylesheet", G::View, Global, &[key(Key::F7)]),
     a(ZoomIn, "Zoom in", G::View, Global, &[ctrl(Key::Plus)]).also(&[ctrl(Key::Equals)]),

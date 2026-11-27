@@ -1,11 +1,12 @@
 //! The start screen: new/open, recent files, templates and examples with a preview.
 
 use super::{App, Pending};
+use crate::chart::{self, ChordChart};
 use crate::fileio;
 use crate::model::*;
 use crate::score::{self, Notation};
 use egui::{Align2, Color32, FontId, Pos2, Rect, RichText, Sense, Stroke as PStroke, Ui, Vec2};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// GuitarCraft's settings folder: in APPDATA, otherwise in HOME.
 pub(super) fn app_dir() -> Option<PathBuf> {
@@ -349,6 +350,24 @@ enum Item {
     Example,
 }
 
+/// What the start screen shows beside the list for the selected file.
+pub(super) enum Preview {
+    Song(Box<Song>),
+    Chart(Box<ChordChart>),
+    /// The file couldn't be read.
+    Unreadable,
+}
+
+/// The preview of a file: a chord chart's or a song's, whichever its ending says it is.
+fn preview_of(p: &Path) -> Preview {
+    let read = if chart::is_chart_path(p) {
+        ChordChart::load(p).map(|c| Preview::Chart(Box::new(c)))
+    } else {
+        fileio::load_song(p).map(|s| Preview::Song(Box::new(s)))
+    };
+    read.unwrap_or(Preview::Unreadable)
+}
+
 impl App {
     fn home_items(&self) -> Vec<(String, Item)> {
         let q = self.home_search.to_lowercase();
@@ -400,7 +419,7 @@ impl App {
         let g2 = p.layout_no_wrap(
             "Craft".into(),
             FontId::new(40.0, egui::FontFamily::Name("bold".into())),
-            Color32::from_rgb(92, 150, 240),
+            super::panels::LOGO_ORANGE,
         );
         let tw = g1.size().x + g2.size().x;
         let x0 = full.center().x - tw * 0.5;
@@ -603,7 +622,7 @@ impl App {
                 Color32::from_gray(140),
             );
         }
-        // Preview of the selected song's first page.
+        // Preview of the selected file's first page.
         if let Some((_, it)) = items.get(self.home_sel) {
             let key = match it {
                 Item::Recent(p) => p.display().to_string(),
@@ -617,19 +636,25 @@ impl App {
                 .map(|(k, _)| k != &key)
                 .unwrap_or(true)
             {
-                let song = match it {
-                    Item::Recent(p) => fileio::load_song(p).ok(),
-                    Item::Template(k) => Some(template(*k)),
-                    Item::UserTemplate(p) => fileio::load_song(p).ok(),
-                    Item::Example => Some(Song::demo()),
+                let shown = match it {
+                    Item::Recent(p) | Item::UserTemplate(p) => preview_of(p),
+                    Item::Template(k) => Preview::Song(Box::new(template(*k))),
+                    Item::Example => Preview::Song(Box::new(Song::demo())),
                 };
-                self.preview = song.map(|s| (key.clone(), s));
-                if self.preview.is_none() {
-                    self.preview = Some((key, Song::new_blank()));
-                }
+                self.preview = Some((key, shown));
             }
-            if let Some((_, song)) = &self.preview {
-                let avail = prev_r.shrink(14.0);
+            let avail = prev_r.shrink(14.0);
+            let painter = ui.painter().with_clip_rect(prev_r);
+            if let Some((_, Preview::Chart(doc))) = &self.preview {
+                let zoom = (avail.height() / chart::PAGE_H).min(avail.width() / chart::PAGE_W);
+                let pages = chart::layout(doc, &chart::painter_measure(&painter));
+                let o = Pos2::new(avail.center().x - chart::PAGE_W * zoom * 0.5, avail.top());
+                chart::draw_page(&painter, doc, &pages, 0, o, zoom, None, false);
+            }
+            if let Some((_, Preview::Unreadable)) = &self.preview {
+                painter.text(prev_r.center(), Align2::CENTER_CENTER, "This file can't be previewed.", FontId::proportional(15.0), Color32::from_gray(170));
+            }
+            if let Some((_, Preview::Song(song))) = &self.preview {
                 let (pw, ph) = song.style.page_mm();
                 let zoom = (avail.height() / (ph * crate::style::MM)).min(avail.width() / (pw * crate::style::MM));
                 let shown: Vec<usize> = (0..song.tracks.len()).collect();
@@ -648,6 +673,7 @@ impl App {
                     show_cursor: false,
                     voice: 0,
                     cursor_std: None,
+                    ring_playback: false,
                     printing: false,
                     transparent: false,
                     play_cursor: crate::score::PlayCursor::Smooth,
@@ -655,7 +681,6 @@ impl App {
                     bar_errors: 0,
  unreached: &[],
                 };
-                let painter = ui.painter().with_clip_rect(prev_r);
                 score::draw_page(&painter, &lay, &dc, 0, lay.page_origin(0, o.x, o.y));
             }
             let br = Rect::from_center_size(
@@ -718,6 +743,15 @@ mod tests {
 
     fn paths(list: &[&str]) -> Vec<PathBuf> {
         list.iter().map(PathBuf::from).collect()
+    }
+
+    #[test]
+    fn a_chord_chart_is_previewed_as_a_chart_and_a_song_as_a_score() {
+        let chart = preview_of(Path::new("samples/Morning Walk chart.gcx"));
+        assert!(matches!(&chart, Preview::Chart(c) if c.title == "Morning Walk"));
+        assert!(matches!(preview_of(Path::new("samples/Morning Walk.gp")), Preview::Song(_)));
+        assert!(matches!(preview_of(Path::new("no such chart.gcx")), Preview::Unreadable));
+        assert!(matches!(preview_of(Path::new("no such song.gp")), Preview::Unreadable));
     }
 
     #[test]

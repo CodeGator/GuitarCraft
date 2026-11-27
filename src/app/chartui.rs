@@ -39,6 +39,8 @@ pub struct ChartState {
     pub xpose: Option<super::chartxpose::XposeDlg>,
     /// The Chord Diagrams window is open.
     pub diagrams_open: bool,
+    /// The Suggest Chords window, when open.
+    pub suggest: Option<super::chartsuggest::SuggestDlg>,
     /// The tempo editor (the score's Automations editor, along the map).
     pub tempo_open: bool,
     pub tempo_ed: super::automation::TempoEdit,
@@ -50,7 +52,7 @@ impl ChartState {
     pub fn new(mut doc: ChordChart) -> ChartState {
         // The sections list shows the playing order.
         doc.sync_sections();
-        ChartState { doc, sel: 0, map_sel: None, tab: 1, zoom: 1.0, page_count: 1, undo: vec![], redo: vec![], last_field: None, press_merge: false, style_dlg: None, xpose: None, diagrams_open: false, tempo_open: false, tempo_ed: Default::default(), sig: None }
+        ChartState { doc, sel: 0, map_sel: None, tab: 1, zoom: 1.0, page_count: 1, undo: vec![], redo: vec![], last_field: None, press_merge: false, style_dlg: None, xpose: None, diagrams_open: false, suggest: None, tempo_open: false, tempo_ed: Default::default(), sig: None }
     }
 }
 
@@ -410,6 +412,15 @@ impl App {
                     self.print_song();
                 }
                 ui.separator();
+                if item(ui, true, "Stylesheet...", &sc(Act::Stylesheet)) {
+                    self.open_chart_style(0);
+                    ui.close();
+                }
+                if item(ui, true, "Preferences...", &sc(Act::Prefs)) {
+                    self.open_prefs();
+                    ui.close();
+                }
+                ui.separator();
                 if item(ui, true, "Quit", &sc(Act::Quit)) {
                     ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
                     ui.close();
@@ -426,11 +437,6 @@ impl App {
                     ui.close();
                 }
                 ui.separator();
-                if item(ui, true, "Preferences...", &sc(Act::Prefs)) {
-                    self.open_prefs();
-                    ui.close();
-                }
-                ui.separator();
                 if item(ui, true, "Transpose...", &sc(Act::ChartTranspose)) {
                     self.open_transpose(None);
                     ui.close();
@@ -444,7 +450,14 @@ impl App {
                     ui.close();
                 }
             });
+            let suggest_blocked = self.suggest_blocked();
             ui.menu_button("Section", |ui| {
+                let suggest = ui.add_enabled(suggest_blocked.is_none(), egui::Button::new("Suggest Chords..."));
+                if suggest.on_disabled_hover_text(suggest_blocked.unwrap_or_default()).clicked() {
+                    self.open_suggest_chords();
+                    ui.close();
+                }
+                ui.separator();
                 for k in Kind::ALL {
                     if ui.button(format!("Add {}", k.label())).clicked() {
                         self.chart_add_section(k);
@@ -478,10 +491,6 @@ impl App {
                     }
                     ui.close();
                 }
-                if item(ui, true, "Stylesheet...", &sc(Act::Stylesheet)) {
-                    self.open_chart_style(0);
-                    ui.close();
-                }
                 if let Some(st) = &mut self.chart {
                     ui.menu_button("Columns", |ui| {
                         for c in 1..=chart::MAX_COLUMNS {
@@ -510,6 +519,10 @@ impl App {
             ui.menu_button("Help", |ui| {
                 if ui.button("Chord chart help").clicked() {
                     self.status = "Chords go in [brackets] before the syllable: [E]Let my heart. A line starting with | is bars: | E /// | B //// |.".into();
+                    ui.close();
+                }
+                if ui.button("User Guide...").clicked() {
+                    self.guide_open = true;
                     ui.close();
                 }
                 if ui.button("About GuitarCraft").clicked() {
@@ -596,6 +609,7 @@ impl App {
         self.chart_style_window(&ctx);
         self.transpose_window(&ctx);
         self.diagrams_window(&ctx);
+        self.suggest_window(&ctx);
         self.chart_tempo_window(&ctx);
         self.chart_sig_window(&ctx);
         // The sections list follows the map (after map edits, undo, adding ...),
@@ -843,7 +857,12 @@ impl App {
         let mut open_diagrams = false;
         let mut open_tempo = false;
         let mut open_sig: Option<bool> = None;
-        self.chart_right_body(ui, &mut open_style, &mut open_xpose, &mut open_diagrams, &mut open_tempo, &mut open_sig);
+        let mut open_suggest = false;
+        let suggest_blocked = self.suggest_blocked();
+        self.chart_right_body(ui, &mut open_style, &mut open_xpose, &mut open_diagrams, &mut open_tempo, &mut open_sig, (suggest_blocked, &mut open_suggest));
+        if open_suggest {
+            self.open_suggest_chords();
+        }
         if let Some(time) = open_sig {
             self.open_chart_sig(time);
         }
@@ -862,7 +881,9 @@ impl App {
         }
     }
 
-    fn chart_right_body(&mut self, ui: &mut Ui, open_style: &mut bool, open_xpose: &mut bool, open_diagrams: &mut bool, open_tempo: &mut bool, open_sig: &mut Option<bool>) {
+    /// `suggest`: why Suggest Chords can't be used (None when it can), and whether it was pressed.
+    #[allow(clippy::too_many_arguments)]
+    fn chart_right_body(&mut self, ui: &mut Ui, open_style: &mut bool, open_xpose: &mut bool, open_diagrams: &mut bool, open_tempo: &mut bool, open_sig: &mut Option<bool>, suggest: (Option<&str>, &mut bool)) {
         let Some(st) = &mut self.chart else { return };
         // Tabs across the top.
         let full = ui.available_rect_before_wrap();
@@ -949,13 +970,16 @@ impl App {
                     let suggested = look.kind_color(s.kind).or(s.kind.tint().map(chart::rgb)).unwrap_or([255, 242, 204]);
                     optional_color(ui, &mut s.color, suggested, true);
                     ui.add_space(4.0);
+                    ui.label(RichText::new("Words and chords:").color(Color32::from_gray(210)));
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("Words and chords:").color(Color32::from_gray(210)));
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.small_button("Transpose\u{2026}").on_hover_text("Move this section's chords to another key").clicked() {
-                                *open_xpose = true;
-                            }
-                        });
+                        let (blocked, pressed) = suggest;
+                        let button = ui.add_enabled(blocked.is_none(), egui::Button::new("Suggest Chords\u{2026}").small());
+                        if button.on_hover_text("Ask Claude for chords to put on this section's words").on_disabled_hover_text(blocked.unwrap_or_default()).clicked() {
+                            *pressed = true;
+                        }
+                        if ui.small_button("Transpose\u{2026}").on_hover_text("Move this section's chords to another key").clicked() {
+                            *open_xpose = true;
+                        }
                     });
                     let text_id = egui::Id::new(("chart-text", s.id));
                     ui.add(

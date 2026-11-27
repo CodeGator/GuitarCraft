@@ -5,16 +5,19 @@ mod about;
 mod actions;
 mod addtrack;
 mod ai;
+mod aicode;
 mod aifacts;
 mod aihelp;
-mod aiplan;
 mod aipanel;
+mod aitext;
+mod audionotes;
 mod batch;
 #[cfg(test)]
 mod flows;
 mod automation;
 mod bottom;
 mod chartstyle;
+mod chartsuggest;
 mod chartui;
 mod chartxpose;
 mod chordscales;
@@ -26,6 +29,7 @@ mod chordedit;
 mod chordlib;
 mod clipmenu;
 mod cursor;
+mod drumview;
 mod home;
 mod icons;
 mod keys;
@@ -177,7 +181,7 @@ pub struct App {
     home_tab: usize,
     home_sel: usize,
     home_search: String,
-    preview: Option<(String, Song)>,
+    preview: Option<(String, home::Preview)>,
     kb_octave: i32,
     play_while_editing: bool,
     /// 0 page vertical, 1 page horizontal, 2 page grid, 3 screen vertical, 4 screen horizontal.
@@ -187,6 +191,8 @@ pub struct App {
     score_active: usize,
     split_frac: f32,
     dir_open: bool,
+    /// The Audio Note Settings window, while it is open.
+    audio_notes: Option<audionotes::AudioNotes>,
     /// The Add Track window.
     at: addtrack::AddTrack,
     /// Where to suggest saving a Guitar Pro file opened in another format.
@@ -385,6 +391,7 @@ impl App {
             score_active: 0,
             split_frac: 0.5,
             dir_open: false,
+            audio_notes: None,
             at: Default::default(),
             save_hint: None,
             song_more: false,
@@ -490,6 +497,16 @@ impl App {
                 "keyboard" => app.show_panel(dock::Pane::Keyboard),
                 "ai" => app.show_panel(dock::Pane::Ai),
                 "fretboard" => app.show_panel(dock::Pane::Fretboard),
+                // The Audio Note Settings window.
+                "audionotes" => app.open_audio_notes(),
+                // The drumkit view, on the song's first drum track.
+                "drums" => {
+                    if let Some(t) = app.song.tracks.iter().position(|t| t.kind() == InstrumentType::Drums) {
+                        app.track = t;
+                        app.clamp_cursor();
+                    }
+                    app.show_panel(dock::Pane::Drums);
+                }
                 // A panel in a window of its own, for checking pop-out: --show popout.
                 "popout" => app.pop_out(dock::Pane::Palette),
                 "track" => app.inspector = InspectorTab::Track,
@@ -599,6 +616,22 @@ impl App {
                     app.show_home = false;
                     app.status =
                         "Three columns: lines flow down each column, then on to the next.".into();
+                }
+                "chartsuggest" => {
+                    // Suggest Chords on the first verse with a made-up answer (nothing is asked).
+                    let mut st = chartui::ChartState::new(crate::chart::ChordChart::sample());
+                    st.sel = 1;
+                    app.prefs.claude_code_on = true;
+                    app.chart = Some(st);
+                    app.show_home = false;
+                    app.open_suggest_chords();
+                    if let Some(st) = &mut app.chart {
+                        let words = st.doc.sections.get(st.sel).map(|s| chartsuggest::words_of(&s.text)).unwrap_or_default();
+                        if let Some(d) = st.suggest.as_mut() {
+                            d.style = "simple folk".into();
+                            d.reply = Some(words.lines().map(|l| format!("[A]{l}")).collect::<Vec<_>>().join("\n"));
+                        }
+                    }
                 }
                 "chartdiagrams" => {
                     let mut st = chartui::ChartState::new(crate::chart::ChordChart::sample());
@@ -969,7 +1002,7 @@ impl App {
             self.midi.preview_note(
                 crate::midi::channel_for(self.track, drums),
                 t.instrument.midi_program(),
-                t.pitch(n),
+                t.sound(n),
                 (0.8 * t.volume.max(0.3) * 127.0) as u8,
                 600,
             );
@@ -1038,6 +1071,8 @@ impl App {
         } else if !extend {
             self.edit(|s, _, _, _, _| {
                 let mut mb = s.master.last().cloned().unwrap_or_default();
+                mb.pickup = false;
+                mb.kept = None;
                 mb.marker = None;
                 mb.repeat_open = false;
                 mb.repeat_close = 0;
@@ -1118,12 +1153,12 @@ impl App {
             self.std_cursor = Some(self.staff_pos_of(&placed));
         }
         self.preview(&n);
-        self.status = format!(
-            "String {}, fret {} ({})",
-            string + 1,
-            fret,
-            note_name_oct(self.tr().pitch(&n))
-        );
+        let pitch = self.tr().pitch(&n);
+        self.status = if self.on_drum_track() {
+            format!("{} (MIDI {pitch})", drum_name(pitch))
+        } else {
+            format!("String {}, fret {} ({})", string + 1, fret, note_name_oct(pitch))
+        };
     }
 
     fn type_digit(&mut self, d: u8, now: f64) {
@@ -1317,6 +1352,8 @@ impl App {
     fn insert_bar(&mut self, at: usize) {
         self.edit(|s, _, _, _, _| {
             let mut mb = s.master[at.min(s.master.len() - 1)].clone();
+            mb.pickup = false;
+            mb.kept = None;
             mb.marker = None;
             mb.repeat_open = false;
             mb.repeat_close = 0;

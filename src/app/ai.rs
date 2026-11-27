@@ -1,17 +1,20 @@
-//! Preferences > AI: the settings for connecting GuitarCraft to an AI provider, Ollama (a
-//! model running on this computer or one the person runs) and Claude (Anthropic's service).
-//! Nothing is sent anywhere yet except by the "Test connection" buttons, which ask the
-//! provider which models it offers. Like the update check, the web request goes through
-//! `curl` on a separate thread so the window never freezes.
+//! Connecting GuitarCraft to an AI provider: Ollama (a model running on this computer or one
+//! the person runs), Claude Code (the person's own signed-in `claude` program, see `aicode`)
+//! and Claude (Anthropic's service, with an API key). Preferences > AI holds the settings and
+//! has a "Test connection" button for each; the AI Assistant panel asks the questions.
+//! Everything runs on a separate thread so the window never freezes. Like the update check,
+//! the web requests go through `curl`.
 //!
 //! The Claude API key is not kept in `preferences.json`: it goes to the Windows Credential
 //! Manager (the macOS Keychain on a Mac), see [`key`]. It is handed to `curl` on its
 //! standard input, never on the command line, where other programs could read it.
 
+use super::aicode;
 use serde_json::Value;
 use std::io::Write;
 use std::process::{Command, Stdio};
 use std::sync::mpsc::{Receiver, channel};
+use std::time::Duration;
 
 /// Where Ollama listens unless it was set up otherwise.
 pub const OLLAMA_URL: &str = "http://localhost:11434";
@@ -77,6 +80,8 @@ pub mod key {
 pub enum Test {
     /// Connected; the models the provider offers.
     Ok(Vec<String>),
+    /// Ready to use, for a provider that has no list of models: what to tell the person.
+    Ready(String),
     Failed(String),
 }
 
@@ -119,6 +124,10 @@ impl Probe {
         });
     }
 
+    pub fn test_claude_code(&mut self, ctx: &egui::Context) {
+        self.start(ctx, aicode::test);
+    }
+
     pub fn test_claude(&mut self, ctx: &egui::Context, key: &str) {
         let key = key.trim().to_string();
         self.start(ctx, move || {
@@ -142,8 +151,19 @@ pub fn ollama_tags_url(server: &str) -> String {
     format!("{}/api/tags", ollama_base(server))
 }
 
+/// The address without the user name and password in it (`user:password@`), or None when it
+/// holds none. Neither is ever kept or sent: the address is saved as plain text. No server
+/// address needs an `@` for anything else, so all before the last one goes, whatever characters
+/// the password has.
+pub fn without_password(url: &str) -> Option<String> {
+    let at = url.rfind('@')?;
+    let host = url[..at].find("://").map_or(0, |i| i + 3);
+    Some(format!("{}{}", &url[..host], &url[at + 1..]))
+}
+
 /// The server address with its scheme and without a closing slash; Ollama's own when empty.
 fn ollama_base(server: &str) -> String {
+    let server = without_password(server).unwrap_or_else(|| server.to_string());
     let s = server.trim().trim_end_matches('/');
     let s = if s.is_empty() { OLLAMA_URL } else { s };
     if s.contains("://") { s.to_string() } else { format!("http://{s}") }
@@ -180,14 +200,16 @@ pub fn read_claude(json: &str) -> Test {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Provider {
     Ollama,
+    ClaudeCode,
     Claude,
 }
 
 impl Provider {
+    /// Who the answers are from.
     pub fn name(self) -> &'static str {
         match self {
             Provider::Ollama => "Ollama",
-            Provider::Claude => "Claude",
+            Provider::ClaudeCode | Provider::Claude => "Claude",
         }
     }
 }
@@ -207,13 +229,13 @@ pub struct Ask {
     pub ollama_context: u32,
     /// Ask Ollama to keep the model loaded between questions.
     pub ollama_keep: bool,
-    /// The model to ask, for either provider.
+    /// The model to ask. Empty, for Claude Code only: its own default.
     pub model: String,
-    /// Claude's API key.
+    /// Claude's API key (empty for the other providers).
     pub key: String,
     pub system: String,
     /// The conversation so far, ending with the question: the person's turns and the answers,
-    /// one after the other, starting with the person's (both providers require that).
+    /// one after the other, starting with the person's (Ollama and Claude require that).
     pub turns: Vec<Turn>,
 }
 
@@ -230,25 +252,29 @@ to decide the key and say which scale fits the whole piece as well as the bars. 
 A question may also come with parts of the GuitarCraft user guide. For a question about using GuitarCraft, answer \
 from that text: use its menu names and shortcuts exactly, and if it doesn't cover the question, say so rather \
 than guessing at menus or features GuitarCraft might have. \
+You answer questions only: you can't change the score or anything else in the program. If you are asked to make a \
+change, say that you can't, and explain how to do it in GuitarCraft, from the user guide text if it covers it. \
 If you aren't sure, say so.";
-
-/// Everything the assistant is told about itself: who it is, and how to propose changes to the
-/// score (see `aiplan`).
-pub fn system_prompt() -> String {
-    format!("{SYSTEM}\n\n{}", super::aiplan::PLAN_HELP)
-}
 
 /// The result of a question: the answer, or why there isn't one.
 pub type Answer = Result<String, String>;
 
-/// A question on its way. Polled every frame, like [`Probe`].
+/// A question on its way. Polled every frame, like [`Probe`]. Dropping it gives up on the
+/// answer, and ends the program if Claude Code was asked.
 pub struct Pending {
     rx: Receiver<Answer>,
+    stop: aicode::Stop,
 }
 
 impl Pending {
     pub fn poll(&self) -> Option<Answer> {
         self.rx.try_recv().ok()
+    }
+}
+
+impl Drop for Pending {
+    fn drop(&mut self) {
+        self.stop.stop();
     }
 }
 
@@ -259,14 +285,22 @@ const ASK_SECONDS: u32 = 300;
 pub fn ask(ctx: &egui::Context, a: Ask) -> Pending {
     let (tx, rx) = channel();
     let ctx = ctx.clone();
+    let stop = aicode::Stop::default();
+    let theirs = stop.clone();
     std::thread::spawn(move || {
-        let _ = tx.send(ask_now(&a));
+        let _ = tx.send(ask_until(&a, &theirs));
         ctx.request_repaint();
     });
-    Pending { rx }
+    Pending { rx, stop }
 }
 
+/// [`ask`], waiting for the answer on this thread.
+#[cfg(test)]
 pub fn ask_now(a: &Ask) -> Answer {
+    ask_until(a, &aicode::Stop::default())
+}
+
+fn ask_until(a: &Ask, stop: &aicode::Stop) -> Answer {
     match a.provider {
         Provider::Ollama => {
             let url = format!("{}/api/chat", ollama_base(&a.ollama_url));
@@ -274,6 +308,7 @@ pub fn ask_now(a: &Ask) -> Answer {
             let config = format!("header = \"content-type: application/json\"\ndata = \"{}\"\n", conf_quote(&body));
             read_ollama_chat(&curl_for(&url, &config, ASK_SECONDS)?)
         }
+        Provider::ClaudeCode => aicode::ask(&a.system, &a.model, &a.turns, Duration::from_secs(ASK_SECONDS.into()), stop),
         Provider::Claude => {
             let key = a.key.trim();
             if key.is_empty() {
@@ -321,8 +356,7 @@ pub fn ollama_body(model: &str, context: u32, system: &str, turns: &[Turn], keep
 pub const OLLAMA_KEEP_ALIVE: &str = "30m";
 
 /// How adventurous Ollama's answers are (its own default is 0.8). Lower keeps the assistant to
-/// the format it was asked for: a plan is a block of JSON, and a model that wanders writes
-/// something else.
+/// the facts it was given.
 pub const OLLAMA_TEMPERATURE: f32 = 0.3;
 
 /// How long after loading (or the last question) the model is loaded again, a little less than
@@ -410,11 +444,12 @@ fn curl(url: &str, config: &str) -> Result<String, String> {
     curl_for(url, config, 15)
 }
 
-/// [`curl`] that gives up after `secs` seconds.
+/// [`curl`] that gives up after `secs` seconds. The address goes on standard input with the
+/// rest of the settings, so it isn't on the command line either.
 fn curl_for(url: &str, config: &str, secs: u32) -> Result<String, String> {
+    let config = format!("url = \"{}\"\n{config}", conf_quote(url));
     let mut cmd = Command::new("curl");
     cmd.args(["--silent", "--max-time", &secs.to_string(), "--user-agent", "GuitarCraft", "--config", "-"])
-        .arg(url)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
@@ -444,7 +479,7 @@ mod tests {
         let o: Value = serde_json::from_str(&ollama_body("qwen3:4b", 8192, "sys", &turns, false)).unwrap();
         assert_eq!(o["model"], "qwen3:4b");
         assert!(o.get("keep_alive").is_none(), "Ollama's own timeout applies unless asked");
-        assert!((o["options"]["temperature"].as_f64().unwrap() - 0.3).abs() < 1e-6, "answers keep to the format asked for");
+        assert!((o["options"]["temperature"].as_f64().unwrap() - 0.3).abs() < 1e-6, "answers keep to what was given");
         let kept: Value = serde_json::from_str(&ollama_body("qwen3:4b", 8192, "sys", &turns, true)).unwrap();
         assert_eq!(kept["keep_alive"], OLLAMA_KEEP_ALIVE);
         assert_eq!(o["stream"], false);
@@ -533,6 +568,27 @@ mod tests {
         let answer = ask_now(&a).expect("Claude should answer");
         println!("ANSWER: {answer}");
         assert!(!answer.is_empty());
+    }
+
+    #[test]
+    fn a_password_in_the_ollama_address_is_dropped() {
+        assert_eq!(without_password("http://localhost:11434"), None);
+        assert_eq!(without_password("http://me:secret@server:11434"), Some("http://server:11434".into()));
+        assert_eq!(without_password("me:secret@server"), Some("server".into()));
+        // Characters a password may hold, even unescaped.
+        assert_eq!(without_password("https://me:p@ss/w://d@server/ai"), Some("https://server/ai".into()));
+        assert_eq!(ollama_tags_url("http://me:secret@server:11434/"), "http://server:11434/api/tags");
+    }
+
+    /// Through the real `curl`, reading a file so no network is needed.
+    #[test]
+    fn curl_takes_the_address_from_its_settings() {
+        let file = std::env::temp_dir().join(format!("guitarcraft curl {}.txt", std::process::id()));
+        std::fs::write(&file, "fetched").unwrap();
+        let path = file.to_string_lossy().replace('\\', "/").replace(' ', "%20");
+        let url = format!("file:///{}", path.trim_start_matches('/'));
+        assert_eq!(curl(&url, ""), Ok("fetched".into()));
+        let _ = std::fs::remove_file(&file);
     }
 
     #[test]

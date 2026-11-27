@@ -198,6 +198,11 @@ impl App {
                 filled(ui, Color32::from_rgb(28, 30, 34), 0, |ui| self.keyboard_panel(ui, &sounding));
                 self.sounding = sounding;
             }
+            Pane::Drums => {
+                let sounding = std::mem::take(&mut self.sounding);
+                filled(ui, Color32::from_rgb(28, 30, 34), 0, |ui| self.drum_panel(ui, &sounding));
+                self.sounding = sounding;
+            }
             Pane::Ai => filled(ui, PANEL_BG, 0, |ui| self.ai_panel(ui)),
             Pane::Retired => {}
         }

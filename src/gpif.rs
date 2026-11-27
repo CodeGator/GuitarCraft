@@ -73,6 +73,9 @@ pub fn import_gp(data: &[u8]) -> Result<Song, String> {
             }
         }
     }
+    // What the app doesn't use is kept for saving (once the song is as it was read).
+    let kept = crate::gpkeep::read(&mut zip, &xml, &mut song);
+    song.kept = Some(std::sync::Arc::new(kept));
     Ok(song)
 }
 
@@ -87,7 +90,9 @@ pub fn import_gpx(data: &[u8]) -> Result<Song, String> {
     let file = read_bcfs(&fs, "score.gpif")
         .ok_or_else(|| "No score was found inside this .gpx file.".to_string())?;
     let xml = String::from_utf8_lossy(&file).to_string();
-    parse_gpif(&xml)
+    let mut song = parse_gpif(&xml)?;
+    song.forget_kept();
+    Ok(song)
 }
 
 type PbField<'a> = (u64, u8, u64, &'a [u8]);
@@ -370,6 +375,38 @@ struct TrackInfo {
     keep: bool,
     staff_offset: usize,
     chords: HashMap<String, String>,
+    /// A drum track's sounds in the order of its kit's articulations; empty for other tracks.
+    kit: Vec<Option<u8>>,
+    /// For a keyboard, voice or orchestral track, the open strings of each staff, lowest first.
+    tunings: Vec<Vec<u8>>,
+    /// The track's changes over time, to be put on its bars once they are read.
+    changes: crate::gpkeep::TrackChanges,
+}
+
+/// The open strings of each staff of a track, lowest first.
+pub(crate) fn staff_strings(track: Node) -> Vec<Vec<u8>> {
+    child(track, "Staves")
+        .into_iter()
+        .flat_map(|s| s.children().filter(|c| c.has_tag_name("Staff")))
+        .map(|staff| {
+            staff
+                .descendants()
+                .find(|d| d.has_tag_name("Property") && d.attribute("name") == Some("Tuning"))
+                .map(|t| text(child(t, "Pitches")).split_whitespace().filter_map(|x| x.parse::<u8>().ok()).collect())
+                .unwrap_or_default()
+        })
+        .collect()
+}
+
+/// The sound number of every articulation of a track's instrument set, in order.
+pub(crate) fn kit_sounds(track: Node) -> Vec<Option<u8>> {
+    let first = |a: Node, tag: &str| text(child(a, tag)).split_whitespace().next().and_then(|x| x.parse::<u8>().ok());
+    child(track, "InstrumentSet")
+        .into_iter()
+        .flat_map(|s| s.descendants())
+        .filter(|a| a.has_tag_name("Articulation"))
+        .map(|a| first(a, "InputMidiNumbers").or_else(|| first(a, "OutputMidiNumber")))
+        .collect()
 }
 
 pub fn parse_gpif(xml: &str) -> Result<Song, String> {
@@ -490,7 +527,10 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
                 .and_then(|x| x.parse::<i32>().ok())
                 .unwrap_or(25);
             let drum = inst_type.contains("drum") || inst_type.contains("percussion");
-            let keep = tuning.len() <= 8;
+            // Keyboards, voices and orchestra have a tuning in the file, and none here.
+            let sound = t.descendants().find(|d| d.has_tag_name("Path")).map(|n| text(Some(n))).unwrap_or_default();
+            let pitched = if drum { None } else { crate::gpinstr::from_file(&inst_type, program.clamp(0, 127) as u8, &sound) };
+            let keep = pitched.is_some() || tuning.len() <= 8;
             let mut tr = Track {
                 name: if name.is_empty() {
                     format!("Track {}", k + 1)
@@ -596,6 +636,8 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
             }
             if drum {
                 tr.instrument = Instrument::Drums;
+            } else if let Some(i) = pitched {
+                tr.instrument = i;
             } else if !tuning.is_empty() && !tr.has_strings() {
                 // Tuned tracks are played on strings, whatever their sound.
                 tr.instrument = if inst_type.contains("bass") {
@@ -614,16 +656,22 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
                         tr.instrument
                     };
             }
-            if drum || tuning.is_empty() {
+            if drum || pitched.is_some() || tuning.is_empty() {
                 tr.tuning = tr.instrument.default_tuning();
                 tr.frets = 127;
                 tr.capo = 0;
                 tr.grand_staff = staves > 1 && tr.kind() == InstrumentType::Keyboard;
             }
+            let bars = child(root, "MasterBars").map_or(0, |m| m.children().filter(|c| c.has_tag_name("MasterBar")).count());
+            let (kept, changes) = crate::gpkeep::read_track(t, xml, &tr, bars);
+            tr.kept = Some(std::sync::Arc::new(kept));
             infos.push(TrackInfo {
                 keep,
                 staff_offset,
                 chords,
+                kit: if drum { kit_sounds(t) } else { vec![] },
+                tunings: if pitched.is_some() { staff_strings(t) } else { vec![] },
+                changes,
             });
             tracks.push(tr);
             staff_offset += staves;
@@ -732,10 +780,40 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
             if info.keep {
                 let nstr = tracks[ti].tuning.len();
                 let virt = !tracks[ti].has_strings();
+                let strings = info.tunings.first().map(Vec::as_slice).unwrap_or_default();
+                // A voice's beats. Grace notes come as short beats just before the note they
+                // lead into.
+                let read_voice = |voice: Node, strings: &[u8]| {
+                    let mut beats = vec![];
+                    let mut grace: Vec<Note> = vec![];
+                    for bid in text(child(voice, "Beats")).split_whitespace() {
+                        let Some(bt) = beats_idx.get(bid) else { continue };
+                        let mut b = read_beat(*bt, &rhythms_idx, &notes_idx, nstr, &info.chords, virt, &info.kit, strings);
+                        if child(*bt, "GraceNotes").is_some() {
+                            grace = b.notes;
+                            continue;
+                        }
+                        for g in grace.drain(..) {
+                            let target = if virt { b.notes.first_mut() } else { b.note_on_mut(g.string) };
+                            if let Some(n) = target {
+                                n.grace = Some(g.fret);
+                            }
+                        }
+                        beats.push(b);
+                    }
+                    beats
+                };
                 if let Some(bn) = bar_ids
                     .get(info.staff_offset)
                     .and_then(|id| bars_idx.get(id))
                 {
+                    crate::gpkeep::read_bar(*bn, xml, 0, &mut bar);
+                    // The sign for "repeat the previous bar" (or the previous two).
+                    bar.simile = match text(child(*bn, "SimileMark")).as_str() {
+                        "Simple" => 1,
+                        "FirstOfDouble" | "SecondOfDouble" => 2,
+                        _ => 0,
+                    };
                     let voice_ids: Vec<String> = text(child(*bn, "Voices"))
                         .split_whitespace()
                         .take(VOICES)
@@ -745,44 +823,7 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
                         let Some(vn) = voices_idx.get(vid) else {
                             continue;
                         };
-                        let mut beats = vec![];
-                        // Grace notes come as short beats just before the note they lead into.
-                        let mut grace: Vec<Note> = vec![];
-                        for bid in text(child(*vn, "Beats")).split_whitespace() {
-                            if let Some(bt) = beats_idx.get(bid) {
-                                if child(*bt, "GraceNotes").is_some() {
-                                    grace = read_beat(
-                                        *bt,
-                                        &rhythms_idx,
-                                        &notes_idx,
-                                        nstr,
-                                        &info.chords,
-                                        virt,
-                                    )
-                                    .notes;
-                                    continue;
-                                }
-                                let mut b = read_beat(
-                                    *bt,
-                                    &rhythms_idx,
-                                    &notes_idx,
-                                    nstr,
-                                    &info.chords,
-                                    virt,
-                                );
-                                for g in grace.drain(..) {
-                                    let target = if virt {
-                                        b.notes.first_mut()
-                                    } else {
-                                        b.note_on_mut(g.string)
-                                    };
-                                    if let Some(n) = target {
-                                        n.grace = Some(g.fret);
-                                    }
-                                }
-                                beats.push(b);
-                            }
-                        }
+                        let beats = read_voice(*vn, strings);
                         if vk == 0 {
                             bar.beats = beats;
                         } else if !beats.is_empty() {
@@ -796,40 +837,11 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
                         .get(info.staff_offset + 1)
                         .and_then(|id| bars_idx.get(id))
                 {
-                    let vid = text(child(*bn, "Voices"))
-                        .split_whitespace()
-                        .next()
-                        .map(|x| x.to_string());
-                    if let Some(vn) = vid.and_then(|v| voices_idx.get(&v).copied()) {
-                        let beats: Vec<Beat> = text(child(vn, "Beats"))
-                            .split_whitespace()
-                            .filter_map(|bid| beats_idx.get(bid))
-                            .filter(|bt| child(**bt, "GraceNotes").is_none())
-                            .map(|bt| {
-                                read_beat(*bt, &rhythms_idx, &notes_idx, nstr, &info.chords, virt)
-                            })
-                            .collect();
-                        let same = beats.len() == bar.beats.len()
-                            && beats
-                                .iter()
-                                .zip(bar.beats.iter())
-                                .all(|(a, b)| a.ticks() == b.ticks());
-                        if same {
-                            for (low, up) in beats.into_iter().zip(bar.beats.iter_mut()) {
-                                for mut n in low.notes {
-                                    if up.notes.len() < nstr {
-                                        n.string = up.notes.len() as u8;
-                                        up.notes.push(n);
-                                    }
-                                }
-                            }
-                        } else if beats.iter().any(|b| !b.is_rest()) {
-                            bar.pad_voices();
-                            if let Some(slot) = (0..bar.voices.len())
-                                .find(|&k| bar.voices[k].iter().all(|b| b.is_rest()))
-                            {
-                                bar.voices[slot] = beats;
-                            }
+                    crate::gpkeep::read_bar(*bn, xml, 1, &mut bar);
+                    let lower = info.tunings.get(1).map(Vec::as_slice).unwrap_or_default();
+                    for vid in text(child(*bn, "Voices")).split_whitespace().take(VOICES) {
+                        if let Some(vn) = voices_idx.get(vid) {
+                            add_lower_voice(&mut bar, read_voice(*vn, lower), nstr);
                         }
                     }
                 }
@@ -848,7 +860,11 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
             }
             tracks[ti].bars.push(bar);
         }
+        crate::gpkeep::read_master_bar(*m, xml, &mut mb);
         master.push(mb);
+    }
+    for (track, info) in tracks.iter_mut().zip(&mut infos) {
+        crate::gpkeep::place_changes(&mut track.bars, std::mem::take(&mut info.changes));
     }
     if let Some(&(_, t)) = tempos.iter().find(|(b, _)| *b == 0) {
         song.tempo = t;
@@ -866,6 +882,30 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
     Ok(song)
 }
 
+/// Adds a voice of a grand staff's lower staff to the bar, which holds both staves' notes. It
+/// joins the voice that has the same rhythm; one with a rhythm of its own takes a voice that is
+/// still free. (A bar with more rhythms than there are voices loses the extra ones.)
+fn add_lower_voice(bar: &mut Bar, beats: Vec<Beat>, most_notes: usize) {
+    if beats.iter().all(|b| b.is_rest()) {
+        return;
+    }
+    bar.pad_voices();
+    let same = |other: &[Beat]| other.len() == beats.len() && other.iter().zip(&beats).all(|(a, b)| a.ticks() == b.ticks());
+    if let Some(v) = (0..VOICES).find(|&v| same(bar.voice(v))) {
+        for (low, up) in beats.into_iter().zip(bar.voice_mut(v).iter_mut()) {
+            for mut n in low.notes {
+                if up.notes.len() < most_notes {
+                    n.string = up.notes.len() as u8;
+                    up.notes.push(n);
+                }
+            }
+        }
+    } else if let Some(slot) = bar.voices.iter().position(|v| v.iter().all(|b| b.is_rest())) {
+        bar.voices[slot] = beats;
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn read_beat(
     bt: Node,
     rhythms: &HashMap<String, Node>,
@@ -873,6 +913,8 @@ fn read_beat(
     nstr: usize,
     chords: &HashMap<String, String>,
     virt: bool,
+    kit: &[Option<u8>],
+    strings: &[u8],
 ) -> Beat {
     let mut beat = Beat::rest(Dur::Quarter);
     if let Some(r) = child(bt, "Rhythm")
@@ -1010,10 +1052,17 @@ fn read_beat(
         let p = props(*nn);
         let mut n = if virt {
             // Instruments without strings: the note's pitch, on the next free virtual string.
-            let pitch = p
-                .get("Midi")
-                .map(|x| text(child(*x, "Number")))
-                .and_then(|x| x.parse::<i32>().ok())
+            let articulation = text(child(*nn, "InstrumentArticulation")).parse::<usize>().ok();
+            let pitch = articulation
+                .and_then(|i| kit.get(i).copied().flatten())
+                .map(i32::from)
+                .or_else(|| p.get("Midi").map(|x| text(child(*x, "Number"))).and_then(|x| x.parse::<i32>().ok()))
+                .or_else(|| {
+                    // On a tuned staff: the string's pitch and the fret.
+                    let s = text(child(*p.get("String")?, "String")).parse::<usize>().ok()?;
+                    let f = text(child(*p.get("Fret")?, "Fret")).parse::<i32>().ok()?;
+                    Some(*strings.get(s)? as i32 + f)
+                })
                 .or_else(|| {
                     let cp = p.get("ConcertPitch").or_else(|| p.get("TransposedPitch"))?;
                     let pt = child(*cp, "Pitch")?;
@@ -1074,6 +1123,17 @@ fn read_beat(
                 "##" | "x" => 4,
                 _ => 0,
             };
+        }
+        // Audio Note Settings, written only where changed.
+        let number = |tag: &str| text(child(*nn, tag)).parse::<f64>().ok();
+        if let Some(length) = number("Duration") {
+            n.playback.percent = (length * 100.0).round().clamp(1.0, 10000.0) as u16;
+        }
+        if let Some(ticks) = number("Offset") {
+            n.playback.offset = ticks.round() as i16;
+        }
+        if let Some(db) = number("RelativeVelocity") {
+            n.playback.db = db.round().clamp(-100.0, 100.0) as i8;
         }
         n.fx.lh_finger = crate::gpifwrite::finger_from_letter(&text(child(*nn, "LeftFingering")));
         n.fx.rh_finger = crate::gpifwrite::finger_from_letter(&text(child(*nn, "RightFingering")));

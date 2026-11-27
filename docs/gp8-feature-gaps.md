@@ -28,7 +28,11 @@ exist under another name. Check before starting work on one, and tick items off 
       diagrams (off strips them from beat and all-track copies; scale diagrams don't exist
       yet). Bars playback never reaches are also shown in red (added 2026-11-22, uses `Song::play_order`).
       Tried by hand in the running app (confirmed 2026-11-23). Language option removed 2026-11-22 (no plans for other languages). Greyed out for now: MIDI output and input.
-- [ ] **Audio Note Settings** (Shift+F): playback settings for individual notes.
+- [x] **Audio Note Settings** (Shift+F, Note menu): added 2026-11-27 (`src/app/audionotes.rs`):
+      duration, offset, relative velocity and Reset, for the note or selection, with the changed
+      notes ringed in the score; stored as Guitar Pro 8 does (a file it saved is a fixture) and
+      used by playback and MIDI export. Its control ranges for offset and velocity aren't
+      published (ours: ±480 ticks, ±30 dB).
 - [ ] **Design mode** (Ctrl+Alt+D): palette mode for adjusting how the score is laid out.
 - [x] **Action list** (Ctrl+Alt+E) and **Expression text** (Ctrl+Shift+E): added 2026-11-23, as
       in the Guitar Pro 8 guide both are modes of the command palette (Tools menu, or "@" and
@@ -39,7 +43,16 @@ exist under another name. Check before starting work on one, and tick items off 
       failing those, text above the beat; chord and key both show for "G maj". The guide gives no
       preset list and its Windows shortcuts aren't stated (we use Ctrl+Alt+E and Ctrl+Shift+E by
       analogy with the Mac ones). Not tried by hand in the running app. Not done: clefs.
-- [ ] **Drum view** instrument view (fretboard and keyboard views already exist).
+- [x] **Drum view** (View > Panels > Show Drumkit View, the drum toolbar button, or Ctrl+F6 on a
+      drum track): added 2026-11-27 from the owner's picture of Guitar Pro 8 and its online guide
+      (`src/app/drumview.rs`, the kit table in `src/drums.rs`): the staff with 24 sounds, the
+      list of all sounds, previous/next beat, number keys 1-9 for the sounds on a line, and the
+      gear settings. The score uses the same staff positions and noteheads. Saving writes Guitar
+      Pro's own kit definition (`src/gpkit.rs`, read from a Guitar Pro 7 file). Checked with
+      Guitar Pro 8 (2026-11-27): it opens, plays and re-saves a drum track of ours unchanged but
+      for six bongo names. Not done:
+      hand percussion far off the staff (shown mid-staff), the bow and golpe signs, and the
+      stick/brush stroke types in the guide.
 - [~] **MIDI capture**: note entry from a MIDI keyboard, beat by beat; choice of MIDI input and
       output devices. Started 2026-11-22, plan in `midi-design.md`: output devices, MIDI
       playback, bends and chords on playback work (tried by hand with Morning Walk.gp); slides

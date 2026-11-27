@@ -506,7 +506,8 @@ Right brings the selected track ({name}) forward by                          tur
                             Pos2::new(r.left() + b as f32 * CELL + 1.0, y + 1.0),
                             Vec2::new(CELL - 2.0, ROW_H - 2.0),
                         );
-                        let filled = !t.bars[b].is_empty();
+                        // A bar repeating the one before has music too.
+                        let filled = !t.bars[b].is_empty() || t.bars[b].simile > 0;
                         p.rect_filled(
                             cr,
                             0.0,
@@ -640,11 +641,12 @@ Right brings the selected track ({name}) forward by                          tur
     pub(super) fn fretboard_panel(&mut self, ui: &mut Ui, sounding: &[(usize, u8, u8)]) {
         let tr = self.song.tracks[self.track].clone();
         if !tr.has_strings() {
+            let view = if self.on_drum_track() { "Drumkit" } else { "Keyboard" };
             ui.add_space(30.0);
             ui.vertical_centered(|ui| {
                 ui.label(
                     RichText::new(format!(
-                        "{} has no strings. Use the Keyboard view ({}) to enter notes.",
+                        "{} has no strings. Use the {view} view ({}) to enter notes.",
                         tr.name,
                         super::shortcuts::sc(super::shortcuts::Act::KeyboardView)
                     ))
@@ -804,6 +806,7 @@ Right brings the selected track ({name}) forward by                          tur
                     show_cursor: !self.playing,
                     voice: self.voice,
                     cursor_std: self.std_cursor,
+                    ring_playback: self.audio_notes.is_some(),
                     printing: false,
                     transparent: false,
                     play_cursor: self.prefs.play_cursor,

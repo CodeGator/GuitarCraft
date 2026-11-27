@@ -404,6 +404,7 @@ impl App {
             }),
             ForceBreak => self.bar_edit(|mb| mb.line_break = !mb.line_break),
             Directions => self.dir_open = true,
+            AudioNoteSettings => self.open_audio_notes(),
             Section => self.edit_section(),
             Automations => self.open_automations(self.bar),
             // ----- Voices -----
@@ -446,6 +447,8 @@ impl App {
             ShowGlobalView => self.toggle_panel(super::dock::Pane::Tracks),
             SongInspector => self.toggle_inspector(InspectorTab::Song),
             TrackInspector => self.toggle_inspector(InspectorTab::Track),
+            // As in Guitar Pro 8, the key opens the view that suits the track.
+            KeyboardView if self.on_drum_track() => self.toggle_panel(super::dock::Pane::Drums),
             KeyboardView => self.toggle_panel(super::dock::Pane::Keyboard),
             Multitrack => self.single_track = !self.single_track,
             Stylesheet => self.open_stylesheet(),

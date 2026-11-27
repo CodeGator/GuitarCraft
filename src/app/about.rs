@@ -11,7 +11,6 @@ use super::App;
 use egui::{Align, Align2, Color32, FontFamily, FontId, Layout, RichText, Sense, Vec2};
 use serde::Deserialize;
 
-const BLUE: Color32 = Color32::from_rgb(92, 150, 240);
 const TABS: [&str; 3] = ["APPLICATION", "LICENSE", "OPEN SOURCE"];
 /// GuitarCraft's own license (the GNU GPL, version 3).
 const GPL: &str = include_str!("../../LICENSE");
@@ -128,10 +127,10 @@ fn application_tab(ui: &mut egui::Ui, st: &mut AboutState) {
         ui.add_space(14.0);
         ui.add(egui::Image::new((icon.id(), Vec2::splat(84.0))));
         ui.add_space(6.0);
-        // The name as on the start screen: "Guitar" plain, "Craft" bold blue.
+        // The name as on the start screen: "Guitar" plain, "Craft" bold in the logo's orange.
         ui.horizontal(|ui| {
             let g1 = ui.painter().layout_no_wrap("Guitar".into(), FontId::new(40.0, FontFamily::Proportional), Color32::from_gray(235));
-            let g2 = ui.painter().layout_no_wrap("Craft".into(), FontId::new(40.0, FontFamily::Name("bold".into())), BLUE);
+            let g2 = ui.painter().layout_no_wrap("Craft".into(), FontId::new(40.0, FontFamily::Name("bold".into())), super::panels::LOGO_ORANGE);
             let w = g1.size().x + g2.size().x;
             ui.add_space(((ui.available_width() - w) * 0.5).max(0.0));
             let (r, _) = ui.allocate_exact_size(Vec2::new(w, g1.size().y), Sense::hover());

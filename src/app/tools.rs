@@ -174,6 +174,14 @@ pub fn commands() -> Vec<(&'static str, Cmd)> {
         ("keyboard: Show or hide the keyboard", |a| {
             a.toggle_panel(super::dock::Pane::Keyboard)
         }),
+        ("drumkit: Show or hide the drumkit view", |a| {
+            let pane = super::dock::Pane::Drums;
+            if a.has_drum_track() || a.panel_shown(pane) {
+                a.toggle_panel(pane);
+            } else {
+                a.refuse("Add a drum track to use the drumkit view.");
+            }
+        }),
         ("loop: Loop playback", |a| a.looping = !a.looping),
         ("metronome: Metronome", |a| a.metronome = !a.metronome),
         ("count-in: Count-in", |a| a.count_in = !a.count_in),
@@ -206,46 +214,54 @@ pub(super) fn guide_sections() -> Vec<(String, String)> {
     GUIDE.iter().map(|(t, b)| (t.to_string(), super::shortcuts::fill_keys(b))).collect()
 }
 
-const GUIDE: [(&str, &str); 15] = [
+const GUIDE: [(&str, &str); 27] = [
     (
         "The main screen",
-        "The toolbar is at the top: start screen, the three panel buttons (palette, tracks, settings), zoom, undo/redo, the transport buttons and the display that shows the track, bar, time signature, time and tempo. The editing palette is on the left, the score in the middle, the Song/Track/Bar/Beat settings on the right and the tracks list with the mixer and bar overview at the bottom.",
+        "The toolbar is at the top: the start screen button, the three panel buttons (palette, tracks, settings), zoom and page layout, undo and redo, the transport buttons, a display with the track, bar, time signature, time and tempo, then loop, tuner, metronome, count-in and playback speed, and on the right the notation choice and the buttons for the drumkit, fretboard and keyboard views. Under it is a tab for each open file. The editing palette is on the left, the score in the middle, the SONG and TRACK settings on the right, and the tracks list with the mixer and bar overview at the bottom. The start screen offers new and recent files, templates and examples; while it shows, only the File, Tools and Help menus work.",
     ),
     (
         "Moving around",
-        "Click anywhere in the score to place the cursor, or use the arrow keys: left and right move between beats, up and down between strings. Next bar ({NextBar}) and previous bar ({PrevBar}) jump a bar, next track ({NextTrack}) and previous track ({PrevTrack}) change track, and Tab moves to the next track's staff. Click a square in the bar overview, a bar number or a section name to jump there. Drag across the score to select beats.",
+        "Click anywhere in the score to place the cursor, or use the arrow keys: left and right move between beats, up and down between strings. Next bar ({NextBar}), previous bar ({PrevBar}), first bar ({FirstBar}) and last bar ({LastBar}) jump through the song, Go to a bar ({GoTo}) asks for a bar number, and next track ({NextTrack}) and previous track ({PrevTrack}) change track. Tab goes between standard notation and tablature and then on to the next track. {StepForward} and {StepBack} move a beat and play it. Click a square in the bar overview, a bar number or a section name to jump there. Drag across the score, or hold Shift with the arrow keys, to select beats; Select All is {SelectAll}.",
     ),
     (
         "Writing notes",
-        "Put the cursor on a string and type the fret number (type two digits quickly for frets above 9). Shorter ({Shorter}) and longer ({Longer}) change the note's length; Rest ({Rest}) makes a rest and Dotted ({Dotted}) dots it. Moving right past the last beat adds a new beat with the same length, and a new bar when the bar is full. The fretboard and keyboard views (View menu) also add notes when clicked.",
+        "Put the cursor on a string in the tablature and type the fret number (type two digits quickly for frets above 9). In standard notation, 1 to 9 picks the string and 0 the best one. Shorter ({Shorter}) and longer ({Longer}) change the note's length; Rest ({Rest}) makes a rest, Dotted ({Dotted}) dots it, Triplet ({Triplet}) makes a triplet and Tie ({TieNote}) ties it. Insert a beat ({InsertBeat}) and delete the beats ({DeleteBeats}) are also in the Note menu, and {DeleteNote} deletes the note. Undo ({Undo}) and Redo ({Redo}) take changes back and forth. Moving right past the last beat adds a new beat with the same length, and a new bar when the bar is full. The fretboard, keyboard and drumkit views (View \u{25B8} Panels) also add notes when clicked.",
+    ),
+    (
+        "Drums",
+        "View \u{25B8} Panels \u{25B8} Show Drumkit View, or the drum button in the toolbar, is there when the song has a drum track; with the cursor on that track {KeyboardView} opens it too. The staff at the top shows the kit and the list below it every percussion sound by its MIDI number. Click a sound to put it on the cursor's beat, click it again to take it off, and use < and > to move to the previous or next beat. In the score, move the cursor up and down to a line and press 1 to 9 to choose among the sounds written there; the view shows those numbers in boxes. The gear button chooses what the view shows, which names are written, which notes are marked and the text size.",
     ),
     (
         "Effects and symbols",
-        "Use the palette, the Note and Effects menus or the shortcuts: hammer-on ({Hammer}), slide ({Slide}), bend ({Bend}), vibrato ({Vibrato}), palm mute ({PalmMuteNote}), let ring ({LetRing}), dead note ({DeadNote}), ghost note ({Ghost}), harmonic ({NaturalHarmonic}), trill ({Trill}), fermata ({Fermata}). Bars that are too short or too long are shaded red; Tools \u{25B8} Check Bar Duration ({CheckBars}) finds them.",
+        "Use the palette, the Note and Effects menus or the shortcuts: hammer-on ({Hammer}), slide ({Slide}), bend ({Bend}), vibrato ({Vibrato}), palm mute ({PalmMuteNote}), let ring ({LetRing}), dead note ({DeadNote}), ghost note ({Ghost}), harmonic ({NaturalHarmonic}), trill ({Trill}), fermata ({Fermata}) and text above the beat ({Text}). The Note menu also has durations, dynamics, accidentals, semitone and octave moves, pickstrokes and octave signs; grace notes, tremolo, tapping, slap, pop, brush strokes and fade in are in the Effects menu.",
     ),
     (
-        "Bars, repeats and directions",
-        "Bar \u{25B8} Insert/Delete bar changes every track at once. Repeat open ({RepeatOpen}) and repeat close ({RepeatClose}) mark repeats; alternate endings choose which pass plays a bar. Bar \u{25B8} Directions ({Directions}) adds Segno, Coda and Fine signs and D.C./D.S. jumps; playback follows them. Force Break Line ({ForceBreak}) starts a new line after the bar.",
-    ),
-    (
-        "Sections",
-        "Section \u{25B8} Edit ({Section}) names the bar's section; names written in [brackets] get a frame. Next section ({NextSection}) and previous section ({PrevSection}) move between sections, and double-clicking a section under the bar overview selects it.",
-    ),
-    (
-        "Tracks and the mixer",
-        "Add tracks from the Track menu ({AddTrack}) or the + in the tracks list. Each row has show/hide (eye), mute, solo, volume and pan. Right-click a track for more. The Track tab sets the name, tuning, capo, sound and interpretation; changing the tuning can keep the notes' pitch.",
+        "Audio note settings",
+        "Note \u{25B8} Audio Note Settings ({AudioNoteSettings}) changes how a note sounds without changing what is written. Duration is how long it lasts, as a percentage of its written length; Offset makes it start early (below 0) or late, in ticks, 480 to a quarter note; Relative Velocity makes it louder or softer in decibels. The window stays open while you move the cursor, and while it is open the notes with settings of their own have a blue circle. With several notes selected it shows the first one's values and a change applies to all of them. Click the arrows, or click in a box, type a number and press Return; Esc leaves the box as it was. Reset puts the notes back to normal. Playback and MIDI export use the settings and .gp files keep them; Guitar Pro 5 files can't. Notes of an arpeggio have no settings.",
     ),
     (
         "Lyrics and chords",
-        "Track \u{25B8} Show Lyrics Editor: type the words, separate syllables with spaces or hyphens, join words with +, and put comments in [brackets]. Note \u{25B8} Chord ({Chord}) names a chord, can detect it from the notes, and can show a diagram above the staff.",
+        "Track \u{25B8} Show Lyrics Editor: choose the bar the lyrics start at and type the words. Each syllable goes on the next beat with notes; separate syllables with a space or a hyphen, leave two spaces to skip a beat, join words with + to keep them together, and put [brackets] round text that isn't to be shown. Note \u{25B8} Chord ({Chord}) opens the chord window: build a chord by name, type and extension or type its name, pick a fingering, and show its diagram above the staff. The palette's Chords button lists the chords the track uses: click one to put it on the beat.",
     ),
     (
-        "Playing back",
-        "Play ({PlayPause}) plays from the cursor and pauses, Play from the Beginning ({PlayFromStart}) starts at the top, and Stop ({Stop}) stops. Click the score while playing to jump there. Loop ({Loop}) repeats the selection; the speed button sets a slower or faster speed, and the speed trainer raises it on each loop. The metronome and count-in are in the toolbar and the Sound menu.",
+        "Bars, repeats and directions",
+        "Insert a bar ({InsertBar}) and delete a bar ({DeleteBar}), in the Bar menu, change every track at once. The Bar menu also sets the key signature ({KeySig}), time signature ({TimeSig}), triplet feel and double barline. Repeat open ({RepeatOpen}) and repeat close ({RepeatClose}) mark repeats; alternate endings choose which pass plays a bar. Repeat the previous bar ({RepeatBar}) writes the repeat sign in one track. Multirest ({Multirest}) shows a run of empty bars as one when the track is shown alone. Bar \u{25B8} Directions adds Segno, Coda and Fine signs and D.C. and D.S. jumps; playback follows them. Force Break Line ({ForceBreak}) starts a new line after the bar. Bars that are too short or too long are shaded red; Tools \u{25B8} Check Bar Duration ({CheckBars}) finds them, and Tools \u{25B8} Complete Bars with Rests fills the short ones in the current track.",
     ),
     (
-        "MIDI",
-        "Preferences (File \u{25B8} Preferences) > Audio & MIDI chooses a MIDI output and input. With an output, playback and clicked notes also go to that device, using each track's instrument, volume, pan and bends; the built-in sound is silent unless you turn on both. With an input, notes you play on a MIDI keyboard are entered at the cursor and the cursor moves on; notes played together become one chord. Playback on a MIDI output doesn't follow volume or pan changes made while it plays.",
+        "Sections",
+        "Section \u{25B8} Edit ({Section}) names the bar's section; names written in [brackets] get a frame. Next section ({NextSection}) and previous section ({PrevSection}) move between sections. Click a section under the bar overview to jump to it, and double-click it to select it.",
+    ),
+    (
+        "Tempo and automations",
+        "Open the automations window with {Automations}, Bar \u{25B8} Tempo, Edit \u{25B8} Automations or by clicking a tempo. It is a graph of the tempo along the song: click to add a point, drag a point to change its tempo or bar, and press Delete to remove the selected one. Each point either holds until the next one or changes gradually towards it. Tempo is the only automation that can be edited.",
+    ),
+    (
+        "Tracks and the mixer",
+        "Add a track with {AddTrack}, Track \u{25B8} Add or the + in the tracks list: stringed instruments, keyboards, vocals, orchestra instruments or drums. The Track menu duplicates, moves and deletes tracks, and right-clicking a track does too. Each row has show or hide (the eye, in multitrack view), mute, solo, volume, pan and an equalizer (EQ), with a master row below. The TRACK settings set the colour, icon, names, notation (standard, tablature, numbered with the 2 button, one staff or a grand staff), tuning and capo, sound and interpretation (playing style, palm mute, accentuation, auto let ring and auto brush).",
+    ),
+    (
+        "Tuning and the tuner",
+        "The gear button beside a track's tuning opens the Tuning window: pick a tuning from the library or set each string, and set a capo or partial capo and the tuning's label. Adjust the Fingering keeps every note's pitch and moves the frets; Keep the Fingering keeps the frets and changes the pitch. Tools \u{25B8} Tuner, or the tuning fork in the toolbar, tunes your instrument through a microphone or line input: all strings of the track from one strum, or one string at a time. It listens only while its window is open.",
     ),
     (
         "Voices",
@@ -253,19 +269,59 @@ const GUIDE: [(&str, &str); 15] = [
     ),
     (
         "Copy and paste",
-        "Copy ({Copy}), Cut ({Cut}) and Paste ({Paste}) work on beats of the current track; pasting goes in at the cursor. All-Track Copy ({AllTrackCopy}) and All-Track Cut ({AllTrackCut}) take whole bars of every track, and the next paste inserts those bars.",
+        "Copy ({Copy}), Cut ({Cut}) and Paste ({Paste}) work on beats of the current track; pasting goes in at the cursor. All-Track Copy ({AllTrackCopy}) and All-Track Cut ({AllTrackCut}) take whole bars of every track, and the next paste inserts those bars. Special Paste ({SpecialPaste}) pastes several times over and lets you choose which extras come along: chord diagrams, texts, timers, and after an all-track copy, sections and tempo changes. Right-click the score for these and the Bar, Note and Effects menus.",
     ),
     (
-        "Files",
-        "Open songs saved by GuitarCraft and Guitar Pro files (.gp, .gpx, .gp5, .gp4, .gp3), MIDI files and text tabs. Export MIDI, a text tab of the current track, or an audio file (WAV) played with the built-in sound. File \u{25B8} Save As Template keeps the tracks for new songs.",
+        "Playing back",
+        "Play ({PlayPause}) plays from the cursor and pauses, Play from the Beginning ({PlayFromStart}) starts at the top, and Stop ({Stop}) stops. Click the score while playing to jump there. Loop ({Loop}) repeats the selection or the whole song. The percentage button in the toolbar sets a slower or faster speed and turns on the speed trainer, which raises the speed on each loop. The metronome and a one-bar count-in are in the toolbar and the Sound menu, which also has the overall volume and Play While Editing. View \u{25B8} Follow Playback scrolls the score with the music.",
+    ),
+    (
+        "MIDI",
+        "Preferences (File \u{25B8} Preferences) \u{25B8} Audio & MIDI chooses a MIDI output and input. With an output, playback and clicked notes also go to that device, using each track's instrument, volume, pan and bends; the built-in sound is silent unless you turn on both. With an input, notes you play on a MIDI keyboard are entered at the cursor and the cursor moves on; notes played together become one chord. Playback on a MIDI output doesn't follow volume or pan changes made while it plays.",
+    ),
+    (
+        "Files, tabs and templates",
+        "New song is {New}. Open ({Open}) takes Guitar Pro files (.gp, .gpx, .gp5, .gp4, .gp3) and chord charts; File \u{25B8} Open Recent lists the latest. Save ({Save}) and Save As ({SaveAs}) write a .gp file, which Guitar Pro 8 opens, or a .gp5 file; the older .gp5 format can't keep everything, and GuitarCraft says what was left out. Saving a .gp file keeps most of the Guitar Pro settings that GuitarCraft doesn't use itself. Each open file has a tab: {NextTab} goes to the next one and {Close} closes it. File \u{25B8} New from Template starts with ready-made tracks, and File \u{25B8} Save As Template keeps your song's tracks, tunings and styles, with empty bars, for new songs.",
+    ),
+    (
+        "Import and export",
+        "File \u{25B8} Import opens a MIDI file or a MusicXML file (.musicxml, .xml or .mxl) as a song, and ASCII (text tab) adds a new track to the song, or opens as a song if none is showing. TablEdit and Power Tab files can't be imported. File \u{25B8} Export writes GPX (Guitar Pro 6), GP5, MIDI, ASCII tab of the selected track, MusicXML, PDF, SVG, PNG or Audio (a WAV recording). For PDF, SVG and PNG choose the file name and folder, and all pages, some pages or the selected beats; PDF and PNG also have a resolution, and PNG a transparent background. File \u{25B8} Batch Converter converts many files, or a whole folder, to .gp, GPX, GP5, MIDI, MusicXML, ASCII tab or PDF, saved beside each file or in one folder.",
+    ),
+    (
+        "Printing and the stylesheet",
+        "Print ({Print}) shows a preview: fit the page or its width, zoom and turn the pages, then press Print to choose the printer. File \u{25B8} Stylesheet ({Stylesheet}) sets how the score looks: page format, systems and staves, header and footer, texts and styles, and notation, with ready-made Rock, Classic and Jazz styles, and you can save and load your own. Changes reach the song when you press Apply or OK.",
     ),
     (
         "Views",
-        "View \u{25B8} Score \u{25B8} Page - Vertical, Page - Horizontal, Page - Grid, Screen - Vertical and Screen - Horizontal change how the music is laid out; the layout button next to Zoom in the toolbar does the same. Score \u{25B8} Split Score View, in the two vertical layouts, shows the score in two views one above the other, each scrolling on its own, with a bar between them to drag; the view you last clicked follows the cursor and playback. Ctrl + mouse wheel, Zoom In ({ZoomIn}) and Zoom Out ({ZoomOut}) zoom. View \u{25B8} Panels shows or hides the palette ({ShowPalette}), tracks list ({ShowGlobalView}), settings, fretboard, keyboard ({KeyboardView}) and AI Assistant, and pops a panel out into a window of its own. Full screen ({FullScreen}) and Multitrack ({Multitrack}), which switches between all tracks and one track, are in the View menu too.",
+        "View \u{25B8} Notation shows standard notation with tablature, tablature only or standard only. View \u{25B8} Score \u{25B8} Page - Vertical, Page - Horizontal, Page - Grid, Screen - Vertical and Screen - Horizontal change how the music is laid out; the layout button next to Zoom in the toolbar does the same. View \u{25B8} Score \u{25B8} Split Score View, in the two vertical layouts, shows the score in two views one above the other, each scrolling on its own, with a bar between them to drag; the view you last clicked follows the cursor and playback. Ctrl + mouse wheel, Zoom In ({ZoomIn}) and Zoom Out ({ZoomOut}) zoom. Multitrack ({Multitrack}) switches between all tracks and one track, and Full Screen is {FullScreen}.",
+    ),
+    (
+        "Panels",
+        "View \u{25B8} Panels shows or hides the editing palette ({ShowPalette}), the inspector with the song ({SongInspector}) and track ({TrackInspector}) settings, the tracks list ({ShowGlobalView}), the fretboard, keyboard or drumkit ({KeyboardView}) and the AI Assistant. Drag a panel by its tab to another edge of the window, stack it with others or float it. Pop Out Panel gives a panel a window of its own, Dock All Panels brings them back, and Reset Panel Layout restores the original arrangement. The arrangement is remembered.",
+    ),
+    (
+        "Command palette",
+        "Command palette ({CommandPalette}) searches for a command and runs it. Type @, or press {ActionList}, for the action list of menu commands with their shortcuts. Type >, or press {ExpressionText}, for expression text: type a dynamic (ff), a chord (Am7), a key (E min), an octave sign (8va), a direction (Coda) or any other text, and it goes on the score at the cursor.",
+    ),
+    (
+        "Chords and scales",
+        "Tools \u{25B8} Chords & Scales builds and identifies chords, scales and arpeggios on a fretboard, in a choice of tunings or that of the current track. On the Scales, Arpeggios and Chords tabs choose a root and a type: the notes show as names or intervals, over the whole neck or one position; chords list playable fingerings with finger numbers. Matching Chords lists the chords built on a scale, Matching Scales the scales that fit a chord, and Scales in the bar the scales holding every note you have selected. Put on beat names the beat under the cursor and shows the chord's diagram (an empty beat gets the notes too) on a six-string track. On main fretboard shows the notes under the score. With Identify, click one note on each string you play to name the chord.",
+    ),
+    (
+        "Chord charts",
+        "A chord chart is lyrics with chords above them. Start one with {NewChart}. The sections and the map (the order they are played) are on the left, the page in the middle, and the CHART and SECTION settings on the right. In a section's text put a chord in [brackets] just before its syllable, as in [E]Out along the [B]river; a line starting with | is a line of bars, as in | E /// | B //// |. Add, duplicate and delete sections in the Section menu; in the map move entries, set how many times each plays or take them out. Edit \u{25B8} Transpose ({ChartTranspose}) or the flat and sharp buttons move the whole chart, and a section's own Transpose button moves just that section. Set the key, time, tempo, columns and which chords get diagrams in the CHART tab and the View menu. File \u{25B8} Stylesheet ({Stylesheet}) sets fonts, colours and columns. Charts are saved as .gcx files, and print and export to PDF and PNG.",
+    ),
+    (
+        "Suggest chords for a chord chart",
+        "In a chord chart, select a section that has words and press Suggest Chords in the Section panel, or choose Section \u{25B8} Suggest Chords. Type a style if you like, such as simple folk or jazzy, and press Suggest. The section as it is shows beside the suggestion: Use These puts the new chords on your words in place of the old ones (one Undo takes them back), Try Again asks for another, and Cancel changes nothing. Your words and lines of bars stay as they are. It needs Claude Code or Claude switched on in Preferences \u{25B8} AI; only that section's words, the key and your style are sent, over the internet to Anthropic.",
+    ),
+    (
+        "Preferences and keyboard shortcuts",
+        "Preferences ({Prefs}) take effect straight away. General: the default template, forced zoom, layout, stylesheet and notation, reopening your last files and checking for new versions. Interface: how the playing cursor and bar look. Notation Errors: which mistakes are shown in red. Misc: your details for new songs. Audio & MIDI: the sound device, buffer and MIDI devices. AI: the providers. Shortcuts: change the keys. Help \u{25B8} Keyboard Shortcuts lists them all, and Help \u{25B8} Check for Updates looks for a newer version.",
     ),
     (
         "The AI assistant",
-        "View \u{25B8} Panels \u{25B8} Show AI Assistant opens a panel where you can ask a question about your music or about GuitarCraft. Turn on Ollama (a model on your computer) or Claude (an online service, needs an API key) in Preferences \u{25B8} AI. Nothing is sent until you press Return. There is nothing to tick: with each question it sends an outline of your song (the track and section names), a summary of the track (its key, every note used and the scales that fit best) and the bars you have selected, or the one the cursor is on, as tablature. Questions about using GuitarCraft are also answered from this guide. Ask it to change the score, for example to copy a section to another place or delete bars, and it shows a card with the steps it would take; nothing changes until you press Apply, and one Undo takes it back. New chat clears the conversation.",
+        "View \u{25B8} Panels \u{25B8} Show AI Assistant opens a panel where you can ask a question about your music or about GuitarCraft. Turn on one provider in Preferences \u{25B8} AI: Ollama (a model on your computer), Claude Code (Claude through the Claude Code program you have installed and signed in to, with no API key; questions count against your plan) or Claude with an API key. If more than one is on, the first in that order answers. Claude Code and Claude send what you ask over the internet to Anthropic, and Claude Code adds your account's email address, your operating system, the date and the top folder of your system drive. Nothing is sent until you press Return. There is nothing to tick: with each question it sends an outline of your song (the track and section names), a summary of the track (its key, every note used and the scales that fit best) and the bars you have selected, or the one the cursor is on, as tablature. Questions about using GuitarCraft are also answered from this guide. It answers questions only: it doesn't change your score. To change something, use the menus and tools (ask the assistant how). New chat clears the conversation.",
     ),
 ];
 
@@ -290,6 +346,16 @@ impl App {
         else {
             return;
         };
+        self.import_ascii_file(p);
+    }
+
+    /// Adds a text tab to the song as a new track. With no song showing (the start screen, or a
+    /// chord chart) it opens as a song of its own, as the other imports do.
+    pub(super) fn import_ascii_file(&mut self, p: std::path::PathBuf) {
+        if self.show_home || self.chart.is_some() {
+            self.open_path(p);
+            return;
+        }
         let text = match std::fs::read(&p) {
             Ok(d) => String::from_utf8_lossy(&d).to_string(),
             Err(e) => {
@@ -344,20 +410,18 @@ impl App {
 
     pub(super) fn tool_windows(&mut self, ctx: &egui::Context) {
         self.directions_window(ctx);
+        self.audio_notes_window(ctx);
         self.add_track_window(ctx);
         self.tuning_window(ctx);
-        self.tuner_window(ctx);
         self.chord_window(ctx);
         self.chord_library_window(ctx);
         self.export_window(ctx);
-        self.batch_window(ctx);
         self.print_preview_window(ctx);
         self.special_paste_window(ctx);
         self.chord_scales_window(ctx);
         self.lyrics_window(ctx);
         self.command_palette(ctx);
         self.trainer_window(ctx);
-        self.guide_window(ctx);
         self.stylesheet_window(ctx);
         self.prefs_window(ctx);
     }
@@ -569,17 +633,21 @@ impl App {
         self.trainer_open = open;
     }
 
-    fn guide_window(&mut self, ctx: &egui::Context) {
+    pub(super) fn guide_window(&mut self, ctx: &egui::Context) {
         if !self.guide_open {
             return;
         }
         let mut open = true;
+        // Wide and tall, in the middle: it is for reading. It can be resized and moved.
+        let screen = ctx.content_rect();
+        let size = Vec2::new((screen.width() - 80.0).clamp(320.0, 900.0), (screen.height() - 140.0).max(240.0));
         egui::Window::new("GuitarCraft user guide")
             .open(&mut open)
-            .default_width(560.0)
-            .default_height(520.0)
+            .default_size(size)
+            .pivot(Align2::CENTER_TOP)
+            .default_pos(screen.center_top() + Vec2::new(0.0, 40.0))
             .show(ctx, |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| {
+                egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                     for (title, body) in GUIDE {
                         ui.label(RichText::new(title).strong().size(15.0));
                         ui.label(super::shortcuts::fill_keys(body));

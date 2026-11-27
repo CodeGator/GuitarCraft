@@ -300,7 +300,8 @@ fn part_xml(x: &mut String, song: &Song, k: usize, tr: &Track) {
             }
         }
         let flats = mb.key < 0;
-        let bar = &tr.bars[bi];
+        // A repeat sign for a previous bar is written out as the notes it repeats.
+        let bar = tr.played_bar(bi);
         let mut written = 0u32;
         for v in 0..VOICES {
             if v > 0 && !bar.voice_used(v) {

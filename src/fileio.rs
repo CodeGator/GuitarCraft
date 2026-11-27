@@ -80,6 +80,12 @@ pub fn gp5_losses(song: &Song) -> Vec<&'static str> {
     }) {
         out.push("chords of more than 7 notes");
     }
+    if song.tracks.iter().any(|t| t.bars.iter().any(|b| b.simile != 0)) {
+        out.push("bar repeat signs (the notes are written out)");
+    }
+    if beats().any(|x| x.notes.iter().any(|n| n.playback != NotePlayback::default())) {
+        out.push("audio note settings");
+    }
     if beats().any(|x| x.double_dot) {
         out.push("double dots");
     }
@@ -261,7 +267,7 @@ pub fn export_midi(song: &Song) -> Vec<u8> {
             let mut seq: Vec<(u32, &Beat)> = vec![];
             let mut t = 0u32;
             for &bi in &order {
-                let bar = &tr.bars[bi];
+                let bar = tr.played_bar(bi);
                 if v == 0 || bar.voice_used(v) {
                     let mut tick = t;
                     for beat in bar.voice(v) {
@@ -281,10 +287,14 @@ pub fn export_midi(song: &Song) -> Vec<u8> {
                             _ => break,
                         }
                     }
-                    let p = tr.pitch(n);
-                    let vel = beat.dynamic.velocity().min(127);
+                    let p = tr.sound(n);
+                    // The note's own playback settings (not on an arpeggio's notes).
+                    let own = if beat.fx.arpeggio == 0 { n.playback } else { NotePlayback::default() };
+                    let vel = (beat.dynamic.velocity() as f32 * own.gain()).round().clamp(1.0, 127.0) as u8;
+                    let length = ((end - tick) as f64 * own.length()) as u32;
+                    let tick = tick.saturating_add_signed(own.offset_ticks());
                     ev.push((tick, vec![0x90 | ch, p, vel]));
-                    let off = (end - tick).saturating_sub(10).max(1);
+                    let off = length.saturating_sub(10).max(1);
                     ev.push((tick + off, vec![0x80 | ch, p, 0]));
                 }
             }
@@ -370,5 +380,26 @@ mod tests {
         let midi = std::fs::read(d.join("song.mid")).unwrap();
         assert!(midi.starts_with(b"MThd"));
         let _ = std::fs::remove_dir_all(&d);
+    }
+}
+
+#[cfg(test)]
+mod simile_tests {
+    use super::*;
+
+    #[test]
+    fn a_long_run_of_bar_repeats_plays_and_exports_the_notes() {
+        let mut song = Song::new_blank();
+        let mut drums = Track::of_instrument(Instrument::Drums, "Drums");
+        let first = Bar::new(vec![Beat { notes: vec![Note::new(0, 36)], ..Beat::rest(Dur::Whole) }]);
+        let mut again = Bar::new(vec![Beat::rest(Dur::Whole)]);
+        again.simile = 1;
+        drums.bars = std::iter::once(first).chain(std::iter::repeat_n(again, 39)).collect();
+        song.master = vec![MasterBar::default(); 40];
+        song.tracks = vec![drums];
+        let kicks = export_midi(&song).windows(2).filter(|w| w == &[0x99, 36]).count();
+        assert_eq!(kicks, 40, "MIDI");
+        let sound = crate::audio::build_schedule(&song, 8000.0, &crate::audio::ScheduleOptions { from_bar: 0, metronome: false, count_in: false, speed: 1.0, only_bars: None });
+        assert_eq!(sound.events.len(), 40, "playback");
     }
 }

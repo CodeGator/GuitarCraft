@@ -288,6 +288,45 @@ fn a_score_opened_after_a_chord_chart_is_fully_editable() {
 }
 
 #[test]
+fn suggested_chords_are_used_only_when_accepted_and_one_undo_takes_them_back() {
+    let mut r = Rig::new();
+    r.app.request(Pending::NewChart);
+    r.frames(3);
+    // With no Claude provider switched on there is nothing to open.
+    r.app.prefs.claude_code_on = false;
+    r.app.prefs.claude_on = false;
+    r.app.prefs.ollama_on = true;
+    let st = r.app.chart.as_mut().unwrap();
+    st.sel = 0;
+    st.doc.sections[0].kind = crate::chart::Kind::Verse;
+    st.doc.sections[0].text = "[G]Out along the river".into();
+    r.frames(2);
+    r.app.open_suggest_chords();
+    assert!(r.app.chart.as_ref().unwrap().suggest.is_none(), "Ollama isn't asked for chords");
+    r.app.prefs.claude_code_on = true;
+    r.app.open_suggest_chords();
+    let text = |r: &Rig| r.app.chart.as_ref().unwrap().doc.sections[0].text.clone();
+    let dlg = r.app.chart.as_mut().unwrap().suggest.as_mut().expect("the window opens");
+    dlg.reply = Some("[C]Out along the [D]river".into());
+    r.frames(3);
+    assert_eq!(text(&r), "[G]Out along the river", "showing a suggestion changes nothing");
+    let steps = r.app.chart.as_ref().unwrap().undo.len();
+    r.app.chart.as_mut().unwrap().suggest.as_mut().unwrap().accept = true;
+    r.frames(3);
+    assert_eq!(text(&r), "[C]Out along the [D]river");
+    assert!(r.app.chart.as_ref().unwrap().suggest.is_none(), "the window closes");
+    assert!(r.app.dirty);
+    assert_eq!(r.app.chart.as_ref().unwrap().undo.len(), steps + 1, "one undo step");
+    r.key(Key::Z, Modifiers::COMMAND);
+    assert_eq!(text(&r), "[G]Out along the river");
+    // Escape closes it without a change.
+    r.app.open_suggest_chords();
+    r.frames(2);
+    r.key(Key::Escape, Modifiers::NONE);
+    assert!(r.app.chart.as_ref().unwrap().suggest.is_none());
+}
+
+#[test]
 fn closing_the_add_track_window_with_cancel_leaves_the_other_tabs_editable() {
     let mut r = Rig::new();
     r.app.request(Pending::Demo);
@@ -759,4 +798,259 @@ fn pop_out_from_the_tab_menu() {
         }
     }
     assert!(r.app.popped.contains(&Pane::Palette), "popped: {:?}", r.app.popped);
+}
+
+/// The pitches on the cursor's beat, lowest first.
+fn beat_pitches(r: &Rig) -> Vec<u8> {
+    let mut p: Vec<u8> = r.app.cur_beat().notes.iter().map(|n| r.app.tr().pitch(n)).collect();
+    p.sort();
+    p
+}
+
+/// A band song with the cursor on an empty first beat of its drum track.
+fn on_the_drums() -> Rig {
+    let mut r = Rig::new();
+    r.app.show_home = false;
+    r.app.song = super::home::band_song();
+    r.app.track = 4;
+    r.app.bar = 0;
+    r.app.beat = 0;
+    r.app.song.tracks[4].bars[0].beats[0].notes.clear();
+    r.frames(3);
+    r
+}
+
+#[test]
+fn clicking_the_drumkit_view_adds_and_removes_a_sound() {
+    use super::dock::Pane;
+    let mut r = on_the_drums();
+    r.app.show_panel(Pane::Drums);
+    r.frames(3);
+    let node = r.app.dock.find_tab(&Pane::Drums).expect("open").node;
+    let pane = r.app.dock.main_surface()[node].rect().expect("drawn");
+    // The ninth column of the staff is the second kick (36), after the side strip and clef.
+    let (x, y) = (pane.left() + 56.0 + 70.0 + 8.5 * 28.0, pane.top() + 22.0 + 170.0);
+    r.click(x, y);
+    assert_eq!(beat_pitches(&r), vec![36]);
+    assert_eq!(r.app.status, "Kick (hit) (MIDI 36)");
+    // The first column, a snare, joins it.
+    r.click(pane.left() + 56.0 + 70.0 + 0.5 * 28.0, y);
+    assert_eq!(beat_pitches(&r), vec![36, 38]);
+    r.click(x, y);
+    assert_eq!(beat_pitches(&r), vec![38]);
+    r.app.do_undo();
+    assert_eq!(beat_pitches(&r), vec![36, 38]);
+}
+
+#[test]
+fn number_keys_choose_among_the_drum_sounds_of_a_line() {
+    let mut r = on_the_drums();
+    assert!(r.app.std_cursor.is_some(), "drums are edited in the notation");
+    // The top line: 1 ride edge, 2 ride middle, 3 ride bell, 4 cowbell.
+    r.app.std_cursor = Some(8);
+    type_digit(&mut r, Key::Num2, "2");
+    assert_eq!(beat_pitches(&r), vec![51]);
+    // Another key changes the way the same line is played.
+    type_digit(&mut r, Key::Num3, "3");
+    assert_eq!(beat_pitches(&r), vec![53]);
+    type_digit(&mut r, Key::Num9, "9");
+    assert_eq!(beat_pitches(&r), vec![53]);
+    assert_eq!(r.app.status, "Keys 1 to 4 choose the sounds on this line.");
+    // Another line adds a sound.
+    r.app.std_cursor = Some(5);
+    type_digit(&mut r, Key::Num3, "3");
+    assert_eq!(beat_pitches(&r), vec![53, 91]);
+}
+
+#[test]
+fn a_beat_holds_eight_drum_sounds() {
+    let mut r = on_the_drums();
+    for sound in [35, 36, 38, 42, 45, 47, 48, 49] {
+        r.app.toggle_drum(sound);
+    }
+    assert_eq!(beat_pitches(&r).len(), 8);
+    r.app.toggle_drum(51);
+    assert_eq!(beat_pitches(&r).len(), 8);
+    assert_eq!(r.app.status, "A beat holds at most 8 drum sounds.");
+}
+
+#[test]
+fn the_view_key_opens_the_view_that_suits_the_track() {
+    use super::dock::Pane;
+    let mut r = on_the_drums();
+    r.key(Key::F6, Modifiers::COMMAND);
+    assert!(r.app.panel_shown(Pane::Drums) && !r.app.panel_shown(Pane::Keyboard));
+    r.key(Key::F6, Modifiers::COMMAND);
+    assert!(!r.app.panel_shown(Pane::Drums));
+    r.app.track = 1;
+    r.frames(2);
+    r.key(Key::F6, Modifiers::COMMAND);
+    assert!(r.app.panel_shown(Pane::Keyboard) && !r.app.panel_shown(Pane::Drums));
+}
+
+#[test]
+fn importing_text_tab_shows_it_whether_or_not_a_song_is_open() {
+    let file = std::env::temp_dir().join(format!("gc-tab-{}.txt", std::process::id()));
+    std::fs::write(&file, "e|--0--3--|
+B|--------|
+G|--------|
+D|--------|
+A|--------|
+E|--------|
+").unwrap();
+    // From the start screen: the tab opens as a song, on screen.
+    let mut r = Rig::new();
+    assert!(r.app.show_home);
+    r.app.import_ascii_file(file.clone());
+    r.frames(2);
+    assert!(!r.app.show_home, "the imported tab is showing");
+    assert_eq!((r.app.song.tracks.len(), note_count(&r)), (1, 2));
+    // With a song showing: another track of it.
+    let mut r = Rig::new();
+    r.app.show_home = false;
+    r.app.song = Song::demo();
+    r.frames(2);
+    let tracks = r.app.song.tracks.len();
+    r.app.import_ascii_file(file.clone());
+    r.frames(2);
+    assert_eq!(r.app.song.tracks.len(), tracks + 1);
+    assert_eq!(r.app.track, tracks, "the new track is chosen");
+    let _ = std::fs::remove_file(&file);
+}
+
+/// The guitar's first bar of the demo song, with the cursor on its first note.
+fn on_the_demo() -> Rig {
+    let mut r = Rig::new();
+    r.app.show_home = false;
+    r.app.song = Song::demo();
+    r.app.track = 0;
+    r.app.bar = 0;
+    r.app.beat = 0;
+    r.app.string = r.app.song.tracks[0].bars[0].beats[0].notes[0].string as usize;
+    r.frames(3);
+    r
+}
+
+#[test]
+fn audio_note_settings_change_the_note_at_the_cursor_or_the_selection() {
+    let mut r = on_the_demo();
+    r.key(Key::F, Modifiers::SHIFT);
+    assert!(r.app.audio_notes.is_some(), "Shift+F opens the window");
+    let of = |r: &Rig, beat: usize| r.app.song.tracks[0].bars[0].beats[beat].notes[0].playback;
+    let steps = r.app.undo.len();
+    // Dragging a control makes many changes and one undo step.
+    for percent in [90, 70, 50] {
+        r.app.set_note_playback(move |p| p.percent = percent);
+    }
+    assert_eq!((of(&r, 0).percent, of(&r, 1).percent, r.app.undo.len()), (50, 100, steps + 1));
+    r.app.do_undo();
+    assert_eq!(of(&r, 0), NotePlayback::default());
+    // A selection: each note keeps the settings that aren't changed.
+    r.app.set_note_playback(|p| p.offset = 5);
+    r.app.sel_anchor = Some((0, 0));
+    r.app.beat = 2;
+    r.app.set_note_playback(|p| p.db = -6);
+    assert_eq!([of(&r, 0).offset, of(&r, 1).offset], [5, 0]);
+    assert!((0..3).all(|b| of(&r, b).db == -6) && of(&r, 3).db == 0);
+    // Reset, and an arpeggio's notes have no settings.
+    r.app.set_note_playback(|p| *p = NotePlayback::default());
+    assert!((0..3).all(|b| of(&r, b) == NotePlayback::default()));
+    r.app.sel_anchor = None;
+    r.app.beat = 0;
+    r.app.song.tracks[0].bars[0].beats[0].fx.arpeggio = 1;
+    r.app.set_note_playback(|p| p.percent = 200);
+    assert_eq!(of(&r, 0).percent, 100);
+}
+
+/// Where a part of the Audio Note Settings window was drawn.
+fn audio_part(r: &Rig, label: &str, part: &str) -> Rect {
+    let id = egui::Id::new(("audio-note-setting", label));
+    let id = if part.is_empty() { id } else { id.with(part) };
+    r.ctx.read_response(id).unwrap_or_else(|| panic!("{label} {part} isn't showing")).rect
+}
+
+#[test]
+fn the_audio_note_boxes_work_with_their_arrows_and_by_typing() {
+    let mut r = on_the_demo();
+    r.app.open_audio_notes();
+    r.frames(3);
+    let of = |r: &Rig, beat: usize| r.app.song.tracks[0].bars[0].beats[beat].notes[0].playback;
+    let click = |r: &mut Rig, label: &str, part: &str| {
+        let at = audio_part(r, label, part).center();
+        r.click(at.x, at.y);
+    };
+    // The arrows step by one.
+    click(&mut r, "Duration:", "up");
+    click(&mut r, "Duration:", "up");
+    click(&mut r, "Offset:", "down");
+    click(&mut r, "Relative Velocity:", "up");
+    assert_eq!((of(&r, 0).percent, of(&r, 0).offset, of(&r, 0).db), (102, -1, 1));
+    // Typing replaces what is in the box, and Return takes it; the note's other settings stay.
+    click(&mut r, "Duration:", "text");
+    r.frame(vec![Event::Text("80".into())]);
+    r.key(Key::Enter, Modifiers::NONE);
+    r.frames(2);
+    assert_eq!((of(&r, 0).percent, of(&r, 0).offset), (80, -1));
+    // Typed digits go to the box, not into the score.
+    let notes = note_count(&r);
+    click(&mut r, "Offset:", "text");
+    type_digit(&mut r, Key::Num7, "7");
+    r.key(Key::Enter, Modifiers::NONE);
+    r.frames(2);
+    assert_eq!((of(&r, 0).offset, note_count(&r)), (7, notes));
+    // Beyond the range: the nearest end of it.
+    click(&mut r, "Duration:", "text");
+    r.frame(vec![Event::Text("5000".into())]);
+    r.key(Key::Enter, Modifiers::NONE);
+    r.frames(2);
+    assert_eq!(of(&r, 0).percent, 1200);
+    // Escape leaves the box as it was.
+    click(&mut r, "Relative Velocity:", "text");
+    r.frame(vec![Event::Text("-9".into())]);
+    r.key(Key::Escape, Modifiers::NONE);
+    r.frames(2);
+    assert_eq!(of(&r, 0).db, 1);
+    // Something typed goes to the note it was typed for, though another note is clicked.
+    click(&mut r, "Relative Velocity:", "text");
+    r.frame(vec![Event::Text("-4".into())]);
+    r.app.beat = 1;
+    r.app.string = r.app.song.tracks[0].bars[0].beats[1].notes[0].string as usize;
+    let at = Pos2::new(5.0, 890.0);
+    r.click(at.x, at.y);
+    assert_eq!((of(&r, 0).db, of(&r, 1).db), (-4, 0));
+    // Close.
+    click(&mut r, "close", "");
+    assert!(r.app.audio_notes.is_none());
+}
+
+/// The menus on the start screen offer these windows, which need no song on show.
+#[test]
+fn the_start_screens_menu_windows_show_there() {
+    let mut r = Rig::new();
+    r.frames(2);
+    // A window is known by its title.
+    let shown = |r: &Rig, title: &str| r.ctx.memory(|m| m.area_rect(egui::Id::new(Some(title)))).is_some();
+    let titles = ["GuitarCraft user guide", "Tuner", "Batch Converter"];
+    assert!(titles.iter().all(|t| !shown(&r, t)));
+    // Help > User Guide, Tools > Tuner and File > Batch Converter.
+    r.app.guide_open = true;
+    r.app.open_tuner();
+    r.app.open_batch();
+    r.frames(3);
+    assert!(r.app.show_home);
+    for t in titles {
+        assert!(shown(&r, t), "{t} doesn't show on the start screen");
+    }
+}
+
+#[test]
+fn the_user_guide_shows_over_a_chord_chart() {
+    let mut r = Rig::new();
+    r.app.request(Pending::NewChart);
+    r.frames(3);
+    assert!(r.app.chart.is_some() && !r.app.show_home);
+    // Help > User Guide.
+    r.app.guide_open = true;
+    r.frames(3);
+    assert!(r.ctx.memory(|m| m.area_rect(egui::Id::new(Some("GuitarCraft user guide")))).is_some());
 }

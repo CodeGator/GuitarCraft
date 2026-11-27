@@ -163,6 +163,42 @@ pub struct Note {
     pub grace: Option<u8>,
     /// The palette's further note marks.
     pub fx: NoteFx,
+    /// Audio Note Settings: how the note plays, apart from what is written.
+    pub playback: NotePlayback,
+}
+
+/// A note's playback settings (Note > Audio Note Settings), as in Guitar Pro 8.
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
+#[serde(default)]
+pub struct NotePlayback {
+    /// How long it sounds, as a percentage of its written value.
+    pub percent: u16,
+    /// How much later than written it starts, in Guitar Pro's ticks (480 to the quarter note,
+    /// half as fine as the song's own); negative is earlier.
+    pub offset: i16,
+    /// How much louder than written it plays, in decibels; negative is softer.
+    pub db: i8,
+}
+
+impl Default for NotePlayback {
+    fn default() -> Self {
+        NotePlayback { percent: 100, offset: 0, db: 0 }
+    }
+}
+
+impl NotePlayback {
+    /// The factor on the note's length.
+    pub fn length(self) -> f64 {
+        self.percent as f64 / 100.0
+    }
+    /// The offset in the song's ticks.
+    pub fn offset_ticks(self) -> i32 {
+        self.offset as i32 * (QUARTER / 480) as i32
+    }
+    /// The factor on its loudness.
+    pub fn gain(self) -> f32 {
+        10f32.powf(self.db as f32 / 20.0)
+    }
 }
 
 /// Further note marks from the edition palette.
@@ -396,6 +432,10 @@ pub struct Bar {
     /// A repeat sign standing for the previous bar (1) or two bars (2).
     #[serde(default)]
     pub simile: u8,
+    /// What the bar holds in the Guitar Pro file it was read from that the app doesn't use, to be
+    /// written back (see `gpkeep.rs`). It moves with the bar.
+    #[serde(skip)]
+    pub kept: Option<std::sync::Arc<crate::gpkeep::KeptBar>>,
 }
 
 impl Bar {
@@ -404,6 +444,7 @@ impl Bar {
             beats,
             simile: 0,
             voices: vec![],
+            kept: None,
         }
     }
     pub fn empty() -> Bar {
@@ -616,6 +657,13 @@ pub struct MasterBar {
     pub direction_jump: u8,
     /// Free time: played without following the tempo (dotted bar lines).
     pub free_time: bool,
+    /// A pickup bar, which may be short. Read from Guitar Pro files and written back while it is
+    /// the first bar.
+    pub pickup: bool,
+    /// What the bar holds in the Guitar Pro file it was read from that the app doesn't use, to be
+    /// written back (see `gpkeep.rs`). It moves with the bar.
+    #[serde(skip)]
+    pub kept: Option<std::sync::Arc<crate::gpkeep::KeptMasterBar>>,
 }
 
 impl Default for MasterBar {
@@ -637,6 +685,8 @@ impl Default for MasterBar {
             direction_target: 0,
             direction_jump: 0,
             free_time: false,
+            pickup: false,
+            kept: None,
         }
     }
 }
@@ -921,73 +971,7 @@ pub const PLAYING_STYLES: [(&str, &str); 5] = [
     ("Bass Slap", "BassSlap"),
 ];
 
-/// Name of a General MIDI drum sound, from the manual's drum map.
-pub fn drum_name(p: u8) -> &'static str {
-    match p {
-        35 | 36 => "Bass Drum",
-        37 => "Side Stick",
-        38 | 40 => "Snare",
-        39 => "Hand Clap",
-        41 | 43 => "Floor Tom",
-        42 => "Hi-hat (closed)",
-        44 => "Hi-hat (pedal)",
-        45 | 47 => "Mid Tom",
-        46 => "Hi-hat (open)",
-        48 | 50 => "High Tom",
-        49 | 57 => "Crash",
-        51 | 59 => "Ride",
-        52 => "China",
-        53 => "Ride Bell",
-        54 => "Tambourine",
-        55 => "Splash",
-        56 => "Cowbell",
-        _ => "Percussion",
-    }
-}
-
-/// Where a drum sound sits on the percussion staff (0 = bottom line) and whether it has a cross head.
-pub fn drum_staff_pos(p: u8) -> (i32, bool) {
-    match p {
-        35 | 36 => (1, false),
-        37 => (5, true),
-        38 | 40 => (5, false),
-        39 => (5, true),
-        41 => (2, false),
-        43 => (3, false),
-        42 | 46 => (9, true),
-        44 => (-1, true),
-        45 => (4, false),
-        47 => (6, false),
-        48 => (7, false),
-        50 => (8, false),
-        49 | 57 => (10, true),
-        51 | 59 => (8, true),
-        52 => (11, true),
-        53 => (8, true),
-        54 => (9, true),
-        55 => (11, true),
-        56 => (10, false),
-        _ => (4, true),
-    }
-}
-
-/// The drum sound for a line or space of the percussion staff.
-pub fn drum_at_pos(pos: i32) -> u8 {
-    match pos {
-        ..=-1 => 44,
-        0 | 1 => 36,
-        2 => 41,
-        3 => 43,
-        4 => 45,
-        5 => 38,
-        6 => 47,
-        7 => 48,
-        8 => 51,
-        9 => 42,
-        10 => 49,
-        _ => 52,
-    }
-}
+pub use crate::drums::{drum_at_pos, drum_name, drum_sign, drum_sound, drum_staff_pos, DrumHead, DrumSign};
 
 /// Standard guitar tuning, highest string first: E4 B3 G3 D3 A2 E2 (MIDI note numbers).
 pub const STANDARD_GUITAR: [u8; 6] = [64, 59, 55, 50, 45, 40];
@@ -1217,6 +1201,10 @@ pub struct Track {
     /// While editing another voice, that voice is swapped into `beats` (not saved).
     #[serde(skip)]
     pub swapped: usize,
+    /// What the track holds in the Guitar Pro file it was read from that the app doesn't use,
+    /// to be written back (see `gpkeep.rs`). It stays with the track.
+    #[serde(skip)]
+    pub kept: Option<std::sync::Arc<crate::gpkeep::KeptTrack>>,
 }
 
 impl Default for Track {
@@ -1255,6 +1243,7 @@ impl Default for Track {
             tuning_label: String::new(),
             tuning_label_visible: true,
             swapped: 0,
+            kept: None,
         }
     }
 }
@@ -1263,6 +1252,24 @@ impl Track {
     pub fn pitch(&self, n: &Note) -> u8 {
         let base = self.tuning.get(n.string as usize).copied().unwrap_or(40);
         (base as u32 + n.fret as u32 + self.capo_at(n.string as usize) as u32).min(127) as u8
+    }
+    /// The MIDI note that sounds: the pitch, except on drums, where another way of playing an
+    /// instrument plays as its General MIDI sound.
+    pub fn sound(&self, n: &Note) -> u8 {
+        let p = self.pitch(n);
+        if self.instrument == Instrument::Drums { drum_sound(p) } else { p }
+    }
+    /// The bar whose notes bar `bi` plays: itself, or the one its repeat sign stands for (and
+    /// so on back, through a run of repeat signs).
+    pub fn played_bar(&self, bi: usize) -> &Bar {
+        let mut b = bi;
+        loop {
+            match self.bars[b].simile {
+                1 if b >= 1 => b -= 1,
+                2 if b >= 2 => b -= 2,
+                _ => return &self.bars[b],
+            }
+        }
     }
     /// The capo on a string: the full capo, or the partial capo where it is higher and covers the string.
     pub fn capo_at(&self, s: usize) -> u8 {
@@ -1392,6 +1399,10 @@ pub struct Song {
     pub tracks: Vec<Track>,
     /// How the score looks: page, staves, header and footer, fonts, notation.
     pub style: crate::style::Stylesheet,
+    /// What the Guitar Pro file this song was read from holds that the app doesn't use, to be
+    /// written back (see `gpkeep.rs`). Shared, so the undo history stays small.
+    #[serde(skip)]
+    pub kept: Option<std::sync::Arc<crate::gpkeep::KeptSong>>,
 }
 
 impl Default for Song {
@@ -1423,11 +1434,26 @@ impl Song {
             master: (0..bars).map(|_| MasterBar::default()).collect(),
             tracks: vec![t],
             style: crate::style::Stylesheet::standard(),
+            kept: None,
         }
     }
 
     pub fn bar_count(&self) -> usize {
         self.master.len()
+    }
+
+    /// Drops everything kept from a Guitar Pro file, for writing another format.
+    pub fn forget_kept(&mut self) {
+        self.kept = None;
+        for bar in &mut self.master {
+            bar.kept = None;
+        }
+        for track in &mut self.tracks {
+            track.kept = None;
+            for bar in &mut track.bars {
+                bar.kept = None;
+            }
+        }
     }
 
     /// Nothing at all in bar `i` of track `ti`: no notes, no repeat sign for a previous bar, and
@@ -1937,6 +1963,7 @@ impl Song {
                     Bar {
                         voices: vec![],
                         simile: 0,
+                        kept: None,
                         beats: vec![Beat {
                             dur: Dur::Whole,
                             notes: vec![n(s, f)],
@@ -1947,6 +1974,7 @@ impl Song {
                     Bar {
                         voices: vec![],
                         simile: 0,
+                        kept: None,
                         beats: vec![
                             Beat {
                                 dur: Dur::Half,
@@ -1964,6 +1992,7 @@ impl Song {
                     Bar {
                         voices: vec![],
                         simile: 0,
+                        kept: None,
                         beats: vec![
                             q(vec![n(s, f)]),
                             e8(vec![n(s, f)]),

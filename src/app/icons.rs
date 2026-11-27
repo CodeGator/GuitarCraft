@@ -443,6 +443,29 @@ pub fn icon_keyboard(p: &egui::Painter, r: Rect, c: Color32) {
     }
 }
 
+/// A drum with two sticks over it.
+pub fn icon_drum(p: &egui::Painter, r: Rect, c: Color32) {
+    let s = PStroke::new(1.2, c);
+    let (cx, rx, ry) = (r.center().x, r.width() * 0.46, r.height() * 0.13);
+    let (top, bottom) = (r.top() + r.height() * 0.46, r.bottom() - ry - 1.0);
+    let arc = |y: f32, from: f32, to: f32| {
+        (0..=16)
+            .map(|i| {
+                let a = from + (to - from) * i as f32 / 16.0;
+                Pos2::new(cx + a.cos() * rx, y + a.sin() * ry)
+            })
+            .collect::<Vec<_>>()
+    };
+    p.add(egui::Shape::line(arc(top, 0.0, std::f32::consts::TAU), s));
+    p.add(egui::Shape::line(arc(bottom, 0.0, std::f32::consts::PI), s));
+    for x in [cx - rx, cx + rx] {
+        p.line_segment([Pos2::new(x, top), Pos2::new(x, bottom)], s);
+    }
+    for dir in [-1.0, 1.0] {
+        p.line_segment([Pos2::new(cx + dir * rx, r.top() + 1.0), Pos2::new(cx - dir * rx * 0.15, top - 1.0)], s);
+    }
+}
+
 /// Multitrack: several staves stacked, like a page of a full score.
 pub fn multitrack_icon(p: &egui::Painter, r: Rect, c: Color32) {
     let s = PStroke::new(1.0, c);

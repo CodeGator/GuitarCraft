@@ -142,6 +142,14 @@ mod tests {
         assert_eq!(top("How do I connect a MIDI keyboard?"), "MIDI");
         assert_eq!(top("How do I use the AI assistant?"), "The AI assistant");
         assert_eq!(top("How do I copy and paste bars?"), "Copy and paste");
+        assert_eq!(top("Where are the audio note settings?"), "Audio note settings");
+        assert_eq!(top("How do I find a scale?"), "Chords and scales");
+        assert_eq!(top("How do I make a chord chart?"), "Chord charts");
+        assert_eq!(top("How do I export a PDF?"), "Import and export");
+        assert_eq!(top("How do I change the tuning?"), "Tuning and the tuner");
+        assert_eq!(top("How do I print my song?"), "Printing and the stylesheet");
+        assert_eq!(top("How do I change the tempo?"), "Tempo and automations");
+        assert_eq!(top("How do I move a panel?"), "Panels");
     }
 
     /// Asks the Ollama on this computer a GuitarCraft question with the guide sections attached,
@@ -159,7 +167,7 @@ mod tests {
             ollama_keep: true,
             model: std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "qwen3:8b".into()),
             key: String::new(),
-            system: crate::app::ai::system_prompt(),
+            system: crate::app::ai::SYSTEM.into(),
             turns: vec![crate::app::ai::Turn { from_user: true, text: format!("{guide}\n\nQuestion: {question}") }],
         };
         let answer = crate::app::ai::ask_now(&a).expect("Ollama should answer");

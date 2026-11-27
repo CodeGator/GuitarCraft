@@ -363,6 +363,10 @@ impl Audio {
             _stream: None,
             error: None,
         };
+        // Tests are silent: the player is there and takes notes, but no device is opened.
+        if cfg!(test) {
+            return a;
+        }
         // A buffer size the device refuses falls back to the device's own.
         let tried = a.start(device, buffer).or_else(|e| if buffer.is_some() { a.start(device, None) } else { Err(e) });
         match tried {
@@ -517,7 +521,7 @@ fn freq_of(midi: f32) -> f32 {
 }
 
 pub fn note_preview(track: &Track, ti: usize, n: &Note, sr: f32) -> NoteEvent {
-    let p = track.pitch(n) as f32;
+    let p = track.sound(n) as f32;
     NoteEvent {
         start: 0,
         len: (sr * 0.6) as u64,
@@ -642,7 +646,7 @@ fn build_voice_schedule(song: &Song, sr: f32, opt: &ScheduleOptions) -> Schedule
                 continue;
             }
             // A bar repeat sign plays the bar (or two) it stands for.
-            let bar = simile_source(track, bi);
+            let bar = track.played_bar(bi);
             let mut tick: u32 = 0;
             for (bj, beat) in bar.beats.iter().enumerate() {
                 let bt = beat.ticks();
@@ -747,7 +751,7 @@ fn build_voice_schedule(song: &Song, sr: f32, opt: &ScheduleOptions) -> Schedule
                                 * 0.012
                         }
                     };
-                    let mut p = track.pitch(n) as f32;
+                    let mut p = track.sound(n) as f32;
                     if n.harmonic {
                         p += 12.0;
                     }
@@ -773,7 +777,13 @@ fn build_voice_schedule(song: &Song, sr: f32, opt: &ScheduleOptions) -> Schedule
                     if soft {
                         vel *= 0.8;
                     }
-                    let start = (t as f64 + on_tick * spt + stroke_off).max(0.0) as u64;
+                    // The note's own playback settings (not on an arpeggio's notes). Grace notes
+                    // go where their note goes.
+                    let own = if beat.fx.arpeggio == 0 { n.playback } else { NotePlayback::default() };
+                    if own.db != 0 {
+                        vel = (vel * own.gain()).min(2.0);
+                    }
+                    let start = (t as f64 + (on_tick + own.offset_ticks() as f64) * spt + stroke_off).max(0.0) as u64;
                     let base = NoteEvent {
                         start,
                         len: 1,
@@ -800,10 +810,7 @@ fn build_voice_schedule(song: &Song, sr: f32, opt: &ScheduleOptions) -> Schedule
                     // Grace note just before the beat.
                     if let Some(g) = n.grace {
                         let gl = (QUARTER as f64 / 8.0 * spt) as u64;
-                        let gp = (track.tuning.get(n.string as usize).copied().unwrap_or(40) as i32
-                            + g as i32
-                            + track.capo_at(n.string as usize) as i32)
-                            as f32;
+                        let gp = track.sound(&Note { fret: g, ..n.clone() }) as f32;
                         events.push(NoteEvent {
                             start: start.saturating_sub(gl),
                             len: gl.max(1),
@@ -824,6 +831,7 @@ fn build_voice_schedule(song: &Song, sr: f32, opt: &ScheduleOptions) -> Schedule
                     if n.staccato {
                         total /= 2;
                     }
+                    total = (total as f64 * own.length()) as u64;
                     if beat.tremolo || n.trill > 0 {
                         // Repeated notes (tremolo picking) or alternating notes (trill).
                         let step_ticks = if n.trill > 0 {
@@ -940,19 +948,6 @@ fn prev_hammer(song: &Song, ti: usize, bi: usize, bj: usize, s: u8) -> bool {
     prev.and_then(|b| b.note_on(s))
         .map(|n| n.hammer || n.slide || n.fx.legato)
         .unwrap_or(false)
-}
-
-/// The bar whose notes bar `bi` plays: itself, or the one a repeat sign stands for.
-fn simile_source(track: &Track, bi: usize) -> &Bar {
-    let mut b = bi;
-    for _ in 0..16 {
-        match track.bars[b].simile {
-            1 if b >= 1 => b -= 1,
-            2 if b >= 2 => b -= 2,
-            _ => break,
-        }
-    }
-    &track.bars[b]
 }
 
 /// Renders the whole song with the built-in sound (stereo, interleaved).
@@ -1234,5 +1229,52 @@ mod midi_schedule_tests {
         let ev = build_schedule(&s, 44100.0, &o).events;
         assert!(ev.iter().any(|e| e.midi.is_none()));
         assert!(ev.iter().any(|e| e.midi.is_some()));
+    }
+}
+
+#[cfg(test)]
+mod note_playback_tests {
+    use super::*;
+
+    #[test]
+    fn a_notes_own_settings_move_stretch_and_soften_it() {
+        let mut song = Song::new_blank();
+        let beat = Beat { notes: vec![Note::new(0, 3)], ..Beat::rest(Dur::Quarter) };
+        song.master.truncate(1);
+        for t in &mut song.tracks {
+            t.bars = vec![Bar::new(vec![beat.clone(), beat.clone()])];
+        }
+        let options = ScheduleOptions { from_bar: 0, metronome: false, count_in: false, speed: 1.0, only_bars: None };
+        let events = |song: &Song| build_schedule(song, 48000.0, &options).events;
+        let plain = events(&song);
+        song.tracks[0].bars[0].beats[1].notes[0].playback = NotePlayback { percent: 50, offset: 480, db: -6 };
+        let changed = events(&song);
+        assert_eq!((changed[0].start, changed[0].len), (plain[0].start, plain[0].len), "the other note as before");
+        // A quarter note later, half as long, about half as loud.
+        let quarter = plain[1].start - plain[0].start;
+        assert!((changed[1].start as i64 - (plain[1].start + quarter) as i64).abs() <= 1);
+        assert!((changed[1].len as i64 - (plain[1].len / 2) as i64).abs() <= 1);
+        assert!((changed[1].vel / plain[1].vel - 0.501).abs() < 0.01);
+        // MIDI export says the same.
+        let midi = crate::fileio::export_midi(&song);
+        let soft = (plain_velocity() as f32 * 0.501).round() as u8;
+        assert!(midi.windows(3).any(|w| w[0] == 0x90 && w[2] == soft), "{soft}");
+    }
+
+    fn plain_velocity() -> u8 {
+        Beat::rest(Dur::Quarter).dynamic.velocity().min(127)
+    }
+}
+
+#[cfg(test)]
+mod silence_tests {
+    use super::*;
+
+    #[test]
+    fn tests_never_open_a_sound_device_or_a_microphone() {
+        let audio = Audio::with_output(None, None);
+        assert!(audio._stream.is_none(), "no output stream");
+        assert!(audio.error.is_none(), "and the app carries on as if there were one");
+        assert!(crate::tuner::Tuner::start(None).is_err(), "no microphone");
     }
 }
