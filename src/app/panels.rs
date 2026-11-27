@@ -11,6 +11,9 @@ pub const TOOLBAR_BG: Color32 = Color32::from_rgb(58, 63, 76);
 pub const PANEL_BG: Color32 = Color32::from_rgb(42, 45, 53);
 pub const STRIP_BG: Color32 = Color32::from_rgb(136, 148, 176);
 pub const BLUE: Color32 = Color32::from_rgb(61, 123, 224);
+/// The orange of the pick in the logo (`assets/app-icon/icon.svg`, the middle of its shading):
+/// the "Craft" of the name wherever it is drawn.
+pub const LOGO_ORANGE: Color32 = Color32::from_rgb(242, 155, 66);
 
 impl App {
     fn toolbar(&mut self, ui: &mut Ui) {

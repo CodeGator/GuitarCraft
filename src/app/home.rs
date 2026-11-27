@@ -419,7 +419,7 @@ impl App {
         let g2 = p.layout_no_wrap(
             "Craft".into(),
             FontId::new(40.0, egui::FontFamily::Name("bold".into())),
-            Color32::from_rgb(92, 150, 240),
+            super::panels::LOGO_ORANGE,
         );
         let tw = g1.size().x + g2.size().x;
         let x0 = full.center().x - tw * 0.5;

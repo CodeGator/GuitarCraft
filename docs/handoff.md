@@ -15,7 +15,7 @@ Written 2026-11-23, after releasing 0.10.0 and starting `version-0.11.0`. Read t
   Assistant that **only answers** (see "The AI features" below).
 - **Branches on GitHub:** `main`, `release`, and an old merged `version-0.8.0` that could be
   deleted.
-- **Tests:** `cargo test --release` passes in full (291 passed, 7 ignored live tests that need a
+- **Tests:** `cargo test --release` passes in full (293 passed, 7 ignored live tests that need a
   model, a key or a Claude Code sign-in). In a debug build (`cargo test`) three `dock` tests fail
   ("Dropped TexturesDelta with 1 unapplied deltas", from `epaint`); seen 2026-11-27 before any
   change that day.
@@ -104,6 +104,10 @@ the boxes also take typing, Up and Down, and the mouse wheel); the owner approve
 strings (`tab_blocks` in `textmidi.rs`). Tested on the demo song's own tab, damaged each way, and
 checked by the owner. Also fixed: an ASCII import from the start screen went into a song hidden
 behind it; it now opens as a new song. With a song showing it adds a track, as before.
+
+**The name's colour** (2026-11-27, owner): "Craft" is the orange of the logo's pick
+(`LOGO_ORANGE` in `panels.rs`), on the start screen and in the About window. It was blue, too much
+like Guitar Pro. Use the constant anywhere else the name is drawn in colour.
 
 **Bar repeat signs** (2026-11-27): Guitar Pro's `SimileMark` is now read and written
 (`Simple`, `FirstOfDouble`, `SecondOfDouble`); before, repeated bars of a Guitar Pro file opened
@@ -233,8 +237,12 @@ question in the panel. Before a release, check Anthropic's current terms.
   of the staff, or a second example (other pitches), before changing the rule.
 - **MIDI:** input has never been tried with a real keyboard; one slide is silent because it
   shares a channel with another note (see `docs/midi-design.md`); real-time recording isn't built.
-- **README screenshots** in `docs/readme/` were taken before the 100% zoom and tighter spacing,
-  and don't show the AI panel, the numbered lane, the layout dropdown or the split view.
+- **README** (2026-11-27, the owner's wish, as in Dunbrec's): only a brief, high-level overview.
+  Technical details go in `docs/development.md` and how to use things in the user guide (`GUIDE`
+  in `src/app/tools.rs`), not in the README. The owner first asked to delete the guide (the app is
+  too young), then kept it because the AI Assistant answers from it: **keep it up to date** when a
+  feature changes. It was brought up to date for 0.11.0 on 2026-11-27. It must still say what the AI sends (see
+  `docs/ai-design.md`). Its three pictures were retaken the same day.
 - The GP8 guide doesn't state the Windows shortcuts for the Action list and Expression text; we
   use Ctrl+Alt+E and Ctrl+Shift+E by analogy with its Mac ones.
 
@@ -244,7 +252,7 @@ question in the panel. Before a release, check Anthropic's current terms.
 2. **Still missing from Guitar Pro 8** (see the gap list): instrument change automation, Design
    mode, and importing TablEdit and Power Tab. File password protection was decided against.
 3. **Release 0.11.0** when the owner says: pull request `version-0.11.0` into `main` (see "How we
-   work here"). Update the README screenshots first if wanted.
+   work here").
 
 ## How we work here
 
