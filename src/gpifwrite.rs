@@ -88,6 +88,30 @@ fn on_staff(pitch: u8, low: Option<bool>) -> bool {
     }
 }
 
+/// The voice to write in each of a staff's voice places (None: the place is empty). A single
+/// staff keeps each voice in its place: the first, and the others that have notes. On a grand
+/// staff each staff takes the voices that have notes on it, from the first place on, as Guitar
+/// Pro lays out a part for two hands; the upper staff always has the first voice, which carries
+/// the chord names and texts.
+fn staff_voices(t: &Track, bar: &Bar, low: Option<bool>) -> [Option<usize>; VOICES] {
+    let mut out = [None; VOICES];
+    if low.is_none() {
+        for (v, place) in out.iter_mut().enumerate() {
+            *place = (v == 0 || bar.voice_used(v)).then_some(v);
+        }
+        return out;
+    }
+    let here = |v: usize| bar.voice(v).iter().any(|b| b.notes.iter().any(|n| on_staff(t.pitch(n), low)));
+    let mut used: Vec<usize> = (0..VOICES).filter(|&v| (v == 0 && low == Some(false)) || here(v)).collect();
+    if used.is_empty() {
+        used.push(0);
+    }
+    for (place, v) in out.iter_mut().zip(used) {
+        *place = Some(v);
+    }
+    out
+}
+
 /// For an instrument that Guitar Pro tunes and this app doesn't, the tuning of each staff, with
 /// room for all its notes. Empty for other tracks.
 fn staff_tunings(t: &Track) -> Vec<Vec<u8>> {
@@ -558,11 +582,11 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
                 let bare = bar.simile != 0
                     && (0..VOICES).all(|v| bar.voice(v).iter().all(|b| b.is_rest() && b.chord.is_none() && b.text.is_none() && b.lyric.is_none()));
                 let mut vids = vec![];
-                for v in 0..VOICES {
-                    if bare || (v > 0 && !bar.voice_used(v)) {
+                for v in staff_voices(t, bar, low) {
+                    let Some(v) = v.filter(|_| !bare) else {
                         vids.push("-1".to_string());
                         continue;
-                    }
+                    };
                     let mut beat_ids = vec![];
                     for (j, beat) in bar.voice(v).iter().enumerate() {
                         // On a grand staff each staff keeps the notes on its side of middle C.
@@ -1786,6 +1810,69 @@ mod tests {
             out.replace_range(a..z, "");
         }
         out
+    }
+
+    /// A piano bar's voices as (length, pitches), for those with notes.
+    fn hands(t: &Track) -> Vec<Vec<(Dur, Vec<u8>)>> {
+        let bar = &t.bars[0];
+        (0..VOICES)
+            .filter(|&v| bar.voice_used(v))
+            .map(|v| bar.voice(v).iter().map(|b| (b.dur, pitches(t, b))).collect())
+            .collect()
+    }
+
+    #[test]
+    fn a_left_hand_with_its_own_rhythm_survives_saving_and_opening() {
+        let note = |d: Dur, p: u8| Beat { notes: vec![Note::new(0, p)], ..Beat::rest(d) };
+        let four = || vec![note(Dur::Quarter, 72), note(Dur::Quarter, 74), note(Dur::Quarter, 76), note(Dur::Quarter, 77)];
+        let halves = || vec![note(Dur::Half, 48), note(Dur::Half, 43)];
+        let rest = || vec![Beat::rest(Dur::Whole)];
+        // Both hands; the left alone; the right alone; a second line in the right hand too.
+        let second = || vec![note(Dur::Half, 64), note(Dur::Half, 65)];
+        for (first, others) in [
+            (four(), vec![halves()]),
+            (rest(), vec![halves()]),
+            (four(), vec![]),
+            (four(), vec![second(), vec![note(Dur::Whole, 36)]]),
+        ] {
+            let mut song = Song::new_blank();
+            let mut piano = Track::of_instrument(Instrument::Piano, "Piano");
+            let mut bar = Bar::new(first);
+            bar.pad_voices();
+            for (k, v) in others.into_iter().enumerate() {
+                bar.voices[k] = v;
+            }
+            piano.bars = vec![bar];
+            song.master = vec![MasterBar::default()];
+            song.tracks = vec![piano];
+            song.normalize();
+            let typed = hands(&song.tracks[0]);
+            let mut at = song;
+            for pass in 1..=3 {
+                at = crate::gpif::parse_gpif(&gpif_xml(&at)).expect("reads back");
+                assert_eq!(hands(&at.tracks[0]), typed, "pass {pass}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_left_hand_is_written_as_the_lower_staffs_first_voice() {
+        let note = |d: Dur, p: u8| Beat { notes: vec![Note::new(0, p)], ..Beat::rest(d) };
+        let mut song = Song::new_blank();
+        let mut piano = Track::of_instrument(Instrument::Piano, "Piano");
+        let mut bar = Bar::new(vec![note(Dur::Whole, 72)]);
+        bar.pad_voices();
+        bar.voices[0] = vec![note(Dur::Half, 48), note(Dur::Half, 43)];
+        piano.bars = vec![bar];
+        song.master = vec![MasterBar::default()];
+        song.tracks = vec![piano];
+        song.normalize();
+        let xml = gpif_xml(&song);
+        // Each staff has one voice, in its first place: no empty second voice of rests.
+        assert_eq!(xml.matches("-1 -1 -1</Voices>").count(), 2, "{xml}");
+        // As Guitar Pro stores it, with the lower staff's voice first, it opens with both hands.
+        let back = crate::gpif::parse_gpif(&xml).unwrap();
+        assert_eq!(hands(&back.tracks[0]).len(), 2);
     }
 
     /// The demo song saved by Guitar Pro 8 opens as the demo song, and GuitarCraft's part

@@ -773,6 +773,28 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
                 let nstr = tracks[ti].tuning.len();
                 let virt = !tracks[ti].has_strings();
                 let strings = info.tunings.first().map(Vec::as_slice).unwrap_or_default();
+                // A voice's beats. Grace notes come as short beats just before the note they
+                // lead into.
+                let read_voice = |voice: Node, strings: &[u8]| {
+                    let mut beats = vec![];
+                    let mut grace: Vec<Note> = vec![];
+                    for bid in text(child(voice, "Beats")).split_whitespace() {
+                        let Some(bt) = beats_idx.get(bid) else { continue };
+                        let mut b = read_beat(*bt, &rhythms_idx, &notes_idx, nstr, &info.chords, virt, &info.kit, strings);
+                        if child(*bt, "GraceNotes").is_some() {
+                            grace = b.notes;
+                            continue;
+                        }
+                        for g in grace.drain(..) {
+                            let target = if virt { b.notes.first_mut() } else { b.note_on_mut(g.string) };
+                            if let Some(n) = target {
+                                n.grace = Some(g.fret);
+                            }
+                        }
+                        beats.push(b);
+                    }
+                    beats
+                };
                 if let Some(bn) = bar_ids
                     .get(info.staff_offset)
                     .and_then(|id| bars_idx.get(id))
@@ -792,48 +814,7 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
                         let Some(vn) = voices_idx.get(vid) else {
                             continue;
                         };
-                        let mut beats = vec![];
-                        // Grace notes come as short beats just before the note they lead into.
-                        let mut grace: Vec<Note> = vec![];
-                        for bid in text(child(*vn, "Beats")).split_whitespace() {
-                            if let Some(bt) = beats_idx.get(bid) {
-                                if child(*bt, "GraceNotes").is_some() {
-                                    grace = read_beat(
-                                        *bt,
-                                        &rhythms_idx,
-                                        &notes_idx,
-                                        nstr,
-                                        &info.chords,
-                                        virt,
-                                        &info.kit,
-                                        strings,
-                                    )
-                                    .notes;
-                                    continue;
-                                }
-                                let mut b = read_beat(
-                                    *bt,
-                                    &rhythms_idx,
-                                    &notes_idx,
-                                    nstr,
-                                    &info.chords,
-                                    virt,
-                                    &info.kit,
-                                    strings,
-                                );
-                                for g in grace.drain(..) {
-                                    let target = if virt {
-                                        b.notes.first_mut()
-                                    } else {
-                                        b.note_on_mut(g.string)
-                                    };
-                                    if let Some(n) = target {
-                                        n.grace = Some(g.fret);
-                                    }
-                                }
-                                beats.push(b);
-                            }
-                        }
+                        let beats = read_voice(*vn, strings);
                         if vk == 0 {
                             bar.beats = beats;
                         } else if !beats.is_empty() {
@@ -847,41 +828,10 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
                         .get(info.staff_offset + 1)
                         .and_then(|id| bars_idx.get(id))
                 {
-                    let vid = text(child(*bn, "Voices"))
-                        .split_whitespace()
-                        .next()
-                        .map(|x| x.to_string());
-                    if let Some(vn) = vid.and_then(|v| voices_idx.get(&v).copied()) {
-                        let beats: Vec<Beat> = text(child(vn, "Beats"))
-                            .split_whitespace()
-                            .filter_map(|bid| beats_idx.get(bid))
-                            .filter(|bt| child(**bt, "GraceNotes").is_none())
-                            .map(|bt| {
-                                let lower = info.tunings.get(1).map(Vec::as_slice).unwrap_or_default();
-                                read_beat(*bt, &rhythms_idx, &notes_idx, nstr, &info.chords, virt, &info.kit, lower)
-                            })
-                            .collect();
-                        let same = beats.len() == bar.beats.len()
-                            && beats
-                                .iter()
-                                .zip(bar.beats.iter())
-                                .all(|(a, b)| a.ticks() == b.ticks());
-                        if same {
-                            for (low, up) in beats.into_iter().zip(bar.beats.iter_mut()) {
-                                for mut n in low.notes {
-                                    if up.notes.len() < nstr {
-                                        n.string = up.notes.len() as u8;
-                                        up.notes.push(n);
-                                    }
-                                }
-                            }
-                        } else if beats.iter().any(|b| !b.is_rest()) {
-                            bar.pad_voices();
-                            if let Some(slot) = (0..bar.voices.len())
-                                .find(|&k| bar.voices[k].iter().all(|b| b.is_rest()))
-                            {
-                                bar.voices[slot] = beats;
-                            }
+                    let lower = info.tunings.get(1).map(Vec::as_slice).unwrap_or_default();
+                    for vid in text(child(*bn, "Voices")).split_whitespace().take(VOICES) {
+                        if let Some(vn) = voices_idx.get(vid) {
+                            add_lower_voice(&mut bar, read_voice(*vn, lower), nstr);
                         }
                     }
                 }
@@ -916,6 +866,29 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
         .collect();
     song.normalize();
     Ok(song)
+}
+
+/// Adds a voice of a grand staff's lower staff to the bar, which holds both staves' notes. It
+/// joins the voice that has the same rhythm; one with a rhythm of its own takes a voice that is
+/// still free. (A bar with more rhythms than there are voices loses the extra ones.)
+fn add_lower_voice(bar: &mut Bar, beats: Vec<Beat>, most_notes: usize) {
+    if beats.iter().all(|b| b.is_rest()) {
+        return;
+    }
+    bar.pad_voices();
+    let same = |other: &[Beat]| other.len() == beats.len() && other.iter().zip(&beats).all(|(a, b)| a.ticks() == b.ticks());
+    if let Some(v) = (0..VOICES).find(|&v| same(bar.voice(v))) {
+        for (low, up) in beats.into_iter().zip(bar.voice_mut(v).iter_mut()) {
+            for mut n in low.notes {
+                if up.notes.len() < most_notes {
+                    n.string = up.notes.len() as u8;
+                    up.notes.push(n);
+                }
+            }
+        }
+    } else if let Some(slot) = bar.voices.iter().position(|v| v.iter().all(|b| b.is_rest())) {
+        bar.voices[slot] = beats;
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

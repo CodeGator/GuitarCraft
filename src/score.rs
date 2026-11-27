@@ -2173,7 +2173,7 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
                 if v > 0 && !bar.voice_used(v) && !editing {
                     continue;
                 }
-                if v == 0 && multi && !bar.voice_used(0) && !editing {
+                if v == 0 && multi && !bar.voice_used(0) && !editing && !g.grand {
                     continue;
                 }
                 let vbar = Bar::new(bar.voice(v).clone());
@@ -2209,18 +2209,29 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
                     ink: if grey { Color32::from_gray(150) } else { INK },
                 };
                 if g.grand {
-                    let (up, low) = draw::split_grand(track, &vbar, mb.key, st.capo_affects_std);
-                    let upper = BarCtx { vbar: &up, ..bctx };
-                    draw_bar_content(p, &upper);
+                    let split = |bar: &Bar| draw::split_grand(track, bar, mb.key, st.capo_affects_std);
+                    let (up, low) = split(&vbar);
+                    let on = grand_voices(|w| {
+                        let (u, l) = split(&Bar::new(bar.voice(w).clone()));
+                        (!u.is_empty(), !l.is_empty())
+                    });
+                    // Stems are turned apart only where a staff has more than one voice.
+                    let upper = BarCtx { vbar: &up, multi: on.iter().filter(|s| s.0).count() > 1, ..bctx };
+                    if on[v].0 {
+                        draw_bar_content(p, &upper);
+                    }
                     let mut g2 = g;
                     g2.std_top = g.std2_top;
                     let lower = BarCtx {
                         vbar: &low,
                         g: g2,
                         lower: true,
+                        multi: on.iter().filter(|s| s.1).count() > 1,
                         ..upper
                     };
-                    draw::draw_lower_staff(p, &lower);
+                    if on[v].1 {
+                        draw::draw_lower_staff(p, &lower);
+                    }
                 } else {
                     draw_bar_content(p, &bctx);
                 }
@@ -2476,6 +2487,36 @@ mod hit_tests {
             hit_test(&lay, &song, 0, sys.page, Pos2::new(time_x, y)).map(|h| h.3),
             Some(Some(Hit::Head(2)))
         );
+    }
+}
+
+/// Which voices a grand staff draws on its upper and lower staff, from the staves each voice has
+/// notes on: a voice shows only where its notes are, so the other staff gets no rests for it. The
+/// first voice stands for a staff that would otherwise be empty, with its rests.
+fn grand_voices(has_notes: impl Fn(usize) -> (bool, bool)) -> [(bool, bool); crate::model::VOICES] {
+    let mut on: [(bool, bool); crate::model::VOICES] = std::array::from_fn(has_notes);
+    let any = (on.iter().any(|s| s.0), on.iter().any(|s| s.1));
+    on[0].0 |= !any.0;
+    on[0].1 |= !any.1;
+    on
+}
+
+#[cfg(test)]
+mod grand_tests {
+    use super::grand_voices;
+
+    #[test]
+    fn a_voice_shows_only_on_the_staff_its_notes_are_on() {
+        // Right hand in the first voice, left hand in the second.
+        let on = grand_voices(|v| (v == 0, v == 1));
+        assert_eq!(on[..2], [(true, false), (false, true)]);
+        // The right hand rests: the first voice's rest stands on the upper staff only.
+        let on = grand_voices(|v| (false, v == 1));
+        assert_eq!(on[..2], [(true, false), (false, true)]);
+        // An empty bar rests on both.
+        assert_eq!(grand_voices(|_| (false, false))[0], (true, true));
+        // One voice with both hands.
+        assert_eq!(grand_voices(|v| (v == 0, v == 0))[0], (true, true));
     }
 }
 

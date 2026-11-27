@@ -66,8 +66,13 @@ names, sounds, tunings with strings added for notes out of reach, concert octave
 higher). Which part caused the crash was not isolated: guitars, synth, piano (one and two staves)
 and drums opened before the fix. GP8 maps our `Midi/<name>` guitar sounds correctly. Still open:
 trumpet and saxophone are saved without their transposition (GP8 then shows concert pitch; step 2);
-a grand staff's lower staff is **dropped on opening when its rhythm differs from the upper one**
-(older limitation in `gpif.rs`; fix next); GP8's icons for these instruments differ from ours; GP8
+(**Left hand, fixed 2026-11-27:** a lower staff with a rhythm of its own opened correctly but its
+notes were lost after one save and reopen here, as only the lower staff's first voice was read.
+All its voices are read now, and each staff is written with its own voices from the first place.
+Hands are still divided at middle C, and a bar needing more than four voices loses the extra.
+Checked: GP8 kept a two-hand file of ours unchanged on saving it, and that copy opens and plays in
+GuitarCraft);
+GP8's icons for these instruments differ from ours; GP8
 offered no string ensemble, so ours is written as a violin with that sound.
 
 **Bar repeat signs** (2026-11-27): Guitar Pro's `SimileMark` is now read and written
