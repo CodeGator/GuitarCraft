@@ -363,6 +363,10 @@ impl Audio {
             _stream: None,
             error: None,
         };
+        // Tests are silent: the player is there and takes notes, but no device is opened.
+        if cfg!(test) {
+            return a;
+        }
         // A buffer size the device refuses falls back to the device's own.
         let tried = a.start(device, buffer).or_else(|e| if buffer.is_some() { a.start(device, None) } else { Err(e) });
         match tried {
@@ -1259,5 +1263,18 @@ mod note_playback_tests {
 
     fn plain_velocity() -> u8 {
         Beat::rest(Dur::Quarter).dynamic.velocity().min(127)
+    }
+}
+
+#[cfg(test)]
+mod silence_tests {
+    use super::*;
+
+    #[test]
+    fn tests_never_open_a_sound_device_or_a_microphone() {
+        let audio = Audio::with_output(None, None);
+        assert!(audio._stream.is_none(), "no output stream");
+        assert!(audio.error.is_none(), "and the app carries on as if there were one");
+        assert!(crate::tuner::Tuner::start(None).is_err(), "no microphone");
     }
 }
