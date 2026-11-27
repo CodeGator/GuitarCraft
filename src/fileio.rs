@@ -83,6 +83,9 @@ pub fn gp5_losses(song: &Song) -> Vec<&'static str> {
     if song.tracks.iter().any(|t| t.bars.iter().any(|b| b.simile != 0)) {
         out.push("bar repeat signs (the notes are written out)");
     }
+    if beats().any(|x| x.notes.iter().any(|n| n.playback != NotePlayback::default())) {
+        out.push("audio note settings");
+    }
     if beats().any(|x| x.double_dot) {
         out.push("double dots");
     }
@@ -285,9 +288,13 @@ pub fn export_midi(song: &Song) -> Vec<u8> {
                         }
                     }
                     let p = tr.sound(n);
-                    let vel = beat.dynamic.velocity().min(127);
+                    // The note's own playback settings (not on an arpeggio's notes).
+                    let own = if beat.fx.arpeggio == 0 { n.playback } else { NotePlayback::default() };
+                    let vel = (beat.dynamic.velocity() as f32 * own.gain()).round().clamp(1.0, 127.0) as u8;
+                    let length = ((end - tick) as f64 * own.length()) as u32;
+                    let tick = tick.saturating_add_signed(own.offset_ticks());
                     ev.push((tick, vec![0x90 | ch, p, vel]));
-                    let off = (end - tick).saturating_sub(10).max(1);
+                    let off = length.saturating_sub(10).max(1);
                     ev.push((tick + off, vec![0x80 | ch, p, 0]));
                 }
             }

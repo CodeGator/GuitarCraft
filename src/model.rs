@@ -163,6 +163,42 @@ pub struct Note {
     pub grace: Option<u8>,
     /// The palette's further note marks.
     pub fx: NoteFx,
+    /// Audio Note Settings: how the note plays, apart from what is written.
+    pub playback: NotePlayback,
+}
+
+/// A note's playback settings (Note > Audio Note Settings), as in Guitar Pro 8.
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
+#[serde(default)]
+pub struct NotePlayback {
+    /// How long it sounds, as a percentage of its written value.
+    pub percent: u16,
+    /// How much later than written it starts, in Guitar Pro's ticks (480 to the quarter note,
+    /// half as fine as the song's own); negative is earlier.
+    pub offset: i16,
+    /// How much louder than written it plays, in decibels; negative is softer.
+    pub db: i8,
+}
+
+impl Default for NotePlayback {
+    fn default() -> Self {
+        NotePlayback { percent: 100, offset: 0, db: 0 }
+    }
+}
+
+impl NotePlayback {
+    /// The factor on the note's length.
+    pub fn length(self) -> f64 {
+        self.percent as f64 / 100.0
+    }
+    /// The offset in the song's ticks.
+    pub fn offset_ticks(self) -> i32 {
+        self.offset as i32 * (QUARTER / 480) as i32
+    }
+    /// The factor on its loudness.
+    pub fn gain(self) -> f32 {
+        10f32.powf(self.db as f32 / 20.0)
+    }
 }
 
 /// Further note marks from the edition palette.

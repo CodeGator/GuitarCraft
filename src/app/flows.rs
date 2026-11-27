@@ -917,3 +917,47 @@ E|--------|
     assert_eq!(r.app.track, tracks, "the new track is chosen");
     let _ = std::fs::remove_file(&file);
 }
+
+/// The guitar's first bar of the demo song, with the cursor on its first note.
+fn on_the_demo() -> Rig {
+    let mut r = Rig::new();
+    r.app.show_home = false;
+    r.app.song = Song::demo();
+    r.app.track = 0;
+    r.app.bar = 0;
+    r.app.beat = 0;
+    r.app.string = r.app.song.tracks[0].bars[0].beats[0].notes[0].string as usize;
+    r.frames(3);
+    r
+}
+
+#[test]
+fn audio_note_settings_change_the_note_at_the_cursor_or_the_selection() {
+    let mut r = on_the_demo();
+    r.key(Key::F, Modifiers::SHIFT);
+    assert!(r.app.audio_notes.is_some(), "Shift+F opens the window");
+    let of = |r: &Rig, beat: usize| r.app.song.tracks[0].bars[0].beats[beat].notes[0].playback;
+    let steps = r.app.undo.len();
+    // Dragging a control makes many changes and one undo step.
+    for percent in [90, 70, 50] {
+        r.app.set_note_playback(move |p| p.percent = percent);
+    }
+    assert_eq!((of(&r, 0).percent, of(&r, 1).percent, r.app.undo.len()), (50, 100, steps + 1));
+    r.app.do_undo();
+    assert_eq!(of(&r, 0), NotePlayback::default());
+    // A selection: each note keeps the settings that aren't changed.
+    r.app.set_note_playback(|p| p.offset = 5);
+    r.app.sel_anchor = Some((0, 0));
+    r.app.beat = 2;
+    r.app.set_note_playback(|p| p.db = -6);
+    assert_eq!([of(&r, 0).offset, of(&r, 1).offset], [5, 0]);
+    assert!((0..3).all(|b| of(&r, b).db == -6) && of(&r, 3).db == 0);
+    // Reset, and an arpeggio's notes have no settings.
+    r.app.set_note_playback(|p| *p = NotePlayback::default());
+    assert!((0..3).all(|b| of(&r, b) == NotePlayback::default()));
+    r.app.sel_anchor = None;
+    r.app.beat = 0;
+    r.app.song.tracks[0].bars[0].beats[0].fx.arpeggio = 1;
+    r.app.set_note_playback(|p| p.percent = 200);
+    assert_eq!(of(&r, 0).percent, 100);
+}

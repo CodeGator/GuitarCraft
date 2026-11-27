@@ -370,6 +370,7 @@ impl App {
 
     pub(super) fn tool_windows(&mut self, ctx: &egui::Context) {
         self.directions_window(ctx);
+        self.audio_notes_window(ctx);
         self.add_track_window(ctx);
         self.tuning_window(ctx);
         self.tuner_window(ctx);

@@ -1108,6 +1108,17 @@ fn write_note(ids: &mut Ids, t: &Track, beat: &Beat, n: &Note, key: i8, place: O
     if acc != 0 {
         let _ = write!(x, "<Accent>{acc}</Accent>");
     }
+    // Audio Note Settings, as Guitar Pro 8 writes them: only those that are changed.
+    let playback = n.playback;
+    if playback.percent != 100 {
+        let _ = write!(x, "<Duration>{}</Duration>", playback.length());
+    }
+    if playback.offset != 0 {
+        let _ = write!(x, "<Offset>{}</Offset>", playback.offset);
+    }
+    if playback.db != 0 {
+        let _ = write!(x, "<RelativeVelocity>{}</RelativeVelocity>", playback.db);
+    }
     if t.instrument == Instrument::Drums {
         let _ = write!(
             x,
@@ -1954,6 +1965,23 @@ mod tests {
         // As Guitar Pro stores it, with the lower staff's voice first, it opens with both hands.
         let back = crate::gpif::parse_gpif(&xml).unwrap();
         assert_eq!(hands(&back.tracks[0]).len(), 2);
+    }
+
+    #[test]
+    fn audio_note_settings_read_and_written_like_guitar_pro() {
+        // The demo song with settings on the first five notes of the guitar, saved by
+        // Guitar Pro 8.
+        let song = crate::gpif::import_gp(&crate::fixture("gp8/Morning Walk - audio note settings.gp")).unwrap();
+        let of = |song: &Song| -> Vec<(u16, i16, i8)> {
+            song.tracks[0].bars[0].beats.iter().take(6).map(|b| (b.notes[0].playback.percent, b.notes[0].playback.offset, b.notes[0].playback.db)).collect()
+        };
+        let set = vec![(50, 0, 0), (100, 5, 0), (100, 0, 6), (100, 0, -6), (200, 0, 3), (100, 0, 0)];
+        assert_eq!(of(&song), set);
+        let xml = gpif_xml(&song);
+        for element in ["<Duration>0.5</Duration>", "<Offset>5</Offset>", "<RelativeVelocity>-6</RelativeVelocity>", "<Duration>2</Duration><RelativeVelocity>3</RelativeVelocity>"] {
+            assert!(xml.contains(element), "{element}");
+        }
+        assert_eq!(of(&crate::gpif::parse_gpif(&xml).unwrap()), set);
     }
 
     /// The demo song saved by Guitar Pro 8 opens as the demo song, and GuitarCraft's part

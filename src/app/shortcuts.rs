@@ -140,7 +140,7 @@ acts! {
     Shorter, Longer, Dotted, DoubleDotted, Triplet, Rest, TieNote, TieBeat, GraceBefore,
     GraceOnBeat, Ghost, DeadNote, Accent, HeavyAccent, Staccato, SemitoneUp, SemitoneDown,
     OctaveUp, OctaveDown, NoteStringUp, NoteStringDown, MoveOnStaffUp, MoveOnStaffDown,
-    SpellFlats, SpellAuto, SpellSharps, CycleSpelling, Chord, Text, Fermata,
+    SpellFlats, SpellAuto, SpellSharps, CycleSpelling, Chord, Text, Fermata, AudioNoteSettings,
     // Effects
     Hammer, Legato, Slide, Bend, Vibrato, WhammyVibrato, WideWhammyVibrato, TremoloBar,
     Trill, TremoloPicking, PalmMuteNote, PalmMuteBeat, LetRing, NaturalHarmonic,
@@ -301,6 +301,7 @@ pub const ACTIONS: &[Action] = &[
     a(Chord, "Chord", G::Notes, Score, &[key(Key::A)]),
     a(Text, "Text", G::Notes, Score, &[key(Key::T)]),
     a(Fermata, "Fermata", G::Notes, Score, &[key(Key::F)]),
+    a(AudioNoteSettings, "Audio note settings", G::Notes, Score, &[shift(Key::F)]),
     // ----- Effects -----
     a(Hammer, "Hammer-on / pull-off", G::Effects, Score, &[key(Key::H)]),
     a(Legato, "Legato", G::Effects, Score, &[shift(Key::H)]),

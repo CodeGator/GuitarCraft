@@ -1124,6 +1124,17 @@ fn read_beat(
                 _ => 0,
             };
         }
+        // Audio Note Settings, written only where changed.
+        let number = |tag: &str| text(child(*nn, tag)).parse::<f64>().ok();
+        if let Some(length) = number("Duration") {
+            n.playback.percent = (length * 100.0).round().clamp(1.0, 10000.0) as u16;
+        }
+        if let Some(ticks) = number("Offset") {
+            n.playback.offset = ticks.round() as i16;
+        }
+        if let Some(db) = number("RelativeVelocity") {
+            n.playback.db = db.round().clamp(-100.0, 100.0) as i8;
+        }
         n.fx.lh_finger = crate::gpifwrite::finger_from_letter(&text(child(*nn, "LeftFingering")));
         n.fx.rh_finger = crate::gpifwrite::finger_from_letter(&text(child(*nn, "RightFingering")));
         n.palm_mute = p.contains_key("PalmMuted");

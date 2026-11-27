@@ -1056,6 +1056,9 @@ pub struct DrawCtx<'a> {
     pub bar_errors: u8,
     /// Bars playback never reaches (empty when not checked).
     pub unreached: &'a [bool],
+    /// Ring the notes of the current track that have their own playback settings (while the
+    /// Audio Note Settings window is open).
+    pub ring_playback: bool,
 }
 
 /// Where a click landed: on a tab string or a position of the notation staff.
@@ -2234,6 +2237,29 @@ fn draw_system(p: &Painter, lay: &Layout, dc: &DrawCtx, si: usize, o: Pos2) {
                     }
                 } else {
                     draw_bar_content(p, &bctx);
+                }
+            }
+        }
+    }
+
+    // A blue disc behind each note that has its own playback settings.
+    if dc.ring_playback {
+        let track = &song.tracks[dc.ti];
+        for bl in &sys.bars {
+            let beats = track.bars[bl.bar].voice(dc.voice);
+            let (xs, _) = bl.voice_xs(beats);
+            for (beat, &bx) in beats.iter().zip(xs.iter()) {
+                for n in beat.notes.iter().filter(|n| n.playback != crate::model::NotePlayback::default()) {
+                    let disc = |y: f32| {
+                        p.circle_filled(Pos2::new(o.x + bx, y0 + y), 10.0 * z, Color32::from_rgba_unmultiplied(60, 120, 235, 70));
+                    };
+                    if cg.std {
+                        let pos = draw::note_staff_pos(track, beat, song.master[bl.bar].key, n, song.style.capo_affects_std);
+                        disc(cg.pos_y(pos));
+                    }
+                    if cg.tab {
+                        disc(cg.string_y((n.string as usize).min(cg.strings - 1)));
+                    }
                 }
             }
         }

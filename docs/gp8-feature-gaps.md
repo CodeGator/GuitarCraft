@@ -28,7 +28,11 @@ exist under another name. Check before starting work on one, and tick items off 
       diagrams (off strips them from beat and all-track copies; scale diagrams don't exist
       yet). Bars playback never reaches are also shown in red (added 2026-11-22, uses `Song::play_order`).
       Tried by hand in the running app (confirmed 2026-11-23). Language option removed 2026-11-22 (no plans for other languages). Greyed out for now: MIDI output and input.
-- [ ] **Audio Note Settings** (Shift+F): playback settings for individual notes.
+- [x] **Audio Note Settings** (Shift+F, Note menu): added 2026-11-27 (`src/app/audionotes.rs`):
+      duration, offset, relative velocity and Reset, for the note or selection, with the changed
+      notes ringed in the score; stored as Guitar Pro 8 does (a file it saved is a fixture) and
+      used by playback and MIDI export. Its control ranges for offset and velocity aren't
+      published (ours: ±480 ticks, ±30 dB).
 - [ ] **Design mode** (Ctrl+Alt+D): palette mode for adjusting how the score is laid out.
 - [x] **Action list** (Ctrl+Alt+E) and **Expression text** (Ctrl+Shift+E): added 2026-11-23, as
       in the Guitar Pro 8 guide both are modes of the command palette (Tools menu, or "@" and

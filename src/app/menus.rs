@@ -472,6 +472,10 @@ impl App {
             self.delete_beats();
             ui.close();
         }
+        if item(ui, "Audio Note Settings...", &sc(Act::AudioNoteSettings)).clicked() {
+            self.open_audio_notes();
+            ui.close();
+        }
         ui.separator();
         ui.menu_button("Duration", |ui| {
             for d in Dur::ALL {

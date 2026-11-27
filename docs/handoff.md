@@ -15,7 +15,7 @@ Written 2026-11-23, after releasing 0.10.0 and starting `version-0.11.0`. Read t
   Assistant that **only answers** (see "The AI features" below).
 - **Branches on GitHub:** `main`, `release`, and an old merged `version-0.8.0` that could be
   deleted.
-- **Tests:** `cargo test --release` passes in full (281 passed, 7 ignored live tests that need a
+- **Tests:** `cargo test --release` passes in full (288 passed, 7 ignored live tests that need a
   model, a key or a Claude Code sign-in). In a debug build (`cargo test`) three `dock` tests fail
   ("Dropped TexturesDelta with 1 unapplied deltas", from `epaint`); seen 2026-11-27 before any
   change that day.
@@ -90,6 +90,18 @@ sound and master effect changes are kept on the bar they name, so they move, cop
 the flats choice stays with its key and a bar's `XProperties` with the bar. A change of volume or
 pan made here drops that control's changes over time. Edge not handled: a master bar pasted from
 another song brings its master effect changes, which then apply to the effect in the same place.
+
+**Audio Note Settings** (2026-11-27; checked by the owner, and a changed copy of ours showed the
+change in GP8): `NotePlayback` on a note,
+read and written as `Duration`, `Offset` (Guitar Pro ticks, 480 to the quarter; ours are 960) and
+`RelativeVelocity`; matched to the owner's window picture and a file GP8 saved. The built-in sound
+and MIDI export use them; arpeggio notes are left alone, as GP8 says.
+
+**Tab import clean-up** (2026-11-27): the text tab importer now reads tab that is quoted with
+">", uses typographic dashes or box lines, has spaces for dashes, or has blank lines between the
+strings (`tab_blocks` in `textmidi.rs`). Tested on the demo song's own tab, damaged each way, and
+checked by the owner. Also fixed: an ASCII import from the start screen went into a song hidden
+behind it; it now opens as a new song. With a song showing it adds a track, as before.
 
 **Bar repeat signs** (2026-11-27): Guitar Pro's `SimileMark` is now read and written
 (`Simple`, `FirstOfDouble`, `SecondOfDouble`); before, repeated bars of a Guitar Pro file opened
@@ -227,12 +239,9 @@ question in the panel. Before a release, check Anthropic's current terms.
 ## What to do next
 
 1. **Hear from the owner** about Suggest Chords in real use.
-2. **Teach the tab importer simple clean-up** (quoting, blank lines inside a system, typed dashes,
-   spaces for dashes): a trial showed plain code does it better than AI (`docs/ai-design.md`).
-3. **Still missing from Guitar Pro 8** (see the gap list): Audio Note Settings (Shift+F),
-   instrument change automation, Design mode, and importing TablEdit and Power Tab.
-   File password protection was decided against.
-4. **Release 0.11.0** when the owner says: pull request `version-0.11.0` into `main` (see "How we
+2. **Still missing from Guitar Pro 8** (see the gap list): instrument change automation, Design
+   mode, and importing TablEdit and Power Tab. File password protection was decided against.
+3. **Release 0.11.0** when the owner says: pull request `version-0.11.0` into `main` (see "How we
    work here"). Update the README screenshots first if wanted.
 
 ## How we work here

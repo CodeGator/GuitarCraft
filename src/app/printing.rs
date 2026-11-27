@@ -470,6 +470,7 @@ impl App {
                         show_cursor: false,
                         voice: 0,
                         cursor_std: None,
+                        ring_playback: false,
                         printing: true,
                         transparent: false,
                         play_cursor: crate::score::PlayCursor::Smooth,

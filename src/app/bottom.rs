@@ -806,6 +806,7 @@ Right brings the selected track ({name}) forward by                          tur
                     show_cursor: !self.playing,
                     voice: self.voice,
                     cursor_std: self.std_cursor,
+                    ring_playback: self.audio_notes.is_some(),
                     printing: false,
                     transparent: false,
                     play_cursor: self.prefs.play_cursor,

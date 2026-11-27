@@ -10,6 +10,7 @@ mod aifacts;
 mod aihelp;
 mod aipanel;
 mod aitext;
+mod audionotes;
 mod batch;
 #[cfg(test)]
 mod flows;
@@ -190,6 +191,8 @@ pub struct App {
     score_active: usize,
     split_frac: f32,
     dir_open: bool,
+    /// The Audio Note Settings window, while it is open.
+    audio_notes: Option<audionotes::AudioNotes>,
     /// The Add Track window.
     at: addtrack::AddTrack,
     /// Where to suggest saving a Guitar Pro file opened in another format.
@@ -388,6 +391,7 @@ impl App {
             score_active: 0,
             split_frac: 0.5,
             dir_open: false,
+            audio_notes: None,
             at: Default::default(),
             save_hint: None,
             song_more: false,
@@ -493,6 +497,8 @@ impl App {
                 "keyboard" => app.show_panel(dock::Pane::Keyboard),
                 "ai" => app.show_panel(dock::Pane::Ai),
                 "fretboard" => app.show_panel(dock::Pane::Fretboard),
+                // The Audio Note Settings window.
+                "audionotes" => app.open_audio_notes(),
                 // The drumkit view, on the song's first drum track.
                 "drums" => {
                     if let Some(t) = app.song.tracks.iter().position(|t| t.kind() == InstrumentType::Drums) {

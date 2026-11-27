@@ -404,6 +404,7 @@ impl App {
             }),
             ForceBreak => self.bar_edit(|mb| mb.line_break = !mb.line_break),
             Directions => self.dir_open = true,
+            AudioNoteSettings => self.open_audio_notes(),
             Section => self.edit_section(),
             Automations => self.open_automations(self.bar),
             // ----- Voices -----
