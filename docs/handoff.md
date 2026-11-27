@@ -10,12 +10,12 @@ Written 2026-11-23, after releasing 0.10.0 and starting `version-0.11.0`. Read t
   from PR #20. MSI and portable zip, unsigned. The MSI was never installed by hand; only the
   checksums were checked (they match). v0.9.0 is the one before it.
 - **Working branch:** `version-0.11.0`, made from `main` after the release, version bumped to
-  0.11.0. Nothing on it is pushed. On 2026-11-27 it gained: the **Claude Code** AI provider,
+  0.11.0. Pushed to GitHub on 2026-11-27 (up to the left hand fix). On 2026-11-27 it gained: the **Claude Code** AI provider,
   passwords kept out of the Ollama address, **Suggest Chords** in chord charts, and an AI
   Assistant that **only answers** (see "The AI features" below).
 - **Branches on GitHub:** `main`, `release`, and an old merged `version-0.8.0` that could be
   deleted.
-- **Tests:** `cargo test --release` passes in full (239 passed, 7 ignored live tests that need a
+- **Tests:** `cargo test --release` passes in full (276 passed, 7 ignored live tests that need a
   model, a key or a Claude Code sign-in). In a debug build (`cargo test`) three `dock` tests fail
   ("Dropped TexturesDelta with 1 unapplied deltas", from `epaint`); seen 2026-11-27 before any
   change that day.
@@ -49,13 +49,11 @@ sound engine (RSE), kept the drum kit sound.
 
 **Saving a Guitar Pro file keeps more of it (2026-11-27; plan and decisions in
 `docs/gp-keep-design.md`).** We rebuild a `.gp` file from our own model, so what the model doesn't
-hold used to be lost. Steps 0 and 1 are built (`src/gpkeep.rs`): the stylesheet, header and footer
-texts, master effects, preferences, pickup bar, `MultiVoice` and an empty title now survive.
-**Step 1 waits for the owner's check in GP8** before step 2. Still lost or reset: track sound
-engine, sounds and effects (we write MIDI), mixer and automations, the flats choice, bars per
-line, score views and their stylesheets, and per-beat settings (not wanted). The exact list is
-`ACCEPTED` in `gpkeep.rs`; its test fails on any new loss. The owner checked step 1 in GP8
-("looks good", 2026-11-27).
+hold used to be lost. Steps 0 to 2 are built (`src/gpkeep.rs`); what each keeps is in the plan.
+The owner checked step 1 in GP8 ("looks good"); step 2 is below. Still lost or reset: the flats
+choice, automations once bars are added or removed (step 3 ties them to bars), bars per line and
+score views (step 4), and per-beat settings (not wanted). The exact list is `ACCEPTED` in
+`gpkeep.rs`; its test fails on any new loss.
 
 **Keyboards, voices and orchestra (fixed 2026-11-27; the owner opened our new files in GP8 and
 GP8's own file in GuitarCraft: "looks good").** GP8
@@ -65,7 +63,6 @@ each note on a string; `src/gpinstr.rs` now writes and reads them as in `Instrum
 names, sounds, tunings with strings added for notes out of reach, concert octaves numbered one
 higher). Which part caused the crash was not isolated: guitars, synth, piano (one and two staves)
 and drums opened before the fix. GP8 maps our `Midi/<name>` guitar sounds correctly. Still open:
-trumpet and saxophone are saved without their transposition (GP8 then shows concert pitch; step 2);
 (**Left hand, fixed 2026-11-27:** a lower staff with a rhythm of its own opened correctly but its
 notes were lost after one save and reopen here, as only the lower staff's first voice was read.
 All its voices are read now, and each staff is written with its own voices from the first place.
@@ -74,6 +71,13 @@ Checked: GP8 kept a two-hand file of ours unchanged on saving it, and that copy 
 GuitarCraft);
 GP8's icons for these instruments differ from ours; GP8
 offered no string ensemble, so ours is written as a violin with that sound.
+
+**Step 2, track settings (2026-11-27; checked by the owner in GP8: saved copies sound the same,
+and differ only in layout, as expected until step 4).** A track keeps what
+its file had (`KeptTrack` in `gpkeep.rs`): sound engine, sounds and effects, MIDI channels,
+instrument set and notation, transposition, the tuning under a keyboard or orchestral staff, and
+the mixer strip, where only a control moved here is changed. All but the mixer go while the
+track has another instrument.
 
 **Bar repeat signs** (2026-11-27): Guitar Pro's `SimileMark` is now read and written
 (`Simple`, `FirstOfDouble`, `SecondOfDouble`); before, repeated bars of a Guitar Pro file opened

@@ -1155,6 +1155,10 @@ pub struct Track {
     /// While editing another voice, that voice is swapped into `beats` (not saved).
     #[serde(skip)]
     pub swapped: usize,
+    /// What the track holds in the Guitar Pro file it was read from that the app doesn't use,
+    /// to be written back (see `gpkeep.rs`). It stays with the track.
+    #[serde(skip)]
+    pub kept: Option<std::sync::Arc<crate::gpkeep::KeptTrack>>,
 }
 
 impl Default for Track {
@@ -1193,6 +1197,7 @@ impl Default for Track {
             tuning_label: String::new(),
             tuning_label_visible: true,
             swapped: 0,
+            kept: None,
         }
     }
 }

@@ -90,7 +90,11 @@ pub fn import_gpx(data: &[u8]) -> Result<Song, String> {
     let file = read_bcfs(&fs, "score.gpif")
         .ok_or_else(|| "No score was found inside this .gpx file.".to_string())?;
     let xml = String::from_utf8_lossy(&file).to_string();
-    parse_gpif(&xml)
+    let mut song = parse_gpif(&xml)?;
+    for t in &mut song.tracks {
+        t.kept = None;
+    }
+    Ok(song)
 }
 
 type PbField<'a> = (u64, u8, u64, &'a [u8]);
@@ -380,7 +384,7 @@ struct TrackInfo {
 }
 
 /// The open strings of each staff of a track, lowest first.
-fn staff_strings(track: Node) -> Vec<Vec<u8>> {
+pub(crate) fn staff_strings(track: Node) -> Vec<Vec<u8>> {
     child(track, "Staves")
         .into_iter()
         .flat_map(|s| s.children().filter(|c| c.has_tag_name("Staff")))
@@ -395,7 +399,7 @@ fn staff_strings(track: Node) -> Vec<Vec<u8>> {
 }
 
 /// The sound number of every articulation of a track's instrument set, in order.
-fn kit_sounds(track: Node) -> Vec<Option<u8>> {
+pub(crate) fn kit_sounds(track: Node) -> Vec<Option<u8>> {
     let first = |a: Node, tag: &str| text(child(a, tag)).split_whitespace().next().and_then(|x| x.parse::<u8>().ok());
     child(track, "InstrumentSet")
         .into_iter()
@@ -658,6 +662,8 @@ pub fn parse_gpif(xml: &str) -> Result<Song, String> {
                 tr.capo = 0;
                 tr.grand_staff = staves > 1 && tr.kind() == InstrumentType::Keyboard;
             }
+            let bars = child(root, "MasterBars").map_or(0, |m| m.children().filter(|c| c.has_tag_name("MasterBar")).count());
+            tr.kept = Some(std::sync::Arc::new(crate::gpkeep::read_track(t, xml, &tr, bars)));
             infos.push(TrackInfo {
                 keep,
                 staff_offset,

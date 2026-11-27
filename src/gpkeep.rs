@@ -1,11 +1,12 @@
 //! What a .gp file holds that this app doesn't use, kept so it can be written back when the song
 //! is saved. The design and its rules are in `docs/gp-keep-design.md`.
 //!
-//! Built so far: the settings of the file as a whole. A kept setting is written back until the
-//! thing it depends on changes, so what the song held when it was read is recorded beside it.
+//! Built so far: the settings of the file as a whole, and each track's. A kept setting is
+//! written back until the thing it depends on changes, so what the song held when it was read is
+//! recorded beside it.
 
 use crate::gpstyle::{self, Raw, V};
-use crate::model::Song;
+use crate::model::{Instrument, Song, Track};
 use crate::style::{HeaderItem, Stylesheet};
 use roxmltree::{Document, Node};
 use std::io::Read;
@@ -135,10 +136,185 @@ impl KeptSong {
     }
 }
 
+/// The mixer numbers this app has a control for, as places in the channel strip.
+fn modelled(place: usize) -> bool {
+    crate::model::EQ_GPIF_INDEX.contains(&place) || matches!(place, 9 | 11 | 12)
+}
+
+/// A track's mixer: <RSE> as read, with and without the changes over time.
+#[derive(Debug, PartialEq)]
+struct Mixer {
+    all: String,
+    without: String,
+    /// The channel strip's numbers as written, the text they are in, and what this app's
+    /// controls stood at when the file was read.
+    numbers: String,
+    opened: [f32; 16],
+}
+
+/// What a track of a .gp file holds that this app doesn't use.
+#[derive(Debug, PartialEq)]
+pub struct KeptTrack {
+    instrument: Instrument,
+    opened_bars: usize,
+    /// The instrument set, and the notation that goes with it.
+    instrument_set: Option<String>,
+    /// The instrument set's sounds in order (a drum note names its sound by its place).
+    kit: Vec<Option<u8>>,
+    /// For an instrument Guitar Pro tunes and this app doesn't: each staff's open strings.
+    tunings: Vec<Vec<u8>>,
+    transpose: Option<String>,
+    forced_sound: Option<String>,
+    sounds: Option<String>,
+    midi: Option<String>,
+    engine: Option<String>,
+    one_channel: Option<String>,
+    /// The changes of sound: all of them, and only those at the start.
+    automations: Option<(String, String)>,
+    mixer: Option<Mixer>,
+}
+
+/// The element's text with the elements `cut` picks removed.
+fn without<'a, 'i>(xml: &str, element: Node<'a, 'i>, cut: impl Fn(&Node<'a, 'i>) -> bool) -> String {
+    let start = element.range().start;
+    let mut out = xml[element.range()].to_string();
+    let mut cuts: Vec<_> = element.descendants().filter(|n| cut(n)).map(|n| n.range()).collect();
+    cuts.sort_by_key(|r| std::cmp::Reverse(r.start));
+    for r in cuts {
+        out.replace_range(r.start - start..r.end - start, "");
+    }
+    out
+}
+
+/// Reads what is to be kept of a track. `track` is the song's track as read from `node`.
+pub fn read_track(node: Node, xml: &str, track: &Track, bars: usize) -> KeptTrack {
+    let element = |tag: &str| child(node, tag).map(|n| xml[n.range()].to_string());
+    // Earlier versions of this app named sounds "Midi/...", which Guitar Pro doesn't have, and
+    // wrote instrument sets it can't use: nothing about such a track's instrument is kept.
+    let ours = node.descendants().any(|n| n.has_tag_name("Path") && text(n).starts_with("Midi/"));
+    let theirs = |tag: &str| if ours { None } else { element(tag) };
+    let mixer = child(node, "RSE").and_then(|rse| {
+        let numbers = rse.descendants().find(|n| n.has_tag_name("Parameters"))?;
+        let numbers = numbers.first_child().filter(|c| c.is_text())?;
+        Some(Mixer {
+            all: xml[rse.range()].to_string(),
+            without: without(xml, rse, |n| n.has_tag_name("Automations")),
+            numbers: xml[numbers.range()].to_string(),
+            opened: crate::gpifwrite::strip_values(track),
+        })
+    });
+    let automations = child(node, "Automations").filter(|_| !ours).map(|all| {
+        let later = |n: &Node| n.has_tag_name("Automation") && child(*n, "Bar").is_some_and(|b| text(b) != "0");
+        (xml[all.range()].to_string(), without(xml, all, later))
+    });
+    KeptTrack {
+        instrument: track.instrument,
+        opened_bars: bars,
+        instrument_set: theirs("InstrumentSet").map(|set| set + &element("NotationPatch").unwrap_or_default()),
+        kit: if ours { vec![] } else { crate::gpif::kit_sounds(node) },
+        tunings: if ours || crate::gpinstr::pitched(track.instrument).is_none() { vec![] } else { crate::gpif::staff_strings(node) },
+        transpose: theirs("Transpose"),
+        forced_sound: theirs("ForcedSound"),
+        sounds: theirs("Sounds"),
+        midi: theirs("MidiConnection"),
+        engine: theirs("AudioEngineState"),
+        one_channel: theirs("UseOneChannelPerString"),
+        automations,
+        mixer,
+    }
+}
+
+impl KeptTrack {
+    /// Whether the track still has the instrument its settings belong to.
+    fn fits(&self, track: &Track) -> bool {
+        self.instrument == track.instrument
+    }
+
+    /// The instrument set (with its notation). A drum kit is only kept while it has every sound
+    /// the track uses.
+    pub fn instrument_set(&self, track: &Track) -> Option<&str> {
+        let complete = || {
+            let used = track.bars.iter().flat_map(|b| (0..crate::model::VOICES).flat_map(move |v| b.voice(v).iter())).flat_map(|b| &b.notes);
+            used.map(|n| track.pitch(n)).all(|p| self.kit.contains(&Some(p)))
+        };
+        let usable = self.fits(track) && (track.instrument != Instrument::Drums || complete());
+        self.instrument_set.as_deref().filter(|_| usable)
+    }
+
+    /// The sounds of the kept drum kit, in order; None when ours is written.
+    pub fn kit(&self, track: &Track) -> Option<&[Option<u8>]> {
+        (track.instrument == Instrument::Drums && self.instrument_set(track).is_some()).then_some(&self.kit[..])
+    }
+
+    /// The open strings of staff `staff`, lowest first.
+    pub fn tuning(&self, track: &Track, staff: usize) -> Option<&[u8]> {
+        self.tunings.get(staff).map(Vec::as_slice).filter(|t| self.fits(track) && t.iter().any(|&s| s > 0))
+    }
+
+    pub fn transpose(&self, track: &Track) -> Option<&str> {
+        self.transpose.as_deref().filter(|_| self.fits(track))
+    }
+
+    /// Semitones from a sounding note to the written one, from the kept transposition.
+    pub fn written_shift(&self, track: &Track) -> Option<i32> {
+        let element = self.transpose(track)?;
+        let doc = Document::parse(element).ok()?;
+        let number = |tag: &str| child(doc.root_element(), tag).and_then(|n| text(n).parse::<i32>().ok());
+        Some(-(number("Chromatic")? + 12 * number("Octave")?))
+    }
+
+    pub fn forced_sound(&self, track: &Track) -> Option<&str> {
+        self.forced_sound.as_deref().filter(|_| self.fits(track))
+    }
+
+    /// The sounds with their effects. They and the changes of sound belong together.
+    pub fn sounds(&self, track: &Track) -> Option<&str> {
+        self.sounds.as_deref().filter(|_| self.fits(track))
+    }
+
+    /// The changes of sound. Those after the start go once bars have been added or removed.
+    pub fn automations(&self, track: &Track) -> Option<&str> {
+        self.sounds(track)?;
+        let (all, start) = self.automations.as_ref()?;
+        Some(if track.bars.len() == self.opened_bars { all } else { start })
+    }
+
+    pub fn midi(&self, track: &Track) -> Option<&str> {
+        self.midi.as_deref().filter(|_| self.fits(track))
+    }
+
+    /// Which of Guitar Pro's sound engines plays the track.
+    pub fn engine(&self, track: &Track) -> Option<&str> {
+        self.engine.as_deref().filter(|_| self.fits(track))
+    }
+
+    pub fn one_channel(&self, track: &Track) -> Option<&str> {
+        self.one_channel.as_deref().filter(|_| self.fits(track))
+    }
+
+    /// The mixer as read, except for the controls moved since. Its changes over time go once
+    /// bars have been added or removed.
+    pub fn mixer(&self, track: &Track) -> Option<String> {
+        let m = self.mixer.as_ref()?;
+        let now = crate::gpifwrite::strip_values(track);
+        let numbers: Vec<String> = m
+            .numbers
+            .split_whitespace()
+            .enumerate()
+            .map(|(i, was)| match (now.get(i), m.opened.get(i)) {
+                (Some(&a), Some(&b)) if modelled(i) && (a - b).abs() > 1e-6 => format!("{a:.6}"),
+                _ => was.to_string(),
+            })
+            .collect();
+        let element = if track.bars.len() == self.opened_bars { &m.all } else { &m.without };
+        Some(element.replacen(&m.numbers, &numbers.join(" "), 1))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Bar, MasterBar};
+    use crate::model::{Bar, Instrument, MasterBar, Track};
     use std::collections::BTreeSet;
 
     /// What saving an opened file unchanged still loses or rewrites, each with the step of the
@@ -156,24 +332,7 @@ mod tests {
         "lost Notes/Note/Properties/Property[Fret]/Fret",
         "lost Notes/Note/Properties/Property[String]",
         "lost Notes/Note/Properties/Property[String]/String",
-        // Step 2, track settings.
-        "changed Tracks/Track/AudioEngineState",
-        "changed Tracks/Track/Automations/Automation[Sound]/Value",
-        "changed Tracks/Track/RSE/ChannelStrip/Parameters",
-        "changed Tracks/Track/Sounds/Sound/Label",
-        "changed Tracks/Track/Sounds/Sound/Name",
-        "changed Tracks/Track/Sounds/Sound/Path",
-        "changed Tracks/Track/Sounds/Sound/Role",
-        "lost Tracks/Track/Sounds/Sound/RSE",
-        "lost Tracks/Track/UseOneChannelPerString",
-        "changed Tracks/Track/MidiConnection/PrimaryChannel",
-        "changed Tracks/Track/MidiConnection/SecondaryChannel",
-        "changed Tracks/Track/Sounds/Sound/MIDI/Program",
-        "changed Tracks/Track/Transpose/Chromatic",
-        "lost Tracks/Track/Sounds/Sound/RSE/EffectChain",
-        "lost Tracks/Track/Sounds/Sound/RSE/ElementsSettings",
-        // Step 2 too: what Guitar Pro 8 adds to a drum track, and its names for the bongos.
-        "changed Tracks/Track/InstrumentSet/Elements/Element/Articulations/Articulation/Name",
+        // Stays: Guitar Pro adds these to a drum track itself.
         "lost Tracks/Track/Staves/Staff/Properties/Name",
         "lost Tracks/Track/Staves/Staff/Properties/Property[CapoFret]",
         "lost Tracks/Track/Staves/Staff/Properties/Property[FretCount]",
@@ -379,6 +538,119 @@ mod tests {
         assert!(crate::gpifwrite::gpif_xml(&song).contains("<Title><![CDATA[]]></Title>"));
         song.title = "Mine".into();
         assert!(crate::gpifwrite::gpif_xml(&song).contains("<Title><![CDATA[Mine]]></Title>"));
+    }
+
+    /// The first track's part of the saved score.
+    fn first_track(song: &Song) -> String {
+        let xml = crate::gpifwrite::gpif_xml(song);
+        let a = xml.find("<Track id=\"0\">").expect("a track");
+        xml[a..a + xml[a..].find("</Track>").expect("closed")].to_string()
+    }
+
+    /// The drum file Guitar Pro 8 saved with the track on its own sound engine.
+    fn drum_check() -> Song {
+        crate::gpif::import_gp(&crate::fixture("gp8/Drum check.gp")).unwrap()
+    }
+
+    #[test]
+    fn a_track_keeps_its_sound_and_engine_until_the_instrument_changes() {
+        let (_, mut song) = opened();
+        let kept = first_track(&song);
+        assert!(kept.contains("<SoundbankPatch>D-Steel</SoundbankPatch>"), "{kept}");
+        // A new name, tuning or volume leaves them.
+        song.tracks[0].name = "Other".into();
+        song.tracks[0].volume = 0.25;
+        assert!(first_track(&song).contains("D-Steel"));
+        song.tracks[0].set_instrument(Instrument::Banjo);
+        let changed = first_track(&song);
+        assert!(!changed.contains("D-Steel") && changed.contains("<Type>banjo</Type>"), "{changed}");
+        assert!(changed.contains("<AudioEngineState>MIDI</AudioEngineState>"));
+        // Changing back brings them back.
+        song.tracks[0].set_instrument(Instrument::SteelGuitar);
+        assert!(first_track(&song).contains("D-Steel"));
+        // The engine chosen in Guitar Pro stays.
+        assert!(first_track(&drum_check()).contains("<AudioEngineState>RSE</AudioEngineState>"));
+    }
+
+    #[test]
+    fn moving_one_mixer_control_changes_only_its_number() {
+        let (_, mut song) = opened();
+        let numbers = |song: &Song| {
+            let t = first_track(song);
+            let a = t.find("<Parameters>").unwrap() + "<Parameters>".len();
+            t[a..a + t[a..].find("</Parameters>").unwrap()].split_whitespace().map(String::from).collect::<Vec<_>>()
+        };
+        let before = numbers(&song);
+        song.tracks[0].volume = 0.25;
+        let after = numbers(&song);
+        let changed: Vec<usize> = (0..before.len()).filter(|&i| before[i] != after[i]).collect();
+        assert_eq!((changed, after[12].as_str()), (vec![12], "0.250000"));
+    }
+
+    #[test]
+    fn a_duplicated_track_keeps_its_settings_and_a_new_one_has_ours() {
+        let (_, mut song) = opened();
+        let copy = song.tracks[0].clone();
+        song.tracks.insert(1, copy);
+        song.tracks.push(Track::of_instrument(Instrument::Bass, "New"));
+        song.normalize();
+        let xml = crate::gpifwrite::gpif_xml(&song);
+        assert_eq!(xml.matches("<SoundbankPatch>D-Steel</SoundbankPatch>").count(), 2);
+        assert!(xml.contains("<Path>Midi/Electric Bass</Path>"));
+    }
+
+    #[test]
+    fn a_drum_note_names_its_place_in_the_kit_that_is_written() {
+        // A kit of two sounds, the other way round from ours.
+        let set = "<InstrumentSet><Type>drumKit</Type><Elements><Element><Articulations><Articulation><InputMidiNumbers>38</InputMidiNumbers></Articulation><Articulation><InputMidiNumbers>36</InputMidiNumbers></Articulation></Articulations></Element></Elements></InstrumentSet>";
+        let xml = format!("<Track>{set}</Track>");
+        let doc = Document::parse(&xml).unwrap();
+        let mut song = Song::new_blank();
+        let mut drums = Track::of_instrument(Instrument::Drums, "Drums");
+        let hit = |p: u8| crate::model::Beat { notes: vec![crate::model::Note::new(0, p)], ..crate::model::Beat::rest(crate::model::Dur::Whole) };
+        drums.bars = vec![Bar::new(vec![hit(36)])];
+        drums.kept = Some(std::sync::Arc::new(read_track(doc.root_element(), &xml, &drums, 1)));
+        song.master = vec![MasterBar::default()];
+        song.tracks = vec![drums];
+        let saved = crate::gpifwrite::gpif_xml(&song);
+        assert!(saved.contains(set) && saved.contains("<InstrumentArticulation>1</InstrumentArticulation>"), "{saved}");
+        // A sound the kept kit lacks: the whole of our kit is written instead.
+        song.tracks[0].bars[0].beats[0] = hit(42);
+        let saved = crate::gpifwrite::gpif_xml(&song);
+        assert!(!saved.contains(set) && saved.contains("<InstrumentArticulation>3</InstrumentArticulation>"));
+    }
+
+    #[test]
+    fn changes_of_sound_after_the_start_go_when_the_bars_change() {
+        let xml = "<Track><Sounds><Sound><Path>Stringed/Basses/Clean Bass</Path></Sound></Sounds><Automations><Automation><Type>Sound</Type><Bar>0</Bar></Automation><Automation><Type>Sound</Type><Bar>2</Bar></Automation></Automations></Track>";
+        let doc = Document::parse(xml).unwrap();
+        let mut track = Track { bars: vec![Bar::empty(); 4], ..Track::default() };
+        let kept = read_track(doc.root_element(), xml, &track, 4);
+        assert!(kept.automations(&track).unwrap().contains("<Bar>2</Bar>"));
+        track.bars.push(Bar::empty());
+        let after = kept.automations(&track).unwrap();
+        assert!(after.contains("<Bar>0</Bar>") && !after.contains("<Bar>2</Bar>"), "{after}");
+    }
+
+    #[test]
+    fn nothing_of_the_instrument_is_kept_from_our_own_older_files() {
+        let xml = "<Track><InstrumentSet><Type>leadVoice</Type></InstrumentSet><Sounds><Sound><Path>Midi/Lead Voice</Path></Sound></Sounds><AudioEngineState>MIDI</AudioEngineState></Track>";
+        let doc = Document::parse(xml).unwrap();
+        let track = Track::of_instrument(Instrument::LeadVocals, "Voice");
+        let kept = read_track(doc.root_element(), xml, &track, 1);
+        assert_eq!((kept.instrument_set(&track), kept.sounds(&track), kept.engine(&track)), (None, None, None));
+    }
+
+    #[test]
+    fn a_trumpet_keeps_its_transposition_and_is_written_to_match() {
+        let song = crate::gpif::import_gp(&crate::fixture("gp8/Instruments.gp")).unwrap();
+        let k = song.tracks.iter().position(|t| t.instrument == Instrument::Trumpet).unwrap();
+        let kept = song.tracks[k].kept.as_ref().unwrap();
+        assert_eq!(kept.written_shift(&song.tracks[k]), Some(2));
+        let xml = crate::gpifwrite::gpif_xml(&song);
+        assert!(xml.contains("<Chromatic>-2</Chromatic>"));
+        // The file's note: it sounds G and is written A.
+        assert!(xml.contains("<Property name=\"ConcertPitch\"><Pitch><Step>G</Step><Accidental></Accidental><Octave>6</Octave></Pitch></Property><Property name=\"TransposedPitch\"><Pitch><Step>A</Step>"));
     }
 
     #[test]

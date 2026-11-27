@@ -1,7 +1,8 @@
 # Keeping a Guitar Pro file's own settings: design
 
-Status: 2026-11-27. The owner agreed the plan (see "Decisions"). **Steps 0 and 1 are built**
-(`src/gpkeep.rs`); step 1 has not yet been checked in Guitar Pro 8.
+Status: 2026-11-27. The owner agreed the plan (see "Decisions"). **Steps 0, 1 and 2 are built**
+(`src/gpkeep.rs`). The owner checked steps 1 and 2 in Guitar
+Pro 8 (after step 2, saved copies sound the same and differ in layout).
 
 ## The problem
 
@@ -69,9 +70,10 @@ block also records what our model held when the file was read.
 | Header and footer text | Song | Our header and footer settings are unchanged | Ours |
 | Master effects | Song | Always; their changes over time while the number of bars is unchanged (step 3 ties them to bars) | The effects without the changes |
 | Pickup bar | Master bar (`pickup`) | It is still the first bar | Off |
-| Sound engine, sounds, effects, `UseOneChannelPerString` | Track | The instrument is unchanged | Ours (MIDI) |
+| Sound engine, sounds, effects, `UseOneChannelPerString`, MIDI channels | Track | The instrument is unchanged | Ours (MIDI) |
+| Instrument set, notation, transposition, tuning of an instrument without strings | Track | The instrument is unchanged (a drum kit: while it has every sound used) | Ours |
 | Mixer strip numbers | Track | Number by number: volume, pan and equalizer only if changed | Ours |
-| Mixer, effect and sound automations | Bar (they name a bar) | They move with their bar and go when it is deleted | |
+| Mixer, effect and sound automations | Track until step 3, then bar (they name a bar) | Until step 3: while the number of bars is unchanged. A sound set at the start always stays | Dropped |
 | Flats or sharps choice | Master bar | The key is unchanged | Ours |
 | Bar and beat settings | Bar, beat | The object exists; stem directions only while its notes are unchanged | Left out |
 | Bars per line | Song and track | The number of bars is unchanged | Ours |
@@ -96,7 +98,7 @@ Guitar Pro 8.
 |---|---|---|
 | 0 | **A round-trip test** that saves each fixture unchanged and lists every difference, with a list of accepted ones (`ACCEPTED` in `gpkeep.rs`). No change in behaviour. The list shrinks with each step. **Built** | Small |
 | 1 | **Whole-file settings:** preferences, stylesheet merge, header and footer, master effects, pickup bar, `MultiVoice`, an empty title. **Built** | Medium |
-| 2 | **Track settings:** sound engine, sounds, effects, mixer strip | Medium |
+| 2 | **Track settings:** sound engine, sounds, effects, mixer strip, instrument set, transposition. Nothing about the instrument is kept from files earlier versions of GuitarCraft wrote (sounds named `Midi/...`). **Built** | Medium |
 | 3 | **Settings tied to bars:** automations, flats choice, bar `XProperties` | Medium |
 | 4 | **Layout:** bars per line, score views | Medium |
 | 5 | **Per-beat settings** (pickup volume and tone, stem directions). **Not wanted** (owner) | Small gain |

@@ -123,7 +123,9 @@ fn staff_tunings(t: &Track) -> Vec<Vec<u8>> {
     };
     staves
         .iter()
-        .map(|&(low, usual)| {
+        .enumerate()
+        .map(|(staff, &(low, usual))| {
+            let usual = t.kept.as_deref().and_then(|k| k.tuning(t, staff)).unwrap_or(usual);
             let mut chords = vec![];
             for beat in t.bars.iter().flat_map(|b| (0..VOICES).flat_map(move |v| b.voice(v).iter())) {
                 let here = || beat.notes.iter().filter(move |n| on_staff(t.pitch(n), low));
@@ -133,6 +135,19 @@ fn staff_tunings(t: &Track) -> Vec<Vec<u8>> {
             crate::gpinstr::tuning_for(usual, &chords)
         })
         .collect()
+}
+
+/// The channel strip: sixteen numbers from 0 to 1, with the equalizer, pan and volume among
+/// them.
+pub(crate) fn strip_values(t: &Track) -> [f32; 16] {
+    let mut strip = [0.5f32; 16];
+    for (k, &gi) in EQ_GPIF_INDEX.iter().enumerate() {
+        strip[gi] = t.equalizer.knobs[k].clamp(0.0, 1.0);
+    }
+    strip[9] = if t.equalizer.on { 1.0 } else { 0.0 };
+    strip[11] = (t.pan.clamp(-1.0, 1.0) + 1.0) * 0.5;
+    strip[12] = t.volume.clamp(0.0, 1.0);
+    strip
 }
 
 /// Index of a drum sound among all the drum kit's articulations, in writing order. A number
@@ -174,6 +189,9 @@ fn write_drum_kit(x: &mut String) {
     x.push_str("</Elements></NotationPatch>");
 }
 
+/// A drum kit's sounds in order: a drum note names its sound by its place in them.
+type Kit = Vec<Option<u8>>;
+
 struct Ids {
     beats: String,
     notes: String,
@@ -188,6 +206,10 @@ struct Ids {
     legato_dest: bool,
     /// Seconds from the start of the song to the beat about to be written (for timers).
     beat_secs: u32,
+    /// The track being written has a kit kept from its file: its sounds in order.
+    kit: Option<Kit>,
+    /// Semitones from sounding to written pitch kept from the track's file.
+    written_shift: Option<i32>,
 }
 
 impl Ids {
@@ -341,9 +363,12 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
     for (k, t) in song.tracks.iter().enumerate() {
         let (ty, label) = inst_type(t.instrument);
         let drum = t.instrument == Instrument::Drums;
+        // What was read with the track goes back in its place (see `gpkeep.rs`).
+        let kept = t.kept.as_deref();
+        let one_channel = kept.and_then(|k| k.one_channel(t)).unwrap_or("");
         let _ = write!(
             x,
-            "<Track id=\"{k}\"><Name>{}</Name><ShortName>{}</ShortName><Color>{} {} {}</Color><SystemsDefautLayout>3</SystemsDefautLayout><SystemsLayout>1</SystemsLayout><PalmMute>{}</PalmMute><AutoAccentuation>{}</AutoAccentuation>{}{}<PlayingStyle>{}</PlayingStyle><IconId>{}</IconId>",
+            "<Track id=\"{k}\"><Name>{}</Name><ShortName>{}</ShortName><Color>{} {} {}</Color><SystemsDefautLayout>3</SystemsDefautLayout><SystemsLayout>1</SystemsLayout><PalmMute>{}</PalmMute><AutoAccentuation>{}</AutoAccentuation>{}{}<PlayingStyle>{}</PlayingStyle>{one_channel}<IconId>{}</IconId>",
             cdata(&t.name),
             cdata(&t.short_name),
             t.color[0],
@@ -365,7 +390,9 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
             crate::app::trackicons::icon_of(t)
         );
         // The instrument: its family and how notes are shown.
-        if drum {
+        if let Some(set) = kept.and_then(|k| k.instrument_set(t)) {
+            x.push_str(set);
+        } else if drum {
             write_drum_kit(&mut x);
         } else {
             let _ = write!(
@@ -375,11 +402,16 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
             x.push_str("<Element><Name>Pitched</Name><Type>pitched</Type><SoundbankName/><Articulations><Articulation><Name/><StaffLine>0</StaffLine><Noteheads>noteheadBlack noteheadHalf noteheadWhole</Noteheads><TechniquePlacement>outside</TechniquePlacement><TechniqueSymbol></TechniqueSymbol><InputMidiNumbers/><OutputRSESound/><OutputMidiNumber>0</OutputMidiNumber></Articulation></Articulations></Element>");
             x.push_str("</Elements></InstrumentSet>");
         }
-        let _ = write!(
-            x,
-            "<Transpose><Chromatic>0</Chromatic><Octave>{}</Octave></Transpose>",
-            if t.clef().shift() != 0 { -1 } else { 0 }
-        );
+        match kept.and_then(|k| k.transpose(t)) {
+            Some(element) => x.push_str(element),
+            None => {
+                let _ = write!(
+                    x,
+                    "<Transpose><Chromatic>0</Chromatic><Octave>{}</Octave></Transpose>",
+                    if t.clef().shift() != 0 { -1 } else { 0 }
+                );
+            }
+        }
         let (prog, primary, secondary) = if drum {
             (0, 9, 9)
         } else {
@@ -392,22 +424,18 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
             let (a, b) = (next(), next());
             (t.instrument.midi_program(), a, b)
         };
-        let mut strip = [0.5f32; 16];
-        for (k, &gi) in EQ_GPIF_INDEX.iter().enumerate() {
-            strip[gi] = t.equalizer.knobs[k].clamp(0.0, 1.0);
+        match kept.and_then(|k| k.mixer(t)) {
+            Some(element) => x.push_str(&element),
+            None => {
+                let params: Vec<String> = strip_values(t).iter().map(|v| format!("{v:.6}")).collect();
+                let _ = write!(
+                    x,
+                    "<RSE><ChannelStrip version=\"E56\"><Parameters>{}</Parameters></ChannelStrip></RSE>",
+                    params.join(" ")
+                );
+            }
         }
-        strip[9] = if t.equalizer.on { 1.0 } else { 0.0 };
-        strip[11] = (t.pan.clamp(-1.0, 1.0) + 1.0) * 0.5;
-        strip[12] = t.volume.clamp(0.0, 1.0);
-        let params: Vec<String> = strip.iter().map(|v| format!("{v:.6}")).collect();
-        let _ = write!(
-            x,
-            "<RSE><ChannelStrip version=\"E56\"><Parameters>{}</Parameters></ChannelStrip></RSE>",
-            params.join(" ")
-        );
-        x.push_str("<ForcedSound>-1</ForcedSound>");
-        // A drum kit's sound is named as in a drum file Guitar Pro saved: given a name it
-        // doesn't know, Guitar Pro 8 gives the track a piano.
+        x.push_str(kept.and_then(|k| k.forced_sound(t)).unwrap_or("<ForcedSound>-1</ForcedSound>"));
         // Keyboards, voices and orchestra take Guitar Pro's sounds too; Guitar Pro 8 finds the
         // right one for a stringed instrument from our name.
         let pitched = crate::gpinstr::pitched(t.instrument);
@@ -421,10 +449,24 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
         } else {
             format!("<RSE><SoundbankPatch>{patch}</SoundbankPatch><Pickups><OverloudPosition>0</OverloudPosition><Volumes>1 1</Volumes><Tones>1 1</Tones></Pickups></RSE>")
         };
-        let _ = write!(
-            x,
-            "<Sounds><Sound><Name>{sound_name}</Name><Label>{sound_name}</Label><Path>{sound}</Path><Role>Factory</Role><MIDI><LSB>0</LSB><MSB>0</MSB><Program>{prog}</Program></MIDI>{patch}</Sound></Sounds><MidiConnection><Port>0</Port><PrimaryChannel>{primary}</PrimaryChannel><SecondaryChannel>{secondary}</SecondaryChannel><ForeOneChannelPerString>false</ForeOneChannelPerString></MidiConnection>"
-        );
+        match kept.and_then(|k| k.sounds(t)) {
+            Some(element) => x.push_str(element),
+            None => {
+                let _ = write!(
+                    x,
+                    "<Sounds><Sound><Name>{sound_name}</Name><Label>{sound_name}</Label><Path>{sound}</Path><Role>Factory</Role><MIDI><LSB>0</LSB><MSB>0</MSB><Program>{prog}</Program></MIDI>{patch}</Sound></Sounds>"
+                );
+            }
+        }
+        match kept.and_then(|k| k.midi(t)) {
+            Some(element) => x.push_str(element),
+            None => {
+                let _ = write!(
+                    x,
+                    "<MidiConnection><Port>0</Port><PrimaryChannel>{primary}</PrimaryChannel><SecondaryChannel>{secondary}</SecondaryChannel><ForeOneChannelPerString>false</ForeOneChannelPerString></MidiConnection>"
+                );
+            }
+        }
         let state = if t.solo {
             "Solo"
         } else if t.mute {
@@ -432,10 +474,8 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
         } else {
             "Default"
         };
-        let _ = write!(
-            x,
-            "<PlaybackState>{state}</PlaybackState><AudioEngineState>MIDI</AudioEngineState>"
-        );
+        let engine = kept.and_then(|k| k.engine(t)).unwrap_or("<AudioEngineState>MIDI</AudioEngineState>");
+        let _ = write!(x, "<PlaybackState>{state}</PlaybackState>{engine}");
         // Lyrics: the first of five lines.
         x.push_str("<Lyrics dispatched=\"true\">");
         for line in 0..5 {
@@ -528,11 +568,15 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
             }
             x.push_str("</Properties></Staff>");
         }
-        let _ = writeln!(
-            x,
-            "</Staves><Automations><Automation><Type>Sound</Type><Linear>false</Linear><Bar>0</Bar><Position>0</Position><Visible>true</Visible><Value>{}</Value></Automation></Automations></Track>",
-            cdata(&format!("{sound};{sound_name};Factory"))
-        );
+        let automations = match kept.and_then(|k| k.automations(t)) {
+            Some(element) => element.to_string(),
+            None if kept.and_then(|k| k.sounds(t)).is_some() => String::new(),
+            None => format!(
+                "<Automations><Automation><Type>Sound</Type><Linear>false</Linear><Bar>0</Bar><Position>0</Position><Visible>true</Visible><Value>{}</Value></Automation></Automations>",
+                cdata(&format!("{sound};{sound_name};Factory"))
+            ),
+        };
+        let _ = writeln!(x, "</Staves>{automations}</Track>");
     }
     x.push_str("</Tracks>\n");
 
@@ -548,13 +592,24 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
         nvoices: 0,
         nbars: 0,
         legato_dest: false,
+        kit: None,
+        written_shift: None,
         beat_secs: 0,
     };
     let mut master = String::from("<MasterBars>\n");
     let track_chords: Vec<Vec<&String>> = song.tracks.iter().map(|t| chord_names(t, o)).collect();
+    // For each track, the drum kit and the transposition kept from its file.
+    let from_file: Vec<(Option<Kit>, Option<i32>)> = song
+        .tracks
+        .iter()
+        .map(|t| {
+            let kept = t.kept.as_deref();
+            (kept.and_then(|k| k.kit(t)).map(<[_]>::to_vec), kept.and_then(|k| k.written_shift(t)))
+        })
+        .collect();
     for (bi, mb) in song.master.iter().enumerate() {
         let mut bar_ids = vec![];
-        for ((t, chords), tunings) in song.tracks.iter().zip(&track_chords).zip(&tunings) {
+        for (ti, ((t, chords), tunings)) in song.tracks.iter().zip(&track_chords).zip(&tunings).enumerate() {
             let key = mb.key;
             let staves: Vec<(Option<bool>, &str)> = if t.grand() {
                 vec![(Some(false), "G2"), (Some(true), "F4")]
@@ -566,6 +621,7 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
                 };
                 vec![(None, clef)]
             };
+            (ids.kit, ids.written_shift) = from_file[ti].clone();
             for (low, clef) in staves {
                 let strings = tunings.get((low == Some(true)) as usize).map(Vec::as_slice);
                 let bar = &t.bars[bi];
@@ -1044,7 +1100,7 @@ fn write_note(ids: &mut Ids, t: &Track, beat: &Beat, n: &Note, key: i8, place: O
         let _ = write!(
             x,
             "<InstrumentArticulation>{}</InstrumentArticulation>",
-            drum_articulation(pitch as u8)
+            ids.kit.as_ref().and_then(|k| k.iter().position(|&s| s == Some(pitch as u8))).unwrap_or_else(|| drum_articulation(pitch as u8))
         );
     }
     if n.let_ring {
@@ -1068,7 +1124,7 @@ fn write_note(ids: &mut Ids, t: &Track, beat: &Beat, n: &Note, key: i8, place: O
         );
     }
     x.push_str("<Properties>");
-    let written = pitch + t.clef().shift();
+    let written = pitch + ids.written_shift.unwrap_or_else(|| t.clef().shift());
     let (step, accd, oct) = pitch_parts(pitch);
     let (wstep, waccd, woct) = pitch_parts(written);
     // Guitar Pro numbers the octaves of these instruments one higher.
