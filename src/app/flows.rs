@@ -1022,3 +1022,35 @@ fn the_audio_note_boxes_work_with_their_arrows_and_by_typing() {
     click(&mut r, "close", "");
     assert!(r.app.audio_notes.is_none());
 }
+
+/// The menus on the start screen offer these windows, which need no song on show.
+#[test]
+fn the_start_screens_menu_windows_show_there() {
+    let mut r = Rig::new();
+    r.frames(2);
+    // A window is known by its title.
+    let shown = |r: &Rig, title: &str| r.ctx.memory(|m| m.area_rect(egui::Id::new(Some(title)))).is_some();
+    let titles = ["GuitarCraft user guide", "Tuner", "Batch Converter"];
+    assert!(titles.iter().all(|t| !shown(&r, t)));
+    // Help > User Guide, Tools > Tuner and File > Batch Converter.
+    r.app.guide_open = true;
+    r.app.open_tuner();
+    r.app.open_batch();
+    r.frames(3);
+    assert!(r.app.show_home);
+    for t in titles {
+        assert!(shown(&r, t), "{t} doesn't show on the start screen");
+    }
+}
+
+#[test]
+fn the_user_guide_shows_over_a_chord_chart() {
+    let mut r = Rig::new();
+    r.app.request(Pending::NewChart);
+    r.frames(3);
+    assert!(r.app.chart.is_some() && !r.app.show_home);
+    // Help > User Guide.
+    r.app.guide_open = true;
+    r.frames(3);
+    assert!(r.ctx.memory(|m| m.area_rect(egui::Id::new(Some("GuitarCraft user guide")))).is_some());
+}

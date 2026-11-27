@@ -488,6 +488,10 @@ impl App {
         }
         self.about_window(ctx);
         self.update_window(ctx);
+        // These need no song on show, so their menu items work on every screen.
+        self.guide_window(ctx);
+        self.tuner_window(ctx);
+        self.batch_window(ctx);
     }
 
     fn update_title(&mut self, ctx: &egui::Context) {

@@ -521,6 +521,10 @@ impl App {
                     self.status = "Chords go in [brackets] before the syllable: [E]Let my heart. A line starting with | is bars: | E /// | B //// |.".into();
                     ui.close();
                 }
+                if ui.button("User Guide...").clicked() {
+                    self.guide_open = true;
+                    ui.close();
+                }
                 if ui.button("About GuitarCraft").clicked() {
                     self.show_about = true;
                     ui.close();
