@@ -17,6 +17,8 @@ mod gpkit;
 mod gpif;
 mod gpifwrite;
 mod gpimport;
+mod gpinstr;
+mod gpkeep;
 mod gpstyle;
 mod gpx;
 mod gpsv;

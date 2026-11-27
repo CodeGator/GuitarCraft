@@ -1065,6 +1065,7 @@ impl App {
         } else if !extend {
             self.edit(|s, _, _, _, _| {
                 let mut mb = s.master.last().cloned().unwrap_or_default();
+                mb.pickup = false;
                 mb.marker = None;
                 mb.repeat_open = false;
                 mb.repeat_close = 0;
@@ -1344,6 +1345,7 @@ impl App {
     fn insert_bar(&mut self, at: usize) {
         self.edit(|s, _, _, _, _| {
             let mut mb = s.master[at.min(s.master.len() - 1)].clone();
+            mb.pickup = false;
             mb.marker = None;
             mb.repeat_open = false;
             mb.repeat_close = 0;

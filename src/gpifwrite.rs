@@ -48,18 +48,10 @@ pub fn inst_type(i: Instrument) -> (&'static str, &'static str) {
         Bass => ("electricBass", "Electric Bass"),
         Ukulele => ("ukulele", "Ukulele"),
         Banjo => ("banjo", "Banjo"),
-        Piano => ("acousticPiano", "Acoustic Piano"),
-        ElectricPiano => ("electricPiano", "Electric Piano"),
-        Organ => ("organ", "Organ"),
-        Synth => ("leadSynthesizer", "Lead Synthesizer"),
-        LeadVocals => ("leadVoice", "Lead Voice"),
-        Choir => ("voiceChoir", "Choir"),
-        Violin => ("violin", "Violin"),
-        Cello => ("cello", "Cello"),
-        Strings => ("stringEnsemble", "String Ensemble"),
-        Trumpet => ("trumpet", "Trumpet"),
-        Saxophone => ("altoSaxophone", "Alto Saxophone"),
-        Flute => ("flute", "Flute"),
+        // The others are the names in a file Guitar Pro 8 saved (see `gpinstr.rs`).
+        Piano | ElectricPiano | Organ | Synth | LeadVocals | Choir | Violin | Cello | Strings | Trumpet | Saxophone | Flute => {
+            crate::gpinstr::pitched(i).map(|g| (g.kind, g.set)).unwrap_or(("steelGuitar", "Steel Guitar"))
+        }
         Drums => ("drumKit", "Drum Kit"),
     }
 }
@@ -86,6 +78,38 @@ fn pitch_parts(p: i32) -> (&'static str, &'static str, i32) {
 
 /// Guitar Pro's name for its drum kit sound.
 const DRUM_SOUND: &str = "Drums/Drums/Drumkit";
+
+/// Whether a note of this pitch is written on a staff: on a grand staff the lower one takes the
+/// notes below middle C. `low` is None for a single staff.
+fn on_staff(pitch: u8, low: Option<bool>) -> bool {
+    match low {
+        None => true,
+        Some(l) => (pitch < 60) == l,
+    }
+}
+
+/// For an instrument that Guitar Pro tunes and this app doesn't, the tuning of each staff, with
+/// room for all its notes. Empty for other tracks.
+fn staff_tunings(t: &Track) -> Vec<Vec<u8>> {
+    let Some(g) = crate::gpinstr::pitched(t.instrument) else { return vec![] };
+    let staves: &[(Option<bool>, &[u8])] = if t.grand() {
+        &[(Some(false), g.tuning), (Some(true), crate::gpinstr::LOWER_TUNING)]
+    } else {
+        &[(None, g.tuning)]
+    };
+    staves
+        .iter()
+        .map(|&(low, usual)| {
+            let mut chords = vec![];
+            for beat in t.bars.iter().flat_map(|b| (0..VOICES).flat_map(move |v| b.voice(v).iter())) {
+                let here = || beat.notes.iter().filter(move |n| on_staff(t.pitch(n), low));
+                chords.push(here().map(|n| t.pitch(n)).collect::<Vec<u8>>());
+                chords.push(here().filter_map(|n| Some(t.pitch(&Note::new(n.string, n.grace?)))).collect());
+            }
+            crate::gpinstr::tuning_for(usual, &chords)
+        })
+        .collect()
+}
 
 /// Index of a drum sound among all the drum kit's articulations, in writing order. A number
 /// the kit doesn't have becomes the first snare.
@@ -229,11 +253,17 @@ pub fn gpif_xml(song: &Song) -> String {
 pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
     let mut x = String::with_capacity(256 * 1024);
     x.push_str("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<GPIF>\n<GPVersion>7</GPVersion>\n<GPRevision required=\"12021\" recommended=\"12023\">12025</GPRevision>\n<Encoding><EncodingDescription>GP7</EncodingDescription></Encoding>\n");
-    // Song information.
+    // Song information. What was kept from an opened file goes back in its place.
+    let kept = song.kept.as_deref();
+    let page_text = |tag: &str| match kept.and_then(|k| k.page_text(tag, song)) {
+        Some(element) => element.to_string(),
+        None => format!("<{tag}>{}</{tag}>", cdata("")),
+    };
+    let multi_voice = kept.and_then(|k| k.multi_voice()).unwrap_or("<MultiVoice>0</MultiVoice>");
     let _ = writeln!(
         x,
-        "<Score><Title>{}</Title><SubTitle>{}</SubTitle><Artist>{}</Artist><Album>{}</Album><Words>{}</Words><Music>{}</Music><WordsAndMusic>{}</WordsAndMusic><Copyright>{}</Copyright><Tabber>{}</Tabber><Instructions>{}</Instructions><Notices>{}</Notices><FirstPageHeader>{}</FirstPageHeader><FirstPageFooter>{}</FirstPageFooter><PageHeader>{}</PageHeader><PageFooter>{}</PageFooter><ScoreSystemsDefaultLayout>4</ScoreSystemsDefaultLayout><ScoreSystemsLayout>4</ScoreSystemsLayout><ScoreZoomPolicy>Value</ScoreZoomPolicy><ScoreZoom>1</ScoreZoom><MultiVoice>0</MultiVoice></Score>",
-        cdata(&song.title),
+        "<Score><Title>{}</Title><SubTitle>{}</SubTitle><Artist>{}</Artist><Album>{}</Album><Words>{}</Words><Music>{}</Music><WordsAndMusic>{}</WordsAndMusic><Copyright>{}</Copyright><Tabber>{}</Tabber><Instructions>{}</Instructions><Notices>{}</Notices>{}{}{}{}<ScoreSystemsDefaultLayout>4</ScoreSystemsDefaultLayout><ScoreSystemsLayout>4</ScoreSystemsLayout><ScoreZoomPolicy>Value</ScoreZoomPolicy><ScoreZoom>1</ScoreZoom>{multi_voice}</Score>",
+        cdata(kept.map_or(song.title.as_str(), |k| k.title(song))),
         cdata(&song.subtitle),
         cdata(&song.artist),
         cdata(&song.album),
@@ -244,16 +274,17 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
         cdata(&song.tabbed_by),
         cdata(&song.instructions),
         cdata(&song.notice),
-        cdata(""),
-        cdata(""),
-        cdata(""),
-        cdata(""),
+        page_text("FirstPageHeader"),
+        page_text("FirstPageFooter"),
+        page_text("PageHeader"),
+        page_text("PageFooter"),
     );
     // Tempo changes.
     let ids: Vec<String> = (0..song.tracks.len()).map(|k| k.to_string()).collect();
     let _ = write!(
         x,
-        "<MasterTrack><Tracks>{}</Tracks><Automations>",
+        "<MasterTrack>{}<Tracks>{}</Tracks><Automations>",
+        if song.master.first().is_some_and(|m| m.pickup) { "<Anacrusis />" } else { "" },
         ids.join(" ")
     );
     let mut points = vec![(
@@ -272,7 +303,14 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
             "<Automation><Type>Tempo</Type><Linear>{ramp}</Linear><Bar>{bi}</Bar><Position>0</Position><Visible>true</Visible><Value>{t} 2</Value></Automation>"
         );
     }
-    x.push_str("</Automations></MasterTrack>\n<Tracks>\n");
+    x.push_str("</Automations>");
+    if let Some(effects) = kept.and_then(|k| k.master_effects(song)) {
+        x.push_str(effects);
+    }
+    x.push_str("</MasterTrack>\n<Tracks>\n");
+
+    // The string tuning of each staff of the instruments without strings.
+    let tunings: Vec<Vec<Vec<u8>>> = song.tracks.iter().map(staff_tunings).collect();
 
     // Tracks.
     let mut chan = 0usize;
@@ -346,17 +384,22 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
         x.push_str("<ForcedSound>-1</ForcedSound>");
         // A drum kit's sound is named as in a drum file Guitar Pro saved: given a name it
         // doesn't know, Guitar Pro 8 gives the track a piano.
-        let (sound, kit_sound) = if drum {
-            (
-                DRUM_SOUND.to_string(),
-                "<RSE><SoundbankPatch>Drumkit-Master</SoundbankPatch><Pickups><OverloudPosition>0</OverloudPosition><Volumes>1 1</Volumes><Tones>1 1</Tones></Pickups></RSE>",
-            )
+        // Keyboards, voices and orchestra take Guitar Pro's sounds too; Guitar Pro 8 finds the
+        // right one for a stringed instrument from our name.
+        let pitched = crate::gpinstr::pitched(t.instrument);
+        let (sound, sound_name, patch) = match &pitched {
+            _ if drum => (DRUM_SOUND.to_string(), label, "Drumkit-Master"),
+            Some(g) => (g.path.to_string(), g.sound, g.patch),
+            None => (format!("Midi/{label}"), label, ""),
+        };
+        let patch = if patch.is_empty() {
+            String::new()
         } else {
-            (format!("Midi/{label}"), "")
+            format!("<RSE><SoundbankPatch>{patch}</SoundbankPatch><Pickups><OverloudPosition>0</OverloudPosition><Volumes>1 1</Volumes><Tones>1 1</Tones></Pickups></RSE>")
         };
         let _ = write!(
             x,
-            "<Sounds><Sound><Name>{label}</Name><Label>{label}</Label><Path>{sound}</Path><Role>Factory</Role><MIDI><LSB>0</LSB><MSB>0</MSB><Program>{prog}</Program></MIDI>{kit_sound}</Sound></Sounds><MidiConnection><Port>0</Port><PrimaryChannel>{primary}</PrimaryChannel><SecondaryChannel>{secondary}</SecondaryChannel><ForeOneChannelPerString>false</ForeOneChannelPerString></MidiConnection>"
+            "<Sounds><Sound><Name>{sound_name}</Name><Label>{sound_name}</Label><Path>{sound}</Path><Role>Factory</Role><MIDI><LSB>0</LSB><MSB>0</MSB><Program>{prog}</Program></MIDI>{patch}</Sound></Sounds><MidiConnection><Port>0</Port><PrimaryChannel>{primary}</PrimaryChannel><SecondaryChannel>{secondary}</SecondaryChannel><ForeOneChannelPerString>false</ForeOneChannelPerString></MidiConnection>"
         );
         let state = if t.solo {
             "Solo"
@@ -385,8 +428,19 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
         }
         x.push_str("</Lyrics><Staves>");
         let staves = if t.grand() { 2 } else { 1 };
-        for _ in 0..staves {
+        for staff in 0..staves {
             x.push_str("<Staff><Properties>");
+            if let (Some(g), Some(tuning)) = (&pitched, tunings[k].get(staff)) {
+                let pitches: Vec<String> = tuning.iter().map(|p| p.to_string()).collect();
+                let _ = write!(
+                    x,
+                    "<Property name=\"CapoFret\"><Fret>0</Fret></Property><Property name=\"FretCount\"><Number>{}</Number></Property><Property name=\"PartialCapoFret\"><Fret>0</Fret></Property><Property name=\"PartialCapoStringFlags\"><Bitset>{}</Bitset></Property><Property name=\"Tuning\"><Pitches>{}</Pitches><Flat></Flat><Instrument>{}</Instrument><Label></Label><LabelVisible>true</LabelVisible></Property>",
+                    crate::gpinstr::FRETS,
+                    "0".repeat(tuning.len()),
+                    pitches.join(" "),
+                    if staff == 1 { "Bass" } else { g.tuned_as },
+                );
+            }
             if t.has_strings() {
                 let pitches: Vec<String> = t.tuning.iter().rev().map(|p| p.to_string()).collect();
                 let _ = write!(
@@ -431,6 +485,9 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
             x.push_str(
                 "</Items></Property><Property name=\"DiagramWorkingSet\"><Items/></Property>",
             );
+            if pitched.is_some() {
+                let _ = write!(x, "<Property name=\"TuningFlat\"><Enable /></Property><Name>{}</Name>", cdata("Standard"));
+            }
             if t.has_strings() {
                 if t.tuning_flat {
                     x.push_str("<Property name=\"TuningFlat\"><Enable /></Property>");
@@ -450,7 +507,7 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
         let _ = writeln!(
             x,
             "</Staves><Automations><Automation><Type>Sound</Type><Linear>false</Linear><Bar>0</Bar><Position>0</Position><Visible>true</Visible><Value>{}</Value></Automation></Automations></Track>",
-            cdata(&format!("{sound};{label};Factory"))
+            cdata(&format!("{sound};{sound_name};Factory"))
         );
     }
     x.push_str("</Tracks>\n");
@@ -473,7 +530,7 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
     let track_chords: Vec<Vec<&String>> = song.tracks.iter().map(|t| chord_names(t, o)).collect();
     for (bi, mb) in song.master.iter().enumerate() {
         let mut bar_ids = vec![];
-        for (t, chords) in song.tracks.iter().zip(&track_chords) {
+        for ((t, chords), tunings) in song.tracks.iter().zip(&track_chords).zip(&tunings) {
             let key = mb.key;
             let staves: Vec<(Option<bool>, &str)> = if t.grand() {
                 vec![(Some(false), "G2"), (Some(true), "F4")]
@@ -486,6 +543,7 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
                 vec![(None, clef)]
             };
             for (low, clef) in staves {
+                let strings = tunings.get((low == Some(true)) as usize).map(Vec::as_slice);
                 let bar = &t.bars[bi];
                 // A repeat sign: two-bar repeats come in pairs, a first and a second.
                 let paired = || t.bars[..bi].iter().rev().take_while(|b| b.simile == 2).count() % 2 == 1;
@@ -511,10 +569,7 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
                         let mut notes: Vec<&Note> = beat
                             .notes
                             .iter()
-                            .filter(|n| match low {
-                                None => true,
-                                Some(l) => (t.pitch(n) < 60) == l,
-                            })
+                            .filter(|n| on_staff(t.pitch(n), low))
                             .collect();
                         // Low string first, as Guitar Pro 8 lists a chord (it shows the first one in the numbered lane).
                         notes.sort_by_key(|n| std::cmp::Reverse(n.string));
@@ -535,7 +590,7 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
                             };
                             let refs: Vec<&Note> = graced.iter().collect();
                             beat_ids.push(write_beat_ex(
-                                &mut ids, t, &gb, &refs, chords, key, false, true,
+                                &mut ids, t, &gb, &refs, chords, key, false, true, strings,
                             ));
                         }
                         // Legato from the previous beat of this voice (maybe in the previous bar).
@@ -560,6 +615,7 @@ pub fn gpif_xml_with(song: &Song, o: GpOptions) -> String {
                             key,
                             v == 0 && low != Some(true),
                             false,
+                            strings,
                         ));
                     }
                     let vid = ids.nvoices;
@@ -776,6 +832,7 @@ fn write_beat_ex(
     key: i8,
     marks: bool,
     grace: bool,
+    strings: Option<&[u8]>,
 ) -> usize {
     let id = ids.nbeats;
     ids.nbeats += 1;
@@ -857,8 +914,11 @@ fn write_beat_ex(
     }
     if !notes.is_empty() {
         let mut nids = vec![];
-        for n in notes {
-            nids.push(write_note(ids, t, beat, n, key).to_string());
+        // Where each note sits, for a staff Guitar Pro tunes.
+        let sounding: Vec<u8> = notes.iter().map(|n| t.pitch(n)).collect();
+        let places = strings.and_then(|s| crate::gpinstr::place(s, &sounding)).unwrap_or_default();
+        for (k, n) in notes.iter().enumerate() {
+            nids.push(write_note(ids, t, beat, n, key, places.get(k).copied()).to_string());
         }
         let _ = write!(x, "<Notes>{}</Notes>", nids.join(" "));
     }
@@ -934,7 +994,7 @@ pub fn finger_from_letter(s: &str) -> u8 {
     }
 }
 
-fn write_note(ids: &mut Ids, t: &Track, beat: &Beat, n: &Note, key: i8) -> usize {
+fn write_note(ids: &mut Ids, t: &Track, beat: &Beat, n: &Note, key: i8, place: Option<(usize, u8)>) -> usize {
     let id = ids.nnotes;
     ids.nnotes += 1;
     let pitch = t.pitch(n) as i32;
@@ -987,6 +1047,9 @@ fn write_note(ids: &mut Ids, t: &Track, beat: &Beat, n: &Note, key: i8) -> usize
     let written = pitch + t.clef().shift();
     let (step, accd, oct) = pitch_parts(pitch);
     let (wstep, waccd, woct) = pitch_parts(written);
+    // Guitar Pro numbers the octaves of these instruments one higher.
+    let raise = crate::gpinstr::pitched(t.instrument).is_some() as i32;
+    let (oct, woct) = (oct + raise, woct + raise);
     let _ = key;
     let _ = write!(
         x,
@@ -1000,6 +1063,9 @@ fn write_note(ids: &mut Ids, t: &Track, beat: &Beat, n: &Note, key: i8) -> usize
         x,
         "<Property name=\"Midi\"><Number>{pitch}</Number></Property>"
     );
+    if let Some((string, fret)) = place {
+        let _ = write!(x, "<Property name=\"String\"><String>{string}</String></Property><Property name=\"Fret\"><Fret>{fret}</Fret></Property>");
+    }
     if t.has_strings() {
         let nstr = t.strings();
         let _ = write!(
@@ -1118,9 +1184,15 @@ pub fn export_gp_with(song: &Song, o: GpOptions) -> Result<Vec<u8>, String> {
             .map_err(|e| e.to_string())?;
         // The stylesheet and the layout settings Guitar Pro's own files carry.
         z.start_file("Content/BinaryStylesheet", opt).map_err(e)?;
-        z.write_all(&crate::gpstyle::write(&song.style)).map_err(|e| e.to_string())?;
+        let kept = song.kept.as_deref();
+        let stylesheet = kept.and_then(|k| k.stylesheet(song)).unwrap_or_else(|| crate::gpstyle::write(&song.style));
+        z.write_all(&stylesheet).map_err(|e| e.to_string())?;
         z.start_file("Content/LayoutConfiguration", opt).map_err(e)?;
         z.write_all(&LAYOUT_CONFIGURATION).map_err(|e| e.to_string())?;
+        for (name, data) in kept.map(|k| k.files.as_slice()).unwrap_or_default() {
+            z.start_file(name.as_str(), opt).map_err(e)?;
+            z.write_all(data).map_err(|e| e.to_string())?;
+        }
         // Score views: the full score lists only the tracks that are shown.
         let staves_of = |k: usize| -> Vec<(usize, usize)> {
             let (std, tab) = crate::score::staves(&song.tracks[k], crate::score::Notation::Both);
@@ -1659,6 +1731,61 @@ mod tests {
         let back = crate::gpif::parse_gpif(&xml).expect("reads back");
         assert_eq!(back.tracks[0].instrument, Instrument::Drums);
         assert_eq!(back.tracks[1].instrument, Instrument::Piano);
+    }
+
+    #[test]
+    fn reads_the_instruments_guitar_pro_saved() {
+        use Instrument::*;
+        let song = crate::gpif::import_gp(&crate::fixture("gp8/Instruments.gp")).unwrap();
+        let names: Vec<Instrument> = song.tracks.iter().map(|t| t.instrument).collect();
+        assert_eq!(names, vec![Piano, LeadVocals, Violin, Synth, ElectricPiano, Organ, Choir, Cello, Strings, Trumpet, Saxophone, Flute]);
+        for i in [0, 3, 4, 5] {
+            assert!(song.tracks[i].grand(), "{} has two staves", song.tracks[i].name);
+        }
+        // The piano's chord, at the pitches the file gives.
+        let first = |t: &Track| pitches(t, t.bars[0].beats.iter().find(|b| !b.is_rest()).expect("notes"));
+        assert!(first(&song.tracks[0]).contains(&72));
+        assert_eq!(first(&song.tracks[7]), vec![59], "cello");
+        // Saved and read again: the same instruments and notes.
+        let back = crate::gpif::import_gp(&export_gp(&song).unwrap()).unwrap();
+        for (a, b) in song.tracks.iter().zip(&back.tracks) {
+            assert_eq!((a.instrument, a.grand_staff), (b.instrument, b.grand_staff), "{}", a.name);
+            for (x, y) in a.bars.iter().zip(&b.bars) {
+                let all = |t: &Track, bar: &Bar| bar.beats.iter().map(|beat| pitches(t, beat)).collect::<Vec<_>>();
+                assert_eq!(all(a, x), all(b, y), "{}", a.name);
+            }
+        }
+    }
+
+    #[test]
+    fn every_note_of_an_instrument_without_strings_sits_on_a_string() {
+        let mut song = Song::new_blank();
+        let mut piano = Track::of_instrument(Instrument::Piano, "Piano");
+        // A wide chord on both staves, and notes at the ends of the keyboard.
+        let chord = |ps: &[u8]| Beat { notes: ps.iter().enumerate().map(|(k, &p)| Note::new(k as u8, p)).collect(), ..Beat::rest(Dur::Whole) };
+        piano.bars = vec![Bar::new(vec![chord(&[21, 48, 52, 60, 64, 67, 108])])];
+        song.master = vec![MasterBar::default()];
+        song.tracks = vec![piano];
+        let xml = gpif_xml(&song);
+        assert_eq!(xml.matches("<Property name=\"Tuning\">").count(), 2, "both staves");
+        assert_eq!(xml.matches("<Property name=\"String\">").count(), 7, "every note");
+        assert!(xml.contains("<Type>acousticPiano</Type>") && xml.contains("<Path>Orchestra/Keyboard/Acoustic Piano</Path>"));
+        // Without the MIDI numbers, strings and frets say the same.
+        let bare = without_midi(&xml);
+        for text in [xml, bare] {
+            let back = crate::gpif::parse_gpif(&text).expect("reads back");
+            assert_eq!(pitches(&back.tracks[0], &back.tracks[0].bars[0].beats[0]), vec![21, 48, 52, 60, 64, 67, 108]);
+        }
+    }
+
+    /// The XML with every note's MIDI property taken out.
+    fn without_midi(xml: &str) -> String {
+        let mut out = xml.to_string();
+        while let Some(a) = out.find("<Property name=\"Midi\">") {
+            let z = a + out[a..].find("</Property>").expect("closed") + "</Property>".len();
+            out.replace_range(a..z, "");
+        }
+        out
     }
 
     /// The demo song saved by Guitar Pro 8 opens as the demo song, and GuitarCraft's part

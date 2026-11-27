@@ -47,14 +47,28 @@ with an Acoustic Piano when it saved our file. It is now `Drums/Drums/Drumkit` w
 `Drumkit-Master` patch, as in the GP7 file. Checked: the copy GP8 saved, with the track on its own
 sound engine (RSE), kept the drum kit sound.
 
-**Saving loses what we don't understand (found 2026-11-27, to be planned).** We rebuild a `.gp`
-file from our own model, so opening a Guitar Pro file and saving it drops or resets: GP's sound
-engine and effects (we write MIDI), bars per line (`ScoreSystemsLayout`, `SystemsLayout`), page
-header and footer text, most of the binary stylesheet (398 of 591 settings in one song; 6 fonts
-changed), mixer automation, the pickup bar (`Anacrusis`), the key's flats preference
-(`TransposeAs`), `MultiVoice`, extra score views and stylesheets, and `Preferences.json`.
-Proposed, not started: keep what the opened file had and write it back, replacing only what was
-changed; the care is in tracks and bars being added, removed or moved.
+**Saving a Guitar Pro file keeps more of it (2026-11-27; plan and decisions in
+`docs/gp-keep-design.md`).** We rebuild a `.gp` file from our own model, so what the model doesn't
+hold used to be lost. Steps 0 and 1 are built (`src/gpkeep.rs`): the stylesheet, header and footer
+texts, master effects, preferences, pickup bar, `MultiVoice` and an empty title now survive.
+**Step 1 waits for the owner's check in GP8** before step 2. Still lost or reset: track sound
+engine, sounds and effects (we write MIDI), mixer and automations, the flats choice, bars per
+line, score views and their stylesheets, and per-beat settings (not wanted). The exact list is
+`ACCEPTED` in `gpkeep.rs`; its test fails on any new loss. The owner checked step 1 in GP8
+("looks good", 2026-11-27).
+
+**Keyboards, voices and orchestra (fixed 2026-11-27; the owner opened our new files in GP8 and
+GP8's own file in GuitarCraft: "looks good").** GP8
+crashed opening a file of ours with voice and orchestra tracks, and we opened GP8's piano, voice,
+violin and synth tracks as electric guitars. Guitar Pro tunes every staff, even of these, and puts
+each note on a string; `src/gpinstr.rs` now writes and reads them as in `Instruments.gp` (type
+names, sounds, tunings with strings added for notes out of reach, concert octaves numbered one
+higher). Which part caused the crash was not isolated: guitars, synth, piano (one and two staves)
+and drums opened before the fix. GP8 maps our `Midi/<name>` guitar sounds correctly. Still open:
+trumpet and saxophone are saved without their transposition (GP8 then shows concert pitch; step 2);
+a grand staff's lower staff is **dropped on opening when its rhythm differs from the upper one**
+(older limitation in `gpif.rs`; fix next); GP8's icons for these instruments differ from ours; GP8
+offered no string ensemble, so ours is written as a violin with that sound.
 
 **Bar repeat signs** (2026-11-27): Guitar Pro's `SimileMark` is now read and written
 (`Simple`, `FirstOfDouble`, `SecondOfDouble`); before, repeated bars of a Guitar Pro file opened
@@ -194,7 +208,7 @@ question in the panel. Before a release, check Anthropic's current terms.
 1. **Hear from the owner** about Suggest Chords in real use.
 2. **Teach the tab importer simple clean-up** (quoting, blank lines inside a system, typed dashes,
    spaces for dashes): a trial showed plain code does it better than AI (`docs/ai-design.md`).
-3. **Keep a Guitar Pro file's other settings when saving** (see "Drumkit view" above).
+3. **Keep a Guitar Pro file's other settings when saving** (`docs/gp-keep-design.md`).
 4. **Still missing from Guitar Pro 8** (see the gap list): Audio Note Settings (Shift+F),
    instrument change automation, Design mode, and importing TablEdit and Power Tab.
    File password protection was decided against.

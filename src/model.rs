@@ -616,6 +616,9 @@ pub struct MasterBar {
     pub direction_jump: u8,
     /// Free time: played without following the tempo (dotted bar lines).
     pub free_time: bool,
+    /// A pickup bar, which may be short. Read from Guitar Pro files and written back while it is
+    /// the first bar.
+    pub pickup: bool,
 }
 
 impl Default for MasterBar {
@@ -637,6 +640,7 @@ impl Default for MasterBar {
             direction_target: 0,
             direction_jump: 0,
             free_time: false,
+            pickup: false,
         }
     }
 }
@@ -1344,6 +1348,10 @@ pub struct Song {
     pub tracks: Vec<Track>,
     /// How the score looks: page, staves, header and footer, fonts, notation.
     pub style: crate::style::Stylesheet,
+    /// What the Guitar Pro file this song was read from holds that the app doesn't use, to be
+    /// written back (see `gpkeep.rs`). Shared, so the undo history stays small.
+    #[serde(skip)]
+    pub kept: Option<std::sync::Arc<crate::gpkeep::KeptSong>>,
 }
 
 impl Default for Song {
@@ -1375,6 +1383,7 @@ impl Song {
             master: (0..bars).map(|_| MasterBar::default()).collect(),
             tracks: vec![t],
             style: crate::style::Stylesheet::standard(),
+            kept: None,
         }
     }
 
