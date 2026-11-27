@@ -1,6 +1,7 @@
 //! Help > About GuitarCraft, laid out like the original's About window but with
 //! GuitarCraft's own content: the Application tab (icon, name, version,
-//! copyright), the License tab (GuitarCraft is free software under the GNU GPL,
+//! copyright), the Contributors tab (the people, AI models and tools in the
+//! project's CONTRIBUTORS.md, built into the program), the License tab (GuitarCraft is free software under the GNU GPL,
 //! version 3 or later: a plain-English summary, then the full text from the
 //! project's LICENSE file) and the Open Source tab (every component GuitarCraft
 //! is built from, with its license; the list is made by build.rs from
@@ -11,7 +12,9 @@ use super::App;
 use egui::{Align, Align2, Color32, FontFamily, FontId, Layout, RichText, Sense, Vec2};
 use serde::Deserialize;
 
-const TABS: [&str; 3] = ["APPLICATION", "LICENSE", "OPEN SOURCE"];
+const TABS: [&str; 4] = ["APPLICATION", "CONTRIBUTORS", "LICENSE", "OPEN SOURCE"];
+/// Who made GuitarCraft: the list the Contributors tab shows.
+const CONTRIBUTORS: &str = include_str!("../../CONTRIBUTORS.md");
 /// GuitarCraft's own license (the GNU GPL, version 3).
 const GPL: &str = include_str!("../../LICENSE");
 const COMPONENTS: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/licenses.json.z"));
@@ -72,10 +75,12 @@ impl App {
             .show(ctx, |ui| {
                 // Tabs: plain words, the chosen one bright.
                 ui.horizontal(|ui| {
-                    let w = ui.available_width() / TABS.len() as f32;
+                    // Their widths and the spaces between them just fill the window.
+                    let gaps = ui.spacing().item_spacing.x * (TABS.len() - 1) as f32;
+                    let w = (ui.available_width() - gaps) / TABS.len() as f32;
                     for (i, name) in TABS.iter().enumerate() {
                         let (r, resp) =
-                            ui.allocate_exact_size(Vec2::new(w - 4.0, 30.0), Sense::click());
+                            ui.allocate_exact_size(Vec2::new(w, 30.0), Sense::click());
                         let c = if st.tab == i {
                             Color32::WHITE
                         } else if resp.hovered() {
@@ -98,7 +103,8 @@ impl App {
                 ui.add_space(4.0);
                 match st.tab {
                     0 => application_tab(ui, st),
-                    1 => license_tab(ui),
+                    1 => contributors_tab(ui),
+                    2 => license_tab(ui),
                     _ => open_source_tab(ui, st),
                 }
             });
@@ -148,6 +154,116 @@ fn application_tab(ui: &mut egui::Ui, st: &mut AboutState) {
             ui.add_space(rest);
         }
         ui.label(RichText::new("\u{00A9} 2026 by CodeGator. All rights reserved.").color(Color32::from_gray(120)));
+    });
+}
+
+/// Someone credited: the name, a link for it or for a handle beside it, and what they did.
+#[derive(Debug, PartialEq)]
+struct Credit<'a> {
+    name: &'a str,
+    /// Where the name leads.
+    url: Option<&'a str>,
+    /// A handle shown beside the name, and where it leads.
+    handle: Option<(&'a str, &'a str)>,
+    role: &'a str,
+}
+
+/// "[text](url)" as its text and address.
+fn link(s: &str) -> Option<(&str, &str)> {
+    s.strip_prefix('[')?.strip_suffix(')')?.split_once("](")
+}
+
+/// One line of the list, as "- **Name** ([@handle](url)): role" (the name may be a link, the
+/// handle may be left out). None for a line that isn't in that form.
+fn credit(line: &str) -> Option<Credit<'_>> {
+    let (name, rest) = line.strip_prefix("- **")?.split_once("**")?;
+    let (name, url) = match link(name) {
+        Some((name, url)) => (name, Some(url)),
+        None => (name, None),
+    };
+    let (handle, role) = match rest.strip_prefix(" (") {
+        Some(rest) => {
+            let (handle, role) = rest.split_once("): ")?;
+            (Some(link(handle)?), role)
+        }
+        None => (None, rest.strip_prefix(": ")?),
+    };
+    Some(Credit { name, url, handle, role: role.trim() })
+}
+
+/// The groups of the list, each with its heading and the people in it. Comments are passed over.
+fn credits(text: &str) -> Vec<(&str, Vec<Credit<'_>>)> {
+    let mut groups: Vec<(&str, Vec<Credit>)> = vec![];
+    let mut in_comment = false;
+    for line in text.lines().map(str::trim_end) {
+        in_comment |= line.starts_with("<!--");
+        if in_comment {
+            in_comment = !line.ends_with("-->");
+        } else if let Some(heading) = line.strip_prefix("## ") {
+            groups.push((heading, vec![]));
+        } else if let (Some(who), Some(group)) = (credit(line), groups.last_mut()) {
+            group.1.push(who);
+        }
+    }
+    groups
+}
+
+impl<'a> Credit<'a> {
+    /// What the grab bag shows: the handle where there is one, or else the name.
+    fn shown(&self) -> &'a str {
+        self.handle.map_or(self.name, |h| h.0)
+    }
+
+    /// What pointing at it says: who it is, when only the handle shows, and what they did.
+    fn about(&self) -> String {
+        match self.handle {
+            Some(_) => format!("{}: {}", self.name, self.role),
+            None => self.role.to_string(),
+        }
+    }
+}
+
+/// A group in the order it is shown: A to Z, whatever the case, handles without their "@".
+fn alphabetical(mut people: Vec<Credit<'_>>) -> Vec<Credit<'_>> {
+    people.sort_by_key(|c| c.shown().trim_start_matches('@').to_lowercase());
+    people
+}
+
+/// Each group as a "grab bag": the names flow across the window, so a long list stays short.
+fn contributors_tab(ui: &mut egui::Ui) {
+    egui::ScrollArea::vertical().id_salt("about-contributors").auto_shrink([false, false]).show(ui, |ui| {
+        ui.add_space(6.0);
+        ui.label(RichText::new("Thank you to everyone who has helped to make GuitarCraft. Point at a name to see what they did.").size(14.0).color(Color32::from_gray(190)));
+        for (heading, people) in credits(CONTRIBUTORS) {
+            ui.add_space(14.0);
+            let count = if heading == "People" { format!("  ({})", people.len()) } else { String::new() };
+            ui.label(RichText::new(format!("{}{count}", heading.to_uppercase())).size(14.0).family(FontFamily::Name("bold".into())).color(super::panels::LOGO_ORANGE));
+            ui.add_space(4.0);
+            ui.horizontal_wrapped(|ui| {
+                // A name moves to the next line whole.
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                ui.spacing_mut().item_spacing = Vec2::new(7.0, 6.0);
+                let people = alphabetical(people);
+                for (i, who) in people.iter().enumerate() {
+                    // A name and the dot after it stay together, so no line starts with a dot.
+                    let wide = |text: &str| ui.painter().layout_no_wrap(text.to_string(), FontId::proportional(15.0), Color32::WHITE).size().x;
+                    let needed = wide(who.shown()) + ui.spacing().item_spacing.x + wide("\u{00B7}");
+                    if i > 0 && ui.available_size_before_wrap().x < needed {
+                        ui.end_row();
+                    }
+                    let name = RichText::new(who.shown()).size(15.0);
+                    let r = match who.handle.map(|h| h.1).or(who.url) {
+                        // A link keeps the link colour, so it can be seen to be one.
+                        Some(url) => ui.hyperlink_to(name, url),
+                        None => ui.label(name.color(Color32::WHITE)),
+                    };
+                    r.on_hover_text(who.about());
+                    if i + 1 < people.len() {
+                        ui.label(RichText::new("\u{00B7}").size(15.0).color(Color32::from_gray(140)));
+                    }
+                }
+            });
+        }
     });
 }
 
@@ -284,6 +400,38 @@ fn open_source_tab(ui: &mut egui::Ui, st: &mut AboutState) {
 
 #[cfg(test)]
 mod tests {
+    use super::{CONTRIBUTORS, Credit, credit, credits};
+
+    #[test]
+    fn contributors_are_read_from_the_list() {
+        let groups = credits(CONTRIBUTORS);
+        assert_eq!(groups.iter().map(|g| g.0).collect::<Vec<_>>(), ["People", "AI models", "Tools"]);
+        // No line of the list is silently left out (the forms in the comment don't count).
+        let listed = CONTRIBUTORS.split("-->").last().unwrap().lines().filter(|l| l.starts_with('-')).count();
+        assert_eq!(groups.iter().map(|g| g.1.len()).sum::<usize>(), listed, "a line isn't in a form the app reads");
+        assert_eq!(groups[0].1[0], Credit { name: "Martin Cook", url: None, handle: Some(("@martycook", "https://github.com/martycook")), role: "Creator and developer" });
+        assert!(groups.iter().all(|g| !g.1.is_empty()));
+    }
+
+    #[test]
+    fn the_grab_bag_shows_handles_in_alphabetical_order() {
+        let lines = ["- **Zed**: a", "- **Bea** ([@amy](https://a.example)): b", "- **carl**: c"];
+        let people = super::alphabetical(lines.iter().map(|l| credit(l).unwrap()).collect());
+        assert_eq!(people.iter().map(Credit::shown).collect::<Vec<_>>(), ["@amy", "carl", "Zed"]);
+        assert_eq!((people[0].about().as_str(), people[1].about().as_str()), ("Bea: b", "c"));
+    }
+
+    #[test]
+    fn a_contributor_line_takes_these_forms() {
+        let who = |l| credit(l).map(|c| (c.name, c.url, c.handle, c.role));
+        assert_eq!(who("- **Ann**: Testing"), Some(("Ann", None, None, "Testing")));
+        assert_eq!(who("- **[Ann](https://a.example)**: Testing"), Some(("Ann", Some("https://a.example"), None, "Testing")));
+        assert_eq!(who("- **Ann** ([@ann](https://a.example)): Bug reports: many"), Some(("Ann", None, Some(("@ann", "https://a.example")), "Bug reports: many")));
+        for bad in ["- Ann: Testing", "- **Ann** Testing", "- **Ann** (@ann): Testing", "Ann"] {
+            assert_eq!(who(bad), None, "{bad}");
+        }
+    }
+
     #[test]
     fn components_list_is_built_in() {
         let d = super::components();

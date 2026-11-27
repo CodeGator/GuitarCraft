@@ -6,7 +6,7 @@ members = [".", "xtask"]
 name = "guitarcraft"
 # The one place the version lives. Change it with `cargo xtask version set X.Y.Z`; the app,
 # the .exe's version info and the installer all read it from here.
-version = "0.11.0"
+version = "0.12.0"
 edition = "2024"
 rust-version = "1.95"
 license = "GPL-3.0-or-later"

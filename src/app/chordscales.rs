@@ -407,16 +407,17 @@ fn list_row(ui: &mut Ui, w: f32, h: f32, on: bool, scroll: bool, text: &str) -> 
 /// A button in the column at the right.
 fn side_button(ui: &mut Ui, w: f32, text: &str, glyph: &str, on: Option<bool>, enabled: bool) -> egui::Response {
     let (r, resp) = ui.allocate_exact_size(Vec2::new(w, 34.0), if enabled { Sense::click() } else { Sense::hover() });
+    // Shades that stand out from the window behind (`window_fill` in `setup_style`).
     let bg = if !enabled {
-        Color32::from_rgb(40, 43, 49)
+        Color32::from_rgb(52, 56, 64)
     } else if on == Some(true) {
         BLUE
     } else if resp.is_pointer_button_down_on() {
-        Color32::from_rgb(90, 96, 112)
+        Color32::from_rgb(104, 111, 128)
     } else if resp.hovered() {
-        Color32::from_rgb(78, 83, 96)
+        Color32::from_rgb(92, 98, 114)
     } else {
-        Color32::from_rgb(58, 62, 72)
+        Color32::from_rgb(74, 79, 93)
     };
     ui.painter().rect_filled(r, 6.0, bg);
     let ink = if enabled { Color32::from_gray(238) } else { Color32::from_gray(110) };

@@ -1,21 +1,22 @@
 # Handoff
 
-Written 2026-11-23, after releasing 0.10.0 and starting `version-0.11.0`. Read this first, then
+Written 2026-11-27, after releasing 0.11.0 and starting `version-0.12.0`. Read this first, then
 `docs/gp8-feature-gaps.md` (what is left to build) and
 `docs/ai-design.md` (the AI rules and ideas).
 
 ## Where things stand
 
-- **Released:** v0.10.0, published 2026-11-23 (https://github.com/CodeGator/GuitarCraft/releases/tag/v0.10.0),
-  from PR #20. MSI and portable zip, unsigned. The MSI was never installed by hand; only the
-  checksums were checked (they match). v0.9.0 is the one before it.
-- **Working branch:** `version-0.11.0`, made from `main` after the release, version bumped to
-  0.11.0. Pushed to GitHub on 2026-11-27 (up to step 4 of keeping a file's settings). On 2026-11-27 it gained: the **Claude Code** AI provider,
-  passwords kept out of the Ollama address, **Suggest Chords** in chord charts, and an AI
-  Assistant that **only answers** (see "The AI features" below).
-- **Branches on GitHub:** `main`, `release`, and an old merged `version-0.8.0` that could be
-  deleted.
-- **Tests:** `cargo test --release` passes in full (293 passed, 7 ignored live tests that need a
+- **Released:** v0.11.0, published 2026-11-27 (https://github.com/CodeGator/GuitarCraft/releases/tag/v0.11.0),
+  from PR #21. MSI and portable zip, unsigned. The MSI was never installed by hand; only the
+  checksums were checked (they match). v0.10.0 is the one before it. 0.11.0 brought the drumkit
+  view, Audio Note Settings, Guitar Pro files keeping more through saving, the **Claude Code** AI
+  provider, **Suggest Chords** in chord charts and an AI Assistant that **only answers** (see "The
+  AI features" below).
+- **Working branch:** `version-0.12.0`, made from `main` after the release, version bumped to
+  0.12.0. Pushed to GitHub on 2026-11-27 with the Contributors tab, the Chords & Scales button
+  shading and the README's Chords & Scales pictures (those pictures are also on `main`, PR #22).
+- **Branches on GitHub:** `main` and `release`.
+- **Tests:** `cargo test --release` passes in full (296 passed, 7 ignored live tests that need a
   model, a key or a Claude Code sign-in). In a debug build (`cargo test`) three `dock` tests fail
   ("Dropped TexturesDelta with 1 unapplied deltas", from `epaint`); seen 2026-11-27 before any
   change that day.
@@ -108,6 +109,13 @@ behind it; it now opens as a new song. With a song showing it adds a track, as b
 **The name's colour** (2026-11-27, owner): "Craft" is the orange of the logo's pick
 (`LOGO_ORANGE` in `panels.rs`), on the start screen and in the About window. It was blue, too much
 like Guitar Pro. Use the constant anywhere else the name is drawn in colour.
+
+**Contributors** (2026-11-27, in 0.12.0): Help > About has a Contributors tab, after the one in
+storytold's apps but only their "grab bag" of names flowing across the window (the owner's choice,
+after FilmCraft's; no statistics, sorting or name switches): `CONTRIBUTORS.md` is built into the
+app and parsed in `about.rs` (a test fails if a line isn't read). It credits the owner, the Claude
+models named in `Co-Authored-By` lines and Craft Anything. **Add a new model there when one starts
+co-authoring**, and a person only with their agreement.
 
 **Bar repeat signs** (2026-11-27): Guitar Pro's `SimileMark` is now read and written
 (`Simple`, `FirstOfDouble`, `SecondOfDouble`); before, repeated bars of a Guitar Pro file opened
@@ -241,8 +249,9 @@ question in the panel. Before a release, check Anthropic's current terms.
   Technical details go in `docs/development.md` and how to use things in the user guide (`GUIDE`
   in `src/app/tools.rs`), not in the README. The owner first asked to delete the guide (the app is
   too young), then kept it because the AI Assistant answers from it: **keep it up to date** when a
-  feature changes. It was brought up to date for 0.11.0 on 2026-11-27. It must still say what the AI sends (see
-  `docs/ai-design.md`). Its three pictures were retaken the same day.
+  feature changes. It was brought up to date for 0.11.0 on 2026-11-27. The README must still say what the AI sends (see
+  `docs/ai-design.md`). The owner wants the Chords & Scales pictures in the README: the first rewrite dropped them, and
+  they were retaken and put back on 2026-11-27.
 - The GP8 guide doesn't state the Windows shortcuts for the Action list and Expression text; we
   use Ctrl+Alt+E and Ctrl+Shift+E by analogy with its Mac ones.
 
@@ -251,12 +260,10 @@ question in the panel. Before a release, check Anthropic's current terms.
 1. **Hear from the owner** about Suggest Chords in real use.
 2. **Still missing from Guitar Pro 8** (see the gap list): instrument change automation, Design
    mode, and importing TablEdit and Power Tab. File password protection was decided against.
-3. **Release 0.11.0** when the owner says: pull request `version-0.11.0` into `main` (see "How we
-   work here").
 
 ## How we work here
 
-- **Never commit or push to `main`.** Work on the version branch (`version-0.11.0` now). When it is
+- **Never commit or push to `main`.** Work on the version branch (`version-0.12.0` now). When it is
   ready: pull request into `main` with a merge commit, then
   `git push origin origin/main:release` (check it fast-forwards), wait about 3 minutes for the
   workflow to draft the release, check the checksums, publish it. Then delete the merged branch
@@ -268,8 +275,8 @@ question in the panel. Before a release, check Anthropic's current terms.
 - **Don't edit files in `%APPDATA%\GuitarCraft` by hand** without the person's say-so (the tool
   refused once); tell them what to change instead.
 - **The app locks its own exe on Windows** while it is open: `cargo run --release` and
-  `cargo build --release` fail with "Access is denied" until it is closed. Close it
-  (`taskkill //IM guitarcraft.exe //F`), build, start it again. To check a change while it is open,
+  `cargo build --release` fail with "Access is denied" until it is closed. Ask the owner to
+  quit it (it may have unsaved work, so don't force it), build, then start it again for them. To check a change while it is open,
   build into another target directory (`CARGO_TARGET_DIR=<scratch> cargo build --release`) and
   take a picture with `--screenshot`; `--show ai` or `--show fretboard,keyboard` opens panels.
 - **Edit files with small, exact edits.** `sed` with `\n` or `{}` in the pattern often silently
