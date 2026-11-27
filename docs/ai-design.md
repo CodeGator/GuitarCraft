@@ -4,7 +4,7 @@ Status: ideas, 2026-11-23. Built so far: Preferences > AI (`src/app/ai.rs`: the 
 Claude settings, the Claude key in the system credential store, a "Test connection" button
 for each), and, the same day, the **AI Assistant panel** (`src/app/aipanel.rs`, a dockable
 pane; `ai::ask` sends a conversation to Ollama's `/api/chat` or Claude's messages call on a
-background thread, not streamed). The panel answers in words, and can propose changes to the score as cards (`src/app/aiplan.rs`: copy, paste and delete bars; Apply is one undoable edit): an
+background thread, not streamed). The panel answers in words and changes nothing (see "The panel only answers" below). With each question go
 the bars selected, or the one at the cursor, sent automatically (ASCII tablature, key and time
 signature, no title or artist, at most 16 bars, plus facts the program works out from the notes:
 the notes used, the scales that contain them and the chord on each beat, `src/app/aifacts.rs`, and a summary of the whole track: its key, every note used and the scales that fit best, with the share of notes each covers),
@@ -55,7 +55,10 @@ the rules every one of them follows.
    operating system, the date and the folder it runs in (the top folder of the system drive, so
    it names nobody). That is accepted when the person switches the provider on. What is sent must
    be said in Preferences > AI, the guide, the README and the privacy policy.
-3. **The AI proposes, the person applies.** Results appear as a preview (the proposed bars
+3. **The panel only answers; a button changes things.** The AI Assistant panel never changes
+   the song or the program. An AI feature that changes something is a button for one defined
+   task, offered where the work is.
+   **The AI proposes, the person applies.** Results appear as a preview (the proposed bars
    drawn in the score in a different colour, or a list of changes) with Apply and Discard.
    Apply is one `App::edit`, so one Undo takes it back.
 4. **Answers are checked before they are used.** Ask for a fixed JSON shape, parse it, and
@@ -92,7 +95,8 @@ Ranked by how well they fit the rules above. Effort is small (days), medium or l
    key and time signature the app already knows, plus a short list of the chords and scales
    `theory.rs` finds for it, so the model explains rather than computes. The answer is text
    only, so nothing to validate and nothing to apply. *Effort: medium.*
-4. **Natural language in the command palette.** A fourth mode (`?`): "double the tempo of the
+4. *(Dropped 2026-11-27: a box that takes any request promises more than it can do.)*
+   **Natural language in the command palette.** A fourth mode (`?`): "double the tempo of the
    chorus", "add a repeat around bars 5 to 8", "mute the bass". The model is given the list
    of palette commands, actions and expression entries and answers with a short list of them
    to run (a whitelist, never free-form edits), shown for confirmation. This reuses the work
@@ -157,6 +161,16 @@ Ranked by how well they fit the rules above. Effort is small (days), medium or l
 - **Cost:** for Claude, estimate the size before sending (characters over about 3.5) and ask
   first above a limit set in Preferences > AI (a new "Ask before sending more than N tokens").
 
+## The panel only answers
+
+Until 2026-11-27 the panel could also propose changes to the score (copy, paste and delete bars)
+as cards with Apply. The owner decided to remove that: nobody can tell what a free-text box can do
+until it refuses (asked to double the bass track's tempo, it could only explain), and the menus do
+exact edits faster. The system prompt (`ai::SYSTEM`) now says it can't change anything and to
+explain how to do it instead. Every question carries the matching parts of the guide, the song
+outline, the track summary and the selected bars (`aitext.rs` has the outline and the splitting of
+answers into words and code blocks). Not tried live since the change.
+
 ## Claude Code
 
 Each question runs `claude` once (`aicode.rs`):
@@ -187,8 +201,8 @@ claude -p --output-format json --system-prompt <ours> --tools "" --strict-mcp-co
 
 Checked live on 2026-11-27, Windows, Claude Code 2.1.332, a Pro plan
 (`cargo test claude_code_answers_live -- --ignored --nocapture`): two linked questions answered.
-Not checked: a score change card from Claude, the panel by hand, macOS, Linux, and a native (not
-npm) install.
+The owner has also asked it a question in the panel. Not checked: macOS, Linux, and a native
+(not npm) install.
 
 ## Suggest Chords
 

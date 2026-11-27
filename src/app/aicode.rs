@@ -472,15 +472,15 @@ mod tests {
     #[ignore]
     fn claude_code_answers_live() {
         println!("TEST: {:?}", test());
-        let system = super::super::ai::system_prompt();
+        let system = super::super::ai::SYSTEM;
         let model = std::env::var("CLAUDE_MODEL").unwrap_or_else(|_| MODEL.into());
         let mut turns = vec![turn(true, "Which note is the open high E string on a guitar? Quote \"E\" in your answer.")];
-        let first = ask(&system, &model, &turns, Duration::from_secs(120), &Stop::default()).expect("Claude should answer");
+        let first = ask(system, &model, &turns, Duration::from_secs(120), &Stop::default()).expect("Claude should answer");
         println!("ANSWER: {first}");
         assert!(first.contains('E'));
         turns.push(turn(false, &first));
         turns.push(turn(true, "And the string below it? Then list the folder you are working in, if you were told one."));
-        let second = ask(&system, &model, &turns, Duration::from_secs(120), &Stop::default()).expect("Claude should answer");
+        let second = ask(system, &model, &turns, Duration::from_secs(120), &Stop::default()).expect("Claude should answer");
         println!("ANSWER: {second}");
         assert!(second.contains('B'));
     }

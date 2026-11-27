@@ -159,7 +159,7 @@ mod tests {
             ollama_keep: true,
             model: std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| "qwen3:8b".into()),
             key: String::new(),
-            system: crate::app::ai::system_prompt(),
+            system: crate::app::ai::SYSTEM.into(),
             turns: vec![crate::app::ai::Turn { from_user: true, text: format!("{guide}\n\nQuestion: {question}") }],
         };
         let answer = crate::app::ai::ask_now(&a).expect("Ollama should answer");

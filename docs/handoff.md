@@ -10,11 +10,12 @@ Written 2026-11-23, after releasing 0.10.0 and starting `version-0.11.0`. Read t
   from PR #20. MSI and portable zip, unsigned. The MSI was never installed by hand; only the
   checksums were checked (they match). v0.9.0 is the one before it.
 - **Working branch:** `version-0.11.0`, made from `main` after the release, version bumped to
-  0.11.0 (one commit, not pushed yet). On 2026-11-27 the **Claude Code** AI provider was added
-  to it (see "The AI assistant" below).
+  0.11.0. Nothing on it is pushed. On 2026-11-27 it gained: the **Claude Code** AI provider,
+  passwords kept out of the Ollama address, **Suggest Chords** in chord charts, and an AI
+  Assistant that **only answers** (see "The AI features" below).
 - **Branches on GitHub:** `main`, `release`, and an old merged `version-0.8.0` that could be
   deleted.
-- **Tests:** `cargo test --release` passes in full (245 passed, 7 ignored live tests that need a
+- **Tests:** `cargo test --release` passes in full (239 passed, 7 ignored live tests that need a
   model, a key or a Claude Code sign-in). In a debug build (`cargo test`) three `dock` tests fail
   ("Dropped TexturesDelta with 1 unapplied deltas", from `epaint`); seen 2026-11-27 before any
   change that day.
@@ -54,59 +55,43 @@ tests and live Ollama calls.
 - **Recent files** (`home.rs`): two files with the same name are told apart (`recent_labels`: the
   extension, then the folder); files that no longer exist are dropped when the list loads
   (`only_existing`) and when picked (`open_path`). A lost-drive entry is dropped too.
-- **AI assistant**, all in `src/app/ai*.rs` and `aipanel.rs` (details under "The AI assistant"
-  below): the assistant can now change the score through cards; it answers questions about
-  GuitarCraft from the user guide; every question carries an outline and a summary of the track.
+- **AI assistant**, in `src/app/ai*.rs` and `aipanel.rs`: it could change the score through
+  cards (removed since, in 0.11.0); it answers questions about GuitarCraft from the user guide;
+  every question carries an outline and a summary of the track.
 
-## The AI assistant
+## The AI features
+
+**The rule (owner, 2026-11-27).** The AI Assistant panel only answers. Anything AI changes is a
+button for one task, with a preview and one undo step. Don't add free-text editing, and try a new
+AI feature on real examples before building it.
 
 **Panel.** The top of the panel shows only a "New chat" button. By the owner's decision it shows
 nothing about the provider or model ("I care about the outcome"; that is in Preferences > AI), and
 it has no checkboxes: the program decides what goes with a question. If no provider is switched
 on, it shows a warning with "Switch on Ollama" (when a model is chosen) and "AI Preferences". The
 provider is the first one switched on (Ollama, Claude Code, Claude with a key); there is no
-choice in the panel.
+choice in the panel. The owner's settings on 2026-11-27: Claude Code on, Ollama off.
 
-**What is sent with a question** (`ai_send`, `ai_context` in `aipanel.rs`):
-- An *order* (`aiplan::is_change_request`: "Copy the intro to the end", "please delete bars 3-4";
-  not "How do I copy bars?"): the song outline only (`aiplan::outline`: track names, section names
-  with bar ranges). No guide text, because its how-to steps once talked the model into explaining
-  instead of writing a plan.
-- Anything else: the matching sections of the user guide (`aihelp.rs`, plain word matching, at
-  most 4, none if nothing matches), the outline, a summary of the whole track
-  (`aifacts::track_facts`: key signature, every note counted, the scales that fit best with the
-  share of notes inside each), and the selected bars (or the bar at the cursor) as ASCII tab with
-  the notes, scales and chords found in them (`aifacts::passage_facts`).
-- A one-line reminder follows the question (`aiplan::REMINDER`), and Ollama answers at
-  temperature 0.3 (`OLLAMA_TEMPERATURE`), both to keep it to the plan format.
-- The system prompt is `ai::system_prompt()` = `SYSTEM` + `aiplan::PLAN_HELP`.
+**What is sent with a question** (`ai_send`, `ai_context` in `aipanel.rs`): the matching sections
+of the user guide (`aihelp.rs`, plain word matching, at most 4, none if nothing matches), the
+song outline (`aitext::outline`), a summary of the whole track (`aifacts::track_facts`: key
+signature, every note counted, the scales that fit best with the share of notes inside each), and
+the selected bars (or the bar at the cursor) as ASCII tab with the notes, scales and chords found
+in them (`aifacts::passage_facts`). Ollama answers at temperature 0.3. A chord chart sends none of
+the song parts. The system prompt is `ai::SYSTEM`.
 
-**Plans** (`src/app/aiplan.rs`, no UI; the card is `plan_card` in `aipanel.rs`). The assistant
-proposes a change as a fenced block tagged `guitarcraft-plan` holding a JSON list of steps.
-`parse` reads it, `run` checks each step against the real song and carries it out (first on a copy,
-to fill the card). The steps are `copy_bars`, `paste_bars` (insert or replace, at a bar or
-`"end"`) and `delete_bars`; tracks and sections are named (a track may also be given by its number
-in the outline). The card lists the steps in words, the bar count before and after, and notes
-(bars of a different length), with Apply and Dismiss. Apply runs the plan again on a copy of the
-song as it is now and only then takes one undo snapshot and swaps it in (`ai_apply_plan`), so a
-stale plan changes nothing and one Undo takes it back. A chord chart refuses a plan. An order that
-got an explanation instead of a plan shows "No change was proposed." with **Ask again**.
+**Suggest Chords** (`src/app/chartsuggest.rs`; why only this and only Claude is in
+`docs/ai-design.md`). Tried live once through its own code (`suggest_chords_live`); the window was
+checked in a picture with a made-up answer (`--show chartsuggest`). The owner hasn't used it yet.
 
 **Ollama.** "Keep model loaded" (Preferences > AI, on by default, `ollama_warm`): the model is
 loaded in the background when the panel shows it, with the same context size as questions (a
 different one makes Ollama load it twice), and `keep_alive` is 30 minutes.
 
-**Checked live** with `qwen3:8b` on `samples/Morning Walk.gp` (ignored tests; set the variables
-shown): `plan_live` (`PLAN_QUESTION`, `PLAN_CTX`, `OLLAMA_MODEL`, `PLAN_OLD=1` for the old prompt),
-`help_answers_live`, `summary_live`, `ollama_answers_live`, `claude_answers_live`. "Copy the intro
-to the end of the song", "copy the guitar track for Verse 1 and paste it into measure 12" and a
-three-step delete-and-copy all gave valid cards; the model resolved "guitar track" and "Verse 1"
-to the real names, and chose insert for "paste into measure 12" (the card says so). The owner once
-got manual instructions instead of a plan, with the guide ticked; I could not reproduce it (about
-ten runs), so the guide skip, the reminder, the lower temperature and Ask again are protections
-for an occasional failure, not a proven fix. An answer takes about 100 seconds on the owner's
-8 GB card (`qwen3:8b` does not fit it at 16K context: 20% on the CPU); the owner chose an 8K
-context.
+**Checked live** before the change cards were removed, with `qwen3:8b`: `help_answers_live`,
+`summary_live` and `ollama_answers_live`. An answer took about 100 seconds on the owner's 8 GB card
+(`qwen3:8b` does not fit it at 16K context: 20% on the CPU); the owner chose an 8K context.
+`qwen3:8b` is no longer installed (2026-11-27), though Preferences still named it.
 
 **Claude with an API key** was never asked a question: the key saved and "Test connection"
 worked, but answering needs prepaid API credits, which the owner will not buy. Do not spend time
@@ -114,8 +99,8 @@ there unless that changes.
 
 **Claude Code** (`src/app/aicode.rs`, details and limits in `docs/ai-design.md` > "Claude Code")
 is how Claude answers now: the owner's own `claude` program and plan. Live answers were seen
-through `claude_code_answers_live` in about 4 seconds for two questions. Not yet tried: the panel
-by hand, and a score change card from Claude. Before a release, check Anthropic's current terms.
+through `claude_code_answers_live` in about 4 seconds for two questions, and the owner asked it a
+question in the panel. Before a release, check Anthropic's current terms.
 
 ## Known problems and things not checked
 
@@ -163,14 +148,9 @@ by hand, and a score change card from Claude. Before a release, check Anthropic'
 
 ## What to do next
 
-1. **More plan steps.** Each is a small addition to `aiplan.rs`: a `Step` variant, its run code,
-   its line on the card, its test, and a line in `PLAN_HELP`. Candidates: transpose a range, set
-   the tempo, rename or add a section, add or remove a track, set a repeat.
-2. **Other AI ideas** (`docs/ai-design.md`): a natural-language mode in the command palette (a
-   fixed list of commands, confirmed first), chord suggestions for chord charts, "fix messy tab"
-   (the model tidies pasted tab, the existing importer reads it). Lyrics syllable splitting was
-   set aside by the owner (a model can't know where a song breaks its syllables; it would need
-   the melody's note count).
+1. **Hear from the owner** about Suggest Chords in real use.
+2. **Teach the tab importer simple clean-up** (quoting, blank lines inside a system, typed dashes,
+   spaces for dashes): a trial showed plain code does it better than AI (`docs/ai-design.md`).
 3. **Still missing from Guitar Pro 8** (see the gap list): Audio Note Settings (Shift+F),
    instrument change automation, Drum view, Design mode, and importing TablEdit and Power Tab.
    File password protection was decided against.
@@ -196,11 +176,11 @@ by hand, and a score change card from Claude. Before a release, check Anthropic'
   build into another target directory (`CARGO_TARGET_DIR=<scratch> cargo build --release`) and
   take a picture with `--screenshot`; `--show ai` or `--show fretboard,keyboard` opens panels.
 - **Edit files with small, exact edits.** `sed` with `\n` or `{}` in the pattern often silently
-  does nothing; check the result, or use the edit tool. Python isn't installed here.
-- **`cargo test` takes one name filter** (`cargo test aiplan`, not two).
+  does nothing; check the result, or use the edit tool.
+- **`cargo test` takes one name filter** (`cargo test aitext`, not two).
 - **Sample to test with:** `samples/Morning Walk.gp` (12 bars; sections Intro 1-4, Verse 5-8,
   Outro 9-12; tracks "Steel Guitar" and "Electric Bass").
 - The person has old eyes: keep text large and readable in new windows.
-- The owner's machine: RTX 3060 Ti with 8 GB; Ollama models installed include `qwen3:8b`
-  (the one in use), `gemma3:4b` and `qwen2.5-coder`.
+- The owner's machine: RTX 3060 Ti with 8 GB; on 2026-11-27 Ollama listed `qwen3.5:4b` and
+  `qwen2.5-coder:7b`.
 - Git warns "LF will be replaced by CRLF" on every commit; it is harmless here.

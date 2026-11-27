@@ -252,13 +252,9 @@ to decide the key and say which scale fits the whole piece as well as the bars. 
 A question may also come with parts of the GuitarCraft user guide. For a question about using GuitarCraft, answer \
 from that text: use its menu names and shortcuts exactly, and if it doesn't cover the question, say so rather \
 than guessing at menus or features GuitarCraft might have. \
+You answer questions only: you can't change the score or anything else in the program. If you are asked to make a \
+change, say that you can't, and explain how to do it in GuitarCraft, from the user guide text if it covers it. \
 If you aren't sure, say so.";
-
-/// Everything the assistant is told about itself: who it is, and how to propose changes to the
-/// score (see `aiplan`).
-pub fn system_prompt() -> String {
-    format!("{SYSTEM}\n\n{}", super::aiplan::PLAN_HELP)
-}
 
 /// The result of a question: the answer, or why there isn't one.
 pub type Answer = Result<String, String>;
@@ -360,8 +356,7 @@ pub fn ollama_body(model: &str, context: u32, system: &str, turns: &[Turn], keep
 pub const OLLAMA_KEEP_ALIVE: &str = "30m";
 
 /// How adventurous Ollama's answers are (its own default is 0.8). Lower keeps the assistant to
-/// the format it was asked for: a plan is a block of JSON, and a model that wanders writes
-/// something else.
+/// the facts it was given.
 pub const OLLAMA_TEMPERATURE: f32 = 0.3;
 
 /// How long after loading (or the last question) the model is loaded again, a little less than
@@ -484,7 +479,7 @@ mod tests {
         let o: Value = serde_json::from_str(&ollama_body("qwen3:4b", 8192, "sys", &turns, false)).unwrap();
         assert_eq!(o["model"], "qwen3:4b");
         assert!(o.get("keep_alive").is_none(), "Ollama's own timeout applies unless asked");
-        assert!((o["options"]["temperature"].as_f64().unwrap() - 0.3).abs() < 1e-6, "answers keep to the format asked for");
+        assert!((o["options"]["temperature"].as_f64().unwrap() - 0.3).abs() < 1e-6, "answers keep to what was given");
         let kept: Value = serde_json::from_str(&ollama_body("qwen3:4b", 8192, "sys", &turns, true)).unwrap();
         assert_eq!(kept["keep_alive"], OLLAMA_KEEP_ALIVE);
         assert_eq!(o["stream"], false);

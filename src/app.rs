@@ -8,8 +8,8 @@ mod ai;
 mod aicode;
 mod aifacts;
 mod aihelp;
-mod aiplan;
 mod aipanel;
+mod aitext;
 mod batch;
 #[cfg(test)]
 mod flows;
